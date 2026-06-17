@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\EfirmaAppointmentStatusEnum;
 use App\Enums\RegistrationStageEnum;
 use App\Enums\RegistrationStatusEnum;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
@@ -35,6 +36,10 @@ class Registration extends Model
         'company_type',
         'rfc',
         'efirma_appointment_at',
+        'efirma_status',
+        'efirma_key_path',
+        'efirma_cer_path',
+        'efirma_password_hash',
         'notes_count',
         'tasks_pending_count',
         'completed_at',
@@ -51,6 +56,7 @@ class Registration extends Model
             'stage'                  => RegistrationStageEnum::class,
             'status'                 => RegistrationStatusEnum::class,
             'efirma_appointment_at'  => 'datetime',
+            'efirma_status'          => EfirmaAppointmentStatusEnum::class,
             'completed_at'           => 'datetime',
         ];
     }
