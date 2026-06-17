@@ -3,7 +3,9 @@
 namespace App\Jobs;
 
 use App\Enums\WebhookEventStatusEnum;
+use App\Models\User;
 use App\Models\WebhookEvent;
+use App\Notifications\NewExpedienteReceived;
 use App\Services\Registration\RegistrationUpsertService;
 use App\Services\Singapur\SingapurSubmissionParser;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -52,11 +54,13 @@ class ProcessSingapurWebhook implements ShouldQueue
     }
 
     /**
-     * Execute the job — parse the webhook payload and upsert the registration.
+     * Execute the job — parse the webhook payload, upsert the registration, and notify admins.
      *
      * The relay sends the full submission JSON in the webhook body, so no ZIP
      * download is required. The payload is passed directly to the parser and
-     * the resulting DTO is handed to RegistrationUpsertService.
+     * the resulting DTO is handed to RegistrationUpsertService. After a successful
+     * upsert, all admin users receive a database notification visible in the
+     * Filament top-bar bell icon.
      *
      * @param  SingapurSubmissionParser  $parser         Parses the raw payload into a DTO.
      * @param  RegistrationUpsertService $upsertService  Creates or updates the registration.
@@ -68,9 +72,13 @@ class ProcessSingapurWebhook implements ShouldQueue
         SingapurSubmissionParser $parser,
         RegistrationUpsertService $upsertService,
     ): void {
-        $submission = $parser->parse($this->webhookEvent->payload);
+        $submission   = $parser->parse($this->webhookEvent->payload);
+        $registration = $upsertService->upsert($submission);
 
-        $upsertService->upsert($submission);
+        // Notify every super_admin so they can review the new expedient immediately.
+        User::role('super_admin')->each(
+            fn (User $admin) => $admin->notify(new NewExpedienteReceived($registration))
+        );
 
         $this->webhookEvent->update([
             'status'       => WebhookEventStatusEnum::PROCESSED,
