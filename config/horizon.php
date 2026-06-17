@@ -8,24 +8,14 @@ return [
     |--------------------------------------------------------------------------
     | Horizon Name
     |--------------------------------------------------------------------------
-    |
-    | This name appears in notifications and in the Horizon UI. Unique names
-    | can be useful while running multiple instances of Horizon within an
-    | application, allowing you to identify the Horizon you're viewing.
-    |
     */
 
-    'name' => env('HORIZON_NAME'),
+    'name' => env('HORIZON_NAME', 'Nexum'),
 
     /*
     |--------------------------------------------------------------------------
     | Horizon Domain
     |--------------------------------------------------------------------------
-    |
-    | This is the subdomain where Horizon will be accessible from. If this
-    | setting is null, Horizon will reside under the same domain as the
-    | application. Otherwise, this value will serve as the subdomain.
-    |
     */
 
     'domain' => env('HORIZON_DOMAIN'),
@@ -34,11 +24,6 @@ return [
     |--------------------------------------------------------------------------
     | Horizon Path
     |--------------------------------------------------------------------------
-    |
-    | This is the URI path where Horizon will be accessible from. Feel free
-    | to change this path to anything you like. Note that the URI will not
-    | affect the paths of its internal API that aren't exposed to users.
-    |
     */
 
     'path' => env('HORIZON_PATH', 'horizon'),
@@ -47,11 +32,6 @@ return [
     |--------------------------------------------------------------------------
     | Horizon Redis Connection
     |--------------------------------------------------------------------------
-    |
-    | This is the name of the Redis connection where Horizon will store the
-    | meta information required for it to function. It includes the list
-    | of supervisors, failed jobs, job metrics, and other information.
-    |
     */
 
     'use' => 'default',
@@ -60,16 +40,11 @@ return [
     |--------------------------------------------------------------------------
     | Horizon Redis Prefix
     |--------------------------------------------------------------------------
-    |
-    | This prefix will be used when storing all Horizon data in Redis. You
-    | may modify the prefix when you are running multiple installations
-    | of Horizon on the same server so that they don't have problems.
-    |
     */
 
     'prefix' => env(
         'HORIZON_PREFIX',
-        Str::slug(env('APP_NAME', 'laravel'), '_').'_horizon:'
+        Str::slug(env('APP_NAME', 'nexum'), '_') . '_horizon:',
     ),
 
     /*
@@ -77,9 +52,8 @@ return [
     | Horizon Route Middleware
     |--------------------------------------------------------------------------
     |
-    | These middleware will get attached onto each Horizon route, giving you
-    | the chance to add your own middleware to this list or change any of
-    | the existing middleware. Or, you can simply stick with this list.
+    | Authentication is enforced by the HorizonServiceProvider gate.
+    | The 'web' middleware is required for session-based auth.
     |
     */
 
@@ -87,72 +61,54 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Queue Wait Time Thresholds
+    | Queue Wait Time Thresholds (seconds)
     |--------------------------------------------------------------------------
     |
-    | This option allows you to configure when the LongWaitDetected event
-    | will be fired. Every connection / queue combination may have its
-    | own, unique threshold (in seconds) before this event is fired.
+    | Triggers a LongWaitDetected event when a queue backlog exceeds the
+    | threshold. Webhooks should be processed quickly (30 s), default
+    | jobs have a more relaxed threshold (120 s).
     |
     */
 
     'waits' => [
-        'redis:default' => 60,
+        'redis:webhooks' => 30,
+        'redis:default'  => 120,
     ],
 
     /*
     |--------------------------------------------------------------------------
-    | Job Trimming Times
+    | Job Trimming Times (minutes)
     |--------------------------------------------------------------------------
-    |
-    | Here you can configure for how long (in minutes) you desire Horizon to
-    | persist the recent and failed jobs. Typically, recent jobs are kept
-    | for one hour while all failed jobs are stored for an entire week.
-    |
     */
 
     'trim' => [
-        'recent' => 60,
-        'pending' => 60,
-        'completed' => 60,
-        'recent_failed' => 10080,
-        'failed' => 10080,
-        'monitored' => 10080,
+        'recent'        => 60,     // 1 hour
+        'pending'       => 60,
+        'completed'     => 60,
+        'recent_failed' => 10080,  // 7 days
+        'failed'        => 10080,
+        'monitored'     => 10080,
     ],
 
     /*
     |--------------------------------------------------------------------------
     | Silenced Jobs
     |--------------------------------------------------------------------------
-    |
-    | Silencing a job will instruct Horizon to not place the job in the list
-    | of completed jobs within the Horizon dashboard. This setting may be
-    | used to fully remove any noisy jobs from the completed jobs list.
-    |
     */
 
-    'silenced' => [
-        // App\Jobs\ExampleJob::class,
-    ],
+    'silenced' => [],
 
-    'silenced_tags' => [
-        // 'notifications',
-    ],
+    'silenced_tags' => [],
 
     /*
     |--------------------------------------------------------------------------
-    | Metrics
+    | Metrics — snapshot retention (hours)
     |--------------------------------------------------------------------------
-    |
-    | Here you can configure how many snapshots should be kept to display in
-    | the metrics graph. This will get used in combination with Horizon's
-    | `horizon:snapshot` schedule to define how long to retain metrics.
-    |
     */
 
     'metrics' => [
         'trim_snapshots' => [
-            'job' => 24,
+            'job'   => 24,
             'queue' => 24,
         ],
     ],
@@ -161,82 +117,120 @@ return [
     |--------------------------------------------------------------------------
     | Fast Termination
     |--------------------------------------------------------------------------
-    |
-    | When this option is enabled, Horizon's "terminate" command will not
-    | wait on all of the workers to terminate unless the --wait option
-    | is provided. Fast termination can shorten deployment delay by
-    | allowing a new instance of Horizon to start while the last
-    | instance will continue to terminate each of its workers.
-    |
     */
 
     'fast_termination' => false,
 
     /*
     |--------------------------------------------------------------------------
-    | Memory Limit (MB)
+    | Memory Limit (MB) — master supervisor
     |--------------------------------------------------------------------------
-    |
-    | This value describes the maximum amount of memory the Horizon master
-    | supervisor may consume before it is terminated and restarted. For
-    | configuring these limits on your workers, see the next section.
-    |
     */
 
-    'memory_limit' => 64,
+    'memory_limit' => 128,
 
     /*
     |--------------------------------------------------------------------------
     | Queue Worker Configuration
     |--------------------------------------------------------------------------
     |
-    | Here you may define the queue worker settings used by your application
-    | in all environments. These supervisors and settings handle all your
-    | queued jobs and will be provisioned by Horizon during deployment.
+    | Two supervisors:
+    |
+    |   supervisor-webhooks — dedicated to the `webhooks` queue.
+    |       Processes inbound Singapur relay events (ProcessSingapurWebhook).
+    |       Higher priority (nice: 0) and aggressive balancing because relay
+    |       events must be picked up quickly.
+    |
+    |   supervisor-default — handles general background jobs on `default`.
+    |       Lower resource footprint, suitable for notifications and misc tasks.
+    |
+    | The `defaults` block defines shared settings merged into each environment.
     |
     */
 
     'defaults' => [
-        'supervisor-1' => [
-            'connection' => 'redis',
-            'queue' => ['default'],
-            'balance' => 'auto',
+        'supervisor-webhooks' => [
+            'connection'          => 'redis',
+            'queue'               => ['webhooks'],
+            'balance'             => 'auto',
             'autoScalingStrategy' => 'time',
-            'maxProcesses' => 1,
-            'maxTime' => 0,
-            'maxJobs' => 0,
-            'memory' => 128,
-            'tries' => 1,
-            'timeout' => 60,
-            'nice' => 0,
+            'maxProcesses'        => 1,
+            'maxTime'             => 0,
+            'maxJobs'             => 0,
+            'memory'              => 128,
+            'tries'               => 3,
+            'timeout'             => 120, // ZIP download + parse can take time
+            'nice'                => 0,
+        ],
+
+        'supervisor-default' => [
+            'connection'          => 'redis',
+            'queue'               => ['default'],
+            'balance'             => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses'        => 1,
+            'maxTime'             => 0,
+            'maxJobs'             => 0,
+            'memory'              => 128,
+            'tries'               => 3,
+            'timeout'             => 60,
+            'nice'                => 0,
         ],
     ],
 
     'environments' => [
+
+        /*
+         * Production — more workers, aggressive auto-scaling.
+         * webhooks: up to 5 workers; relay traffic can spike on business days.
+         * default: up to 10 workers; general background work.
+         */
         'production' => [
-            'supervisor-1' => [
-                'maxProcesses' => 10,
+            'supervisor-webhooks' => [
+                'maxProcesses'    => 5,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 3,
+            ],
+            'supervisor-default' => [
+                'maxProcesses'    => 10,
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
         ],
 
+        /*
+         * Local — single process per supervisor to keep Docker resource usage low.
+         */
         'local' => [
-            'supervisor-1' => [
-                'maxProcesses' => 3,
+            'supervisor-webhooks' => [
+                'maxProcesses' => 1,
+            ],
+            'supervisor-default' => [
+                'maxProcesses' => 1,
+            ],
+        ],
+
+        /*
+         * Staging — mirrors production topology at reduced scale.
+         */
+        'staging' => [
+            'supervisor-webhooks' => [
+                'maxProcesses'    => 2,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 5,
+            ],
+            'supervisor-default' => [
+                'maxProcesses'    => 3,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 5,
             ],
         ],
     ],
 
     /*
     |--------------------------------------------------------------------------
-    | File Watcher Configuration
+    | File Watcher — restart Horizon on relevant file changes (local only)
     |--------------------------------------------------------------------------
-    |
-    | The following list of directories and files will be watched when using
-    | the `horizon:listen` command. Whenever any directories or files are
-    | changed, Horizon will automatically restart to apply all changes.
-    |
     */
 
     'watch' => [
@@ -244,11 +238,8 @@ return [
         'bootstrap',
         'config/**/*.php',
         'database/**/*.php',
-        'public/**/*.php',
-        'resources/**/*.php',
         'routes',
         'composer.lock',
-        'composer.json',
         '.env',
     ],
 ];
