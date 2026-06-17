@@ -3,6 +3,8 @@
 namespace App\Filament\Resources\RegistrationResource\RelationManagers;
 
 use App\Enums\DocumentTypeEnum;
+use App\Models\Document;
+use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
@@ -15,7 +17,12 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 
 /**
- * Manages documents stored in Google Drive for a registration expedient.
+ * Manages documents for a registration expedient.
+ *
+ * Documents come from two sources:
+ * - Relay KYC files: received via webhook, stored as metadata with relay_zip_path.
+ *   Downloaded on-demand via the "Descargar del relay" action.
+ * - Manual uploads: added by the notary team and linked to Google Drive.
  */
 class DocumentsRelationManager extends RelationManager
 {
@@ -46,7 +53,7 @@ class DocumentsRelationManager extends RelationManager
     }
 
     /**
-     * Define the table columns for the documents list.
+     * Define the table columns and actions for the documents list.
      *
      * @param  Table  $table
      * @return Table
@@ -55,10 +62,26 @@ class DocumentsRelationManager extends RelationManager
     {
         return $table
             ->columns([
-                TextColumn::make('name')->label('Documento')->searchable(),
+                TextColumn::make('name')
+                    ->label('Documento')
+                    ->searchable()
+                    ->limit(50)
+                    ->tooltip(fn (Document $record): string => $record->name),
                 TextColumn::make('type')
                     ->label('Tipo')
                     ->formatStateUsing(fn (DocumentTypeEnum $state) => $state->label()),
+                IconColumn::make('relay_zip_path')
+                    ->label('Origen')
+                    ->boolean()
+                    ->trueIcon('heroicon-o-cloud-arrow-down')
+                    ->falseIcon('heroicon-o-user')
+                    ->trueColor('info')
+                    ->falseColor('gray')
+                    ->state(fn (Document $record): bool => filled($record->relay_zip_path))
+                    ->tooltip(fn (Document $record): string => filled($record->relay_zip_path)
+                        ? 'Documento del relay (descarga disponible)'
+                        : 'Documento manual'
+                    ),
                 IconColumn::make('verified_at')
                     ->label('Verificado')
                     ->boolean()
@@ -67,7 +90,22 @@ class DocumentsRelationManager extends RelationManager
                 TextColumn::make('uploader.name')->label('Subido por'),
                 TextColumn::make('created_at')->label('Fecha')->date('d/m/Y'),
             ])
-            ->actions([EditAction::make(), DeleteAction::make()])
+            ->actions([
+                Action::make('downloadFromRelay')
+                    ->label('Descargar')
+                    ->icon('heroicon-o-arrow-down-tray')
+                    ->color('info')
+                    ->url(
+                        fn (Document $record): string => route(
+                            'admin.documents.relay-download',
+                            $record
+                        )
+                    )
+                    ->openUrlInNewTab()
+                    ->visible(fn (Document $record): bool => filled($record->relay_zip_path)),
+                EditAction::make(),
+                DeleteAction::make(),
+            ])
             ->headerActions([CreateAction::make()->label('Agregar documento')]);
     }
 }

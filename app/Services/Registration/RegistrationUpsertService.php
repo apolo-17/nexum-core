@@ -62,18 +62,20 @@ class RegistrationUpsertService
         $registration = Registration::firstOrCreate(
             ['singapur_client_code' => $dto->registrationNumber],
             [
-                'singapur_package_id' => $dto->id,
-                'company_type'        => $dto->resolvedCompanyType(),
-                'stage'               => RegistrationStageEnum::DATA_RECEIVED,
-                'status'              => RegistrationStatusEnum::ACTIVE,
+                'singapur_package_id'  => $dto->id,
+                'singapur_folder_name' => $dto->companyFolderName,
+                'company_type'         => $dto->resolvedCompanyType(),
+                'stage'                => RegistrationStageEnum::DATA_RECEIVED,
+                'status'               => RegistrationStatusEnum::ACTIVE,
             ],
         );
 
         // Refresh relay metadata on subsequent deliveries without touching stage/status.
         if (! $registration->wasRecentlyCreated) {
             $registration->update([
-                'singapur_package_id' => $dto->id,
-                'company_type'        => $dto->resolvedCompanyType(),
+                'singapur_package_id'  => $dto->id,
+                'singapur_folder_name' => $dto->companyFolderName,
+                'company_type'         => $dto->resolvedCompanyType(),
             ]);
         }
 
@@ -187,6 +189,11 @@ class RegistrationUpsertService
     /**
      * Persist a Document metadata record if one with the same relay_name does not exist.
      *
+     * The relay_zip_path is derived from the document group ('KYC'), the shareholder
+     * index embedded in the field name (e.g. naturalTaxCertificate1 → 1), and the
+     * relay_name filename. This path is used later by SingapurRelayService to extract
+     * a single file from the ZIP without unpacking the entire archive.
+     *
      * @param  Registration     $registration  Parent registration.
      * @param  SingapurFileDTO  $file          File DTO from the submission package.
      * @return void
@@ -201,13 +208,37 @@ class RegistrationUpsertService
             return;
         }
 
+        $relayZipPath = $this->buildRelayZipPath($file);
+
         Document::create([
             'registration_id'      => $registration->id,
             'type'                 => $file->documentType(),
             'name'                 => $file->relayName,
+            'relay_zip_path'       => $relayZipPath,
             'google_drive_file_id' => null,
             'google_drive_url'     => null,
             'stage'                => RegistrationStageEnum::DATA_RECEIVED,
         ]);
+    }
+
+    /**
+     * Derive the entry path of a file within the relay ZIP archive.
+     *
+     * The relay always organises documents under 'KYC/shareholder_{N}/' where N
+     * is the 1-based shareholder index embedded in the field name suffix.
+     * Non-shareholder files (no numeric suffix) fall directly under 'KYC/'.
+     *
+     * @param  SingapurFileDTO  $file  File DTO from the submission package.
+     * @return string                  ZIP entry path (e.g. 'KYC/shareholder_1/relay_name.pdf').
+     */
+    private function buildRelayZipPath(SingapurFileDTO $file): string
+    {
+        $shareholderIndex = $file->shareholderIndex();
+
+        if ($shareholderIndex !== null) {
+            return "KYC/shareholder_{$shareholderIndex}/{$file->relayName}";
+        }
+
+        return "KYC/{$file->relayName}";
     }
 }

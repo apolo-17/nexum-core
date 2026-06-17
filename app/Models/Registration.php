@@ -29,6 +29,7 @@ class Registration extends Model
     protected $fillable = [
         'singapur_client_code',
         'singapur_package_id',
+        'singapur_folder_name',
         'stage',
         'status',
         'assigned_notario_id',

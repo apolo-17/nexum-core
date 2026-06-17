@@ -222,6 +222,48 @@ class RegistrationUpsertServiceTest extends TestCase
         $this->assertSame(RegistrationStageEnum::DATA_RECEIVED, Document::first()->stage);
     }
 
+    #[Test]
+    public function it_persists_the_relay_zip_path_for_shareholder_documents(): void
+    {
+        $this->service->upsert($this->makeSubmissionDTO());
+
+        // naturalTaxCertificate1 → shareholder index 1 → KYC/shareholder_1/relay_name
+        $this->assertDatabaseHas('documents', [
+            'name'           => '000001__naturalTaxCertificate1__tax.pdf',
+            'relay_zip_path' => 'KYC/shareholder_1/000001__naturalTaxCertificate1__tax.pdf',
+        ]);
+
+        $this->assertDatabaseHas('documents', [
+            'name'           => '000001__naturalTaxCertificate2__tax.pdf',
+            'relay_zip_path' => 'KYC/shareholder_2/000001__naturalTaxCertificate2__tax.pdf',
+        ]);
+    }
+
+    #[Test]
+    public function it_persists_singapur_folder_name_on_the_registration(): void
+    {
+        $this->service->upsert($this->makeSubmissionDTO());
+
+        $this->assertDatabaseHas('registrations', [
+            'singapur_client_code'  => '000001',
+            'singapur_folder_name'  => '000001_NOVA CONSULTORA EMPRESARIAL',
+        ]);
+    }
+
+    #[Test]
+    public function it_updates_singapur_folder_name_on_redelivery(): void
+    {
+        $this->service->upsert($this->makeSubmissionDTO());
+
+        $updated = $this->makeSubmissionDTO(companyFolderName: '000001_NUEVA EMPRESA SA');
+        $this->service->upsert($updated);
+
+        $this->assertDatabaseHas('registrations', [
+            'singapur_folder_name' => '000001_NUEVA EMPRESA SA',
+        ]);
+        $this->assertSame(1, Registration::count());
+    }
+
     // -------------------------------------------------------------------------
     // Fixtures
     // -------------------------------------------------------------------------
@@ -230,17 +272,19 @@ class RegistrationUpsertServiceTest extends TestCase
      * Build a SingapurSubmissionDTO for use in tests.
      *
      * @param  string  $id           Submission UUID.
-     * @param  string  $companyName  Proposed company name.
+     * @param  string  $companyName        Proposed company name.
+     * @param  string  $companyFolderName  Relay folder identifier.
      * @return SingapurSubmissionDTO
      */
     private function makeSubmissionDTO(
         string $id = '7dde1760-57d4-4f4e-b81b-3ae2b93025d0',
         string $companyName = 'NOVA CONSULTORÍA EMPRESARIAL',
+        string $companyFolderName = '000001_NOVA CONSULTORA EMPRESARIAL',
     ): SingapurSubmissionDTO {
         return new SingapurSubmissionDTO(
             id:                 $id,
             registrationNumber: '000001',
-            companyFolderName:  '000001_NOVA CONSULTORA EMPRESARIAL',
+            companyFolderName:  $companyFolderName,
             companyName:        $companyName,
             companyType:        'sa',
             language:           'zh',

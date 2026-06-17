@@ -28,6 +28,7 @@ class Document extends Model
         'registration_id',
         'type',
         'name',
+        'relay_zip_path',
         'google_drive_file_id',
         'google_drive_url',
         'stage',

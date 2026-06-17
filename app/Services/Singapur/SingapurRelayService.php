@@ -2,6 +2,8 @@
 
 namespace App\Services\Singapur;
 
+use App\Models\Document;
+use App\Models\Registration;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -55,6 +57,91 @@ class SingapurRelayService
         if (is_dir($extractDir)) {
             $this->deleteDirectory($extractDir);
         }
+    }
+
+    /**
+     * Download a single document from the relay ZIP and return its binary content.
+     *
+     * Downloads the full ZIP for the registration's company folder, extracts only
+     * the file identified by the document's relay_zip_path, then immediately deletes
+     * the ZIP. This avoids storing the entire archive on disk.
+     *
+     * @param  Registration  $registration  The registration that owns the document.
+     * @param  Document      $document      The document to fetch; must have relay_zip_path set.
+     * @return string                       Raw binary content of the file.
+     *
+     * @throws RuntimeException  When relay_zip_path is not set, the ZIP entry is missing,
+     *                           or the content cannot be read.
+     * @throws RequestException  When the relay returns a non-2xx HTTP response.
+     */
+    public function streamDocument(Registration $registration, Document $document): string
+    {
+        if (blank($document->relay_zip_path)) {
+            throw new RuntimeException(
+                "Document [{$document->id}] has no relay_zip_path — cannot download from relay."
+            );
+        }
+
+        // The document group is the first path segment of relay_zip_path (e.g. 'KYC').
+        $documentGroup = explode('/', $document->relay_zip_path, 2)[0];
+
+        $zipPath = $this->downloadZip(
+            $registration->singapur_folder_name,
+            $documentGroup,
+        );
+
+        try {
+            $content = $this->extractSingleEntry($zipPath, $document->relay_zip_path);
+        } finally {
+            // Always remove the ZIP regardless of success or failure.
+            @unlink($zipPath);
+        }
+
+        return $content;
+    }
+
+    /**
+     * Extract a single entry from a ZIP archive by its internal path.
+     *
+     * Uses ZipArchive::getStream() to avoid writing the file to disk.
+     *
+     * @param  string  $zipPath    Absolute path to the ZIP archive on disk.
+     * @param  string  $entryPath  Entry path within the ZIP (e.g. 'KYC/shareholder_1/file.pdf').
+     * @return string              Binary content of the requested entry.
+     *
+     * @throws RuntimeException  When the ZIP cannot be opened or the entry is not found.
+     */
+    private function extractSingleEntry(string $zipPath, string $entryPath): string
+    {
+        $zip    = new ZipArchive();
+        $result = $zip->open($zipPath);
+
+        if ($result !== true) {
+            throw new RuntimeException(
+                "Failed to open ZIP archive (ZipArchive error code: {$result})"
+            );
+        }
+
+        $stream = $zip->getStream($entryPath);
+
+        if ($stream === false) {
+            $zip->close();
+            throw new RuntimeException(
+                "Entry '{$entryPath}' not found in relay ZIP archive."
+            );
+        }
+
+        $content = stream_get_contents($stream);
+        fclose($stream);
+        $zip->close();
+
+        if ($content === false) {
+            throw new RuntimeException(
+                "Failed to read content of entry '{$entryPath}' from relay ZIP."
+            );
+        }
+
+        return $content;
     }
 
     /**
