@@ -39,8 +39,9 @@ Route::prefix('v3')->group(function () {
             Route::post('refresh', [AuthController::class, 'refresh']);
         });
 
-        // Registrations — read-only for the Singapur relay and notary team
+        // Registrations
         Route::get('registrations', [RegistrationController::class, 'index']);
         Route::get('registrations/{singapurClientCode}', [RegistrationController::class, 'show']);
+        Route::post('registrations/{singapurClientCode}/advance', [RegistrationController::class, 'advance']);
     });
 });
