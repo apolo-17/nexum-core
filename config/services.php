@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'singapur' => [
+        'base_url'       => env('SINGAPUR_API_URL', 'http://152.42.206.224:8789'),
+        'bearer_token'   => env('SINGAPUR_BEARER_TOKEN'),
+        'webhook_secret' => env('SINGAPUR_WEBHOOK_SECRET'),
+    ],
+
 ];
