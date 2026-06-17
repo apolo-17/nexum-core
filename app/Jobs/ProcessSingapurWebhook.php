@@ -5,7 +5,7 @@ namespace App\Jobs;
 use App\Enums\WebhookEventStatusEnum;
 use App\Models\WebhookEvent;
 use App\Services\Registration\RegistrationUpsertService;
-use App\Services\Singapur\SingapurRelayService;
+use App\Services\Singapur\SingapurSubmissionParser;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -15,9 +15,11 @@ use Throwable;
 /**
  * Processes an incoming webhook event from the Singapur relay asynchronously.
  *
- * Downloads the submission ZIP from the relay using the company_folder_name in
- * the event payload, parses submission.json, and upserts the Registration with
- * all its related entities. On failure the event is marked FAILED for inspection.
+ * The relay now sends the full submission JSON directly in the webhook payload,
+ * so this job parses that payload and upserts the Registration with all its
+ * related entities without downloading any ZIP. Document files are fetched
+ * lazily via SingapurRelayService only when a document stage requires them.
+ * On failure the event is marked FAILED for inspection and retry.
  */
 class ProcessSingapurWebhook implements ShouldQueue
 {
@@ -36,40 +38,38 @@ class ProcessSingapurWebhook implements ShouldQueue
     /**
      * Create a new job instance.
      *
+     * The target queue ('webhooks', monitored by its own Horizon supervisor)
+     * is set via onQueue() instead of a $queue property: redeclaring the
+     * Queueable trait's $queue property with a different default triggers a
+     * fatal trait-composition error on this PHP version.
+     *
      * @param  WebhookEvent  $webhookEvent  The persisted event to process.
      */
     public function __construct(
         public readonly WebhookEvent $webhookEvent,
-    ) {}
+    ) {
+        $this->onQueue('webhooks');
+    }
 
     /**
-     * Execute the job — download the submission package and upsert the registration.
+     * Execute the job — parse the webhook payload and upsert the registration.
      *
-     * The company_folder_name and document_group are extracted from the stored event
-     * payload. The relay is called to download the ZIP, submission.json is parsed,
-     * and the registration is created or updated via RegistrationUpsertService.
+     * The relay sends the full submission JSON in the webhook body, so no ZIP
+     * download is required. The payload is passed directly to the parser and
+     * the resulting DTO is handed to RegistrationUpsertService.
      *
-     * @param  SingapurRelayService      $relayService   Downloads and parses the relay ZIP.
+     * @param  SingapurSubmissionParser  $parser         Parses the raw payload into a DTO.
      * @param  RegistrationUpsertService $upsertService  Creates or updates the registration.
      * @return void
      *
-     * @throws \RuntimeException  When the payload is missing required fields.
+     * @throws \RuntimeException  When the payload is missing required submission fields.
      */
     public function handle(
-        SingapurRelayService $relayService,
+        SingapurSubmissionParser $parser,
         RegistrationUpsertService $upsertService,
     ): void {
-        $payload           = $this->webhookEvent->payload;
-        $companyFolderName = $payload['company_folder_name'] ?? null;
-        $documentGroup     = $payload['document_group'] ?? 'KYC';
+        $submission = $parser->parse($this->webhookEvent->payload);
 
-        if (blank($companyFolderName)) {
-            throw new \RuntimeException(
-                "Webhook event {$this->webhookEvent->event_id} is missing company_folder_name in payload."
-            );
-        }
-
-        $submission = $relayService->downloadAndParse($companyFolderName, $documentGroup);
         $upsertService->upsert($submission);
 
         $this->webhookEvent->update([

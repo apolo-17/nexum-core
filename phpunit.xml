@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
-         bootstrap="vendor/autoload.php"
+         bootstrap="tests/bootstrap.php"
          colors="true"
 >
     <testsuites>
@@ -32,5 +32,10 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="HORIZON_ENABLED" value="false"/>
+        <!-- Override REDIS_CLIENT so phpredis is never initialized during tests.
+             The phpredis extension causes a fatal PHP 8.5 process crash when Redis
+             is touched from test context. The array driver is a pure-PHP no-op. -->
+        <env name="REDIS_CLIENT" value="array"/>
     </php>
 </phpunit>

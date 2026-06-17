@@ -2,54 +2,58 @@
 
 namespace App\Services\Singapur;
 
-use App\DTOs\SingapurSubmissionDTO;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use ZipArchive;
 
 /**
- * Communicates with the Singapur relay server to download and parse submission packages.
+ * Downloads document packages from the Singapur relay server.
  *
- * Handles the HTTP request to the relay's download-folder endpoint, saves the
- * binary ZIP to a temp directory, extracts submission.json, and returns a parsed DTO.
- * Temp directories are always cleaned up after parsing, even on failure.
+ * Responsible only for retrieving binary document files (ZIP) from the relay
+ * when the workflow reaches a document-requiring stage (e.g., identity validation).
+ * Registration field data is ingested separately via the webhook JSON payload —
+ * this service has no role in parsing submission metadata.
  */
 class SingapurRelayService
 {
     /**
-     * Create a new relay service instance.
+     * Download the document ZIP from the relay and extract it to a temp directory.
      *
-     * @param  SingapurSubmissionParser  $parser  Transforms raw submission data into DTOs.
-     */
-    public function __construct(
-        private readonly SingapurSubmissionParser $parser,
-    ) {}
-
-    /**
-     * Download the submission ZIP from the relay and return a parsed submission DTO.
-     *
-     * Makes a POST request to the relay's download-folder endpoint with Bearer auth,
-     * saves the binary response to a temp file, extracts submission.json, and delegates
-     * parsing to SingapurSubmissionParser.
+     * The ZIP file is removed immediately after extraction. The caller must call
+     * cleanupExtractDirectory() when finished with the extracted files.
      *
      * @param  string  $companyFolderName  Full folder name as registered in the relay (e.g., '000001_NOVA CONSULTORA EMPRESARIAL').
      * @param  string  $documentGroup      Document group to download (defaults to 'KYC').
-     * @return SingapurSubmissionDTO
+     * @return string  Absolute path to the extracted directory containing the PDFs.
      *
      * @throws RequestException  When the relay returns a non-2xx HTTP response.
-     * @throws RuntimeException  When the ZIP is invalid or submission.json is missing.
+     * @throws RuntimeException  When the ZIP is invalid or cannot be extracted.
      */
-    public function downloadAndParse(string $companyFolderName, string $documentGroup = 'KYC'): SingapurSubmissionDTO
+    public function downloadDocumentsTo(string $companyFolderName, string $documentGroup = 'KYC'): string
     {
-        $zipPath = $this->downloadZip($companyFolderName, $documentGroup);
+        $zipPath    = $this->downloadZip($companyFolderName, $documentGroup);
         $extractDir = $this->extractZip($zipPath);
 
-        try {
-            return $this->parseSubmission($extractDir, $companyFolderName, $documentGroup);
-        } finally {
-            // Always clean up temp files regardless of parsing success or failure.
-            $this->cleanupTempFiles($zipPath, $extractDir);
+        // Remove the ZIP immediately — only the extracted PDFs are needed going forward.
+        @unlink($zipPath);
+
+        return $extractDir;
+    }
+
+    /**
+     * Remove a previously extracted document directory and all its contents.
+     *
+     * Call this in a finally block after processing the downloaded documents
+     * to avoid accumulating temp files on the server.
+     *
+     * @param  string  $extractDir  Absolute path returned by downloadDocumentsTo().
+     * @return void
+     */
+    public function cleanupExtractDirectory(string $extractDir): void
+    {
+        if (is_dir($extractDir)) {
+            $this->deleteDirectory($extractDir);
         }
     }
 
@@ -113,60 +117,6 @@ class SingapurRelayService
         $zip->close();
 
         return $extractDir;
-    }
-
-    /**
-     * Locate and parse submission.json from the extracted archive directory.
-     *
-     * @param  string  $extractDir         Path to extracted ZIP contents.
-     * @param  string  $companyFolderName  Used to build the submission path if nested.
-     * @param  string  $documentGroup      Document group (used to locate the submission file).
-     * @return SingapurSubmissionDTO
-     *
-     * @throws RuntimeException  When submission.json cannot be found or decoded.
-     */
-    private function parseSubmission(string $extractDir, string $companyFolderName, string $documentGroup): SingapurSubmissionDTO
-    {
-        // The relay places submission.json at the root of the extracted ZIP.
-        $submissionPath = $extractDir . 'submission.json';
-
-        if (! file_exists($submissionPath)) {
-            throw new RuntimeException("submission.json not found in ZIP for folder: {$companyFolderName}");
-        }
-
-        $raw = file_get_contents($submissionPath);
-
-        if ($raw === false) {
-            throw new RuntimeException("Failed to read submission.json from: {$submissionPath}");
-        }
-
-        $data = json_decode($raw, true);
-
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new RuntimeException('submission.json contains invalid JSON: ' . json_last_error_msg());
-        }
-
-        return $this->parser->parse($data);
-    }
-
-    /**
-     * Remove the temporary ZIP file and extraction directory.
-     *
-     * Errors during cleanup are swallowed so they do not mask the original exception.
-     *
-     * @param  string  $zipPath    Absolute path to the ZIP file.
-     * @param  string  $extractDir Absolute path to the extracted directory.
-     * @return void
-     */
-    private function cleanupTempFiles(string $zipPath, string $extractDir): void
-    {
-        if (file_exists($zipPath)) {
-            @unlink($zipPath);
-        }
-
-        if (is_dir($extractDir)) {
-            $this->deleteDirectory($extractDir);
-        }
     }
 
     /**

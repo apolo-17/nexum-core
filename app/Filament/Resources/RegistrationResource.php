@@ -244,11 +244,13 @@ class RegistrationResource extends Resource
      */
     public static function getPages(): array
     {
+        // CreateRegistration is intentionally excluded — expedients are created
+        // automatically when the Singapur relay posts a webhook event.
+        // Manual creation is not supported to enforce data integrity.
         return [
-            'index'  => Pages\ListRegistrations::route('/'),
-            'create' => Pages\CreateRegistration::route('/create'),
-            'view'   => Pages\ViewRegistration::route('/{record}'),
-            'edit'   => Pages\EditRegistration::route('/{record}/edit'),
+            'index' => Pages\ListRegistrations::route('/'),
+            'view'  => Pages\ViewRegistration::route('/{record}'),
+            'edit'  => Pages\EditRegistration::route('/{record}/edit'),
         ];
     }
 }
