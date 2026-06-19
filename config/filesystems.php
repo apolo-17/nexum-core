@@ -47,17 +47,21 @@ return [
             'report' => false,
         ],
 
+        // Cloudflare R2 — S3-compatible, free tier: 10 GB storage + 0 egress cost.
+        // Uses the same S3 driver; Laravel treats it identically to AWS S3.
+        // To switch to real AWS S3 later: just swap the env values — no code changes needed.
         's3' => [
-            'driver' => 's3',
-            'key' => env('AWS_ACCESS_KEY_ID'),
-            'secret' => env('AWS_SECRET_ACCESS_KEY'),
-            'region' => env('AWS_DEFAULT_REGION'),
-            'bucket' => env('AWS_BUCKET'),
-            'url' => env('AWS_URL'),
-            'endpoint' => env('AWS_ENDPOINT'),
-            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
-            'throw' => false,
-            'report' => false,
+            'driver'                  => 's3',
+            'key'                     => env('R2_ACCESS_KEY_ID'),
+            'secret'                  => env('R2_SECRET_ACCESS_KEY'),
+            'region'                  => 'auto',
+            'bucket'                  => env('R2_BUCKET'),
+            // R2 endpoint format: https://<account_id>.r2.cloudflarestorage.com
+            'endpoint'                => env('R2_ENDPOINT'),
+            'use_path_style_endpoint' => true,
+            'url'                     => env('R2_PUBLIC_URL'),  // Custom domain or R2.dev URL for public access
+            'throw'                   => false,
+            'report'                  => false,
         ],
 
     ],
