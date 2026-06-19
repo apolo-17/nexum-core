@@ -145,14 +145,17 @@ class RegistrationResource extends Resource
      */
     public static function infolist(Schema $schema): Schema
     {
-        return $schema->components([
+        return $schema->columns(3)->components([
             // ----------------------------------------------------------------
-            // Company overview
+            // Row 1 — Hero header: company identity + status + assignment.
+            // Full-width so the user immediately knows who and what they are
+            // looking at before scrolling to the pipeline.
             // ----------------------------------------------------------------
             Section::make('Empresa')
-                ->columns(3)
+                ->columnSpan(3)
+                ->columns(4)
                 ->schema([
-                    TextEntry::make('legalNames.name')
+                    TextEntry::make('legal_name_primary')
                         ->label('Nombre de la empresa')
                         ->state(function (Registration $record): string {
                             return $record->legalNames()
@@ -165,54 +168,6 @@ class RegistrationResource extends Resource
                         ->label('Tipo de sociedad')
                         ->placeholder('—'),
 
-                    TextEntry::make('singapur_client_code')
-                        ->label('Código cliente (Singapur)'),
-
-                    TextEntry::make('rfc')
-                        ->label('RFC')
-                        ->placeholder('Pendiente'),
-
-                    TextEntry::make('created_at')
-                        ->label('Fecha de ingreso')
-                        ->date('d/m/Y'),
-                ]),
-
-            // ----------------------------------------------------------------
-            // Stage progress — visual pipeline of all 8 stages
-            // ----------------------------------------------------------------
-            Section::make('Progreso del expediente')
-                ->schema([
-                    TextEntry::make('stage_pipeline')
-                        ->label('')
-                        ->state(function (Registration $record): string {
-                            $stages   = RegistrationStageEnum::orderedStages();
-                            $current  = $record->stage;
-                            $lines    = [];
-
-                            foreach ($stages as $stage) {
-                                $isCurrent = $stage === $current;
-                                $isPast    = array_search($stage, $stages) < array_search($current, $stages);
-
-                                if ($isCurrent) {
-                                    $lines[] = '▶  ' . $stage->label() . '  ← actual';
-                                } elseif ($isPast) {
-                                    $lines[] = '✓  ' . $stage->label();
-                                } else {
-                                    $lines[] = '○  ' . $stage->label();
-                                }
-                            }
-
-                            return implode("\n", $lines);
-                        })
-                        ->html(false),
-                ]),
-
-            // ----------------------------------------------------------------
-            // Status & assignment
-            // ----------------------------------------------------------------
-            Section::make('Estado y asignación')
-                ->columns(2)
-                ->schema([
                     TextEntry::make('status')
                         ->label('Estatus')
                         ->badge()
@@ -224,12 +179,6 @@ class RegistrationResource extends Resource
                             RegistrationStatusEnum::COMPLETED => 'gray',
                         }),
 
-                    TextEntry::make('stage')
-                        ->label('Etapa actual')
-                        ->badge()
-                        ->formatStateUsing(fn (RegistrationStageEnum $state) => $state->label())
-                        ->color('info'),
-
                     TextEntry::make('notario.name')
                         ->label('Notario asignado')
                         ->placeholder('Sin asignar'),
@@ -237,13 +186,117 @@ class RegistrationResource extends Resource
                     TextEntry::make('asistente.name')
                         ->label('Asistente asignado')
                         ->placeholder('Sin asignar'),
+
+                    TextEntry::make('singapur_client_code')
+                        ->label('Código cliente'),
+
+                    TextEntry::make('created_at')
+                        ->label('Fecha de ingreso')
+                        ->date('d/m/Y'),
                 ]),
 
             // ----------------------------------------------------------------
-            // E.firma section — visible only at the relevant stage
+            // Row 2 — Left 2/3: visual stage pipeline.
+            // The stepper renders completed stages in green, the current stage
+            // in blue with an "etapa actual" pill, and pending stages in gray.
+            // Using html(true) avoids creating a separate Blade view.
+            // ----------------------------------------------------------------
+            Section::make('Pipeline de etapas')
+                ->columnSpan(2)
+                ->schema([
+                    TextEntry::make('stage_pipeline')
+                        ->label('')
+                        ->state(function (Registration $record): string {
+                            $stages       = RegistrationStageEnum::orderedStages();
+                            $currentValue = $record->stage->value;
+                            $currentIndex = -1;
+
+                            // Resolve current index by value to avoid enum identity issues.
+                            foreach ($stages as $i => $s) {
+                                if ($s->value === $currentValue) {
+                                    $currentIndex = $i;
+                                    break;
+                                }
+                            }
+
+                            $lastIndex = array_key_last($stages);
+                            $items     = [];
+
+                            foreach ($stages as $i => $stage) {
+                                $isDone    = $i < $currentIndex;
+                                $isCurrent = $i === $currentIndex;
+                                $isLast    = $i === $lastIndex;
+
+                                if ($isDone) {
+                                    $circle  = 'background:#16a34a;border-color:#16a34a;color:#fff;';
+                                    $symbol  = '✓';
+                                    $label   = 'color:#374151;';
+                                    $weight  = 'font-weight:400;';
+                                } elseif ($isCurrent) {
+                                    $circle  = 'background:#185FA5;border-color:#185FA5;color:#fff;';
+                                    $symbol  = '▶';
+                                    $label   = 'color:#185FA5;';
+                                    $weight  = 'font-weight:600;';
+                                } else {
+                                    $circle  = 'background:transparent;border-color:#d1d5db;color:#9ca3af;';
+                                    $symbol  = '·';
+                                    $label   = 'color:#9ca3af;';
+                                    $weight  = 'font-weight:400;';
+                                }
+
+                                $badge = $isCurrent
+                                    ? '<span style="font-size:11px;background:#eff6ff;color:#185FA5;padding:2px 8px;border-radius:10px;margin-left:8px;">etapa actual</span>'
+                                    : '';
+
+                                $connector = $isLast
+                                    ? ''
+                                    : '<div style="width:2px;height:14px;background:#e5e7eb;margin-left:11px;"></div>';
+
+                                $items[] = "
+                                    <div>
+                                        <div style='display:flex;align-items:center;gap:12px;'>
+                                            <div style='width:24px;height:24px;border-radius:50%;border:2px solid;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;{$circle}'>{$symbol}</div>
+                                            <span style='font-size:14px;{$label}{$weight}'>" . e($stage->label()) . "{$badge}</span>
+                                        </div>
+                                        {$connector}
+                                    </div>
+                                ";
+                            }
+
+                            return '<div style="padding:4px 0;">' . implode('', $items) . '</div>';
+                        })
+                        ->html(true),
+                ]),
+
+            // ----------------------------------------------------------------
+            // Row 2 — Right 1/3: secondary details.
+            // RFC, folder and timestamps that matter but don't need top billing.
+            // ----------------------------------------------------------------
+            Section::make('Detalles')
+                ->columnSpan(1)
+                ->schema([
+                    TextEntry::make('rfc')
+                        ->label('RFC')
+                        ->placeholder('Pendiente'),
+
+                    TextEntry::make('singapur_folder_name')
+                        ->label('Carpeta relay')
+                        ->placeholder('—'),
+
+                    TextEntry::make('completed_at')
+                        ->label('Completado el')
+                        ->dateTime('d/m/Y H:i')
+                        ->placeholder('En proceso')
+                        ->visible(fn (Registration $record): bool => $record->completed_at !== null),
+                ]),
+
+            // ----------------------------------------------------------------
+            // Row 3 — E.firma section, only at the EFIRMA_APPOINTMENT stage.
+            // Full-width so all four indicators lay out comfortably.
             // ----------------------------------------------------------------
             Section::make('Cita e.firma SAT')
-                ->columns(2)
+                ->columnSpan(3)
+                ->columns(4)
                 ->visible(fn (Registration $record): bool => (
                     $record->stage === RegistrationStageEnum::EFIRMA_APPOINTMENT
                 ))
