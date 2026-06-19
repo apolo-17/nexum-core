@@ -41,4 +41,9 @@ return [
         'webhook_secret' => env('SINGAPUR_WEBHOOK_SECRET'),
     ],
 
+    // MUA bot — shares a secret with the external bot process for HMAC authentication.
+    'mua_bot' => [
+        'secret_key' => env('MUA_BOT_SECRET_KEY'),
+    ],
+
 ];

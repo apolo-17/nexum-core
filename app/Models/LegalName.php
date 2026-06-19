@@ -14,6 +14,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * A registration may have up to 4 proposals ordered by priority.
  * Validation rules mirror the Tally system: minimum 3 to allow deletion,
  * maximum 4 total, and names in PROCESS or APPROVED status cannot be modified.
+ * Each denomination is linked to a MuaAccount (soldado) whose FIEL is used
+ * to submit the reservation to the MUA portal.
  */
 class LegalName extends Model
 {
@@ -30,6 +32,9 @@ class LegalName extends Model
         'clave_unica_denominacion',
         'authorization_timestamp',
         'submitted_at',
+        'mua_account_id',
+        'rejection_reason',
+        'mua_available',
     ];
 
     /**
@@ -43,6 +48,7 @@ class LegalName extends Model
             'status'                  => LegalNameStatusEnum::class,
             'authorization_timestamp' => 'datetime',
             'submitted_at'            => 'datetime',
+            'mua_available'           => 'boolean',
         ];
     }
 
@@ -60,6 +66,16 @@ class LegalName extends Model
         return $this->belongsTo(Registration::class);
     }
 
+    /**
+     * Get the MUA account (soldado) assigned to process this denomination.
+     *
+     * @return BelongsTo<MuaAccount, $this>
+     */
+    public function muaAccount(): BelongsTo
+    {
+        return $this->belongsTo(MuaAccount::class);
+    }
+
     // -------------------------------------------------------------------------
     // Business logic helpers
     // -------------------------------------------------------------------------
@@ -74,5 +90,28 @@ class LegalName extends Model
     public function isEditable(): bool
     {
         return $this->status->isEditable();
+    }
+
+    /**
+     * Determine whether this denomination is waiting to be submitted to MUA.
+     *
+     * @return bool
+     */
+    public function isWaitingForSubmission(): bool
+    {
+        return $this->status === LegalNameStatusEnum::WAIT;
+    }
+
+    /**
+     * Determine whether this denomination has been submitted and is awaiting SE response.
+     *
+     * @return bool
+     */
+    public function isInProcess(): bool
+    {
+        return in_array($this->status, [
+            LegalNameStatusEnum::PENDING,
+            LegalNameStatusEnum::PROCESS,
+        ], true);
     }
 }

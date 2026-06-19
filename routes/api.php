@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Api\V3\AuthController;
+use App\Http\Controllers\Api\V3\LegalNameController;
+use App\Http\Controllers\Api\V3\MuaBotCallbackController;
 use App\Http\Controllers\Api\V3\RegistrationController;
 use App\Http\Controllers\Api\V3\WebhookController;
 use Illuminate\Support\Facades\Route;
@@ -28,6 +30,13 @@ Route::prefix('v3')->group(function () {
     // Singapur relay webhook — secured by shared secret header, not JWT
     Route::post('webhook/singapur', [WebhookController::class, 'singapur']);
 
+    // MUA availability check — public so the Singapur relay can query before client submits names
+    Route::post('legal-name/check-availability', [LegalNameController::class, 'checkAvailability']);
+
+    // MUA bot callback — public but HMAC-secured (X-Signature header required)
+    // Called by the external MUA bot when the SE resolves a denomination (approved/rejected)
+    Route::post('webhook/mua-bot', [MuaBotCallbackController::class, 'handle']);
+
     // -------------------------------------------------------------------------
     // Protected endpoints — JWT required
     // -------------------------------------------------------------------------
@@ -43,5 +52,9 @@ Route::prefix('v3')->group(function () {
         Route::get('registrations', [RegistrationController::class, 'index']);
         Route::get('registrations/{singapurClientCode}', [RegistrationController::class, 'show']);
         Route::post('registrations/{singapurClientCode}/advance', [RegistrationController::class, 'advance']);
+
+        // Legal names (denominations)
+        Route::post('registrations/{registration}/legal-names', [LegalNameController::class, 'store']);
+        Route::delete('registrations/{registration}/legal-names/{legalName}', [LegalNameController::class, 'destroy']);
     });
 });
