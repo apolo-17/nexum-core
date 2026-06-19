@@ -42,6 +42,8 @@ class StageTransition extends Model
     protected function casts(): array
     {
         return [
+            // from_stage is nullable — the initial webhook arrival has no preceding stage.
+            // Laravel's enum cast handles null values transparently when the column is nullable.
             'from_stage' => RegistrationStageEnum::class,
             'to_stage'   => RegistrationStageEnum::class,
             'created_at' => 'datetime',
