@@ -14,6 +14,8 @@ use App\Models\LegalName;
 use App\Models\Registration;
 use App\Models\Shareholder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Creates or updates a Registration and all its related entities from a Singapur submission.
@@ -187,15 +189,17 @@ class RegistrationUpsertService
     }
 
     /**
-     * Persist a Document metadata record if one with the same relay_name does not exist.
+     * Persist a Document record for an incoming file entry.
      *
-     * The relay_zip_path is derived from the document group ('KYC'), the shareholder
-     * index embedded in the field name (e.g. naturalTaxCertificate1 → 1), and the
-     * relay_name filename. This path is used later by SingapurRelayService to extract
-     * a single file from the ZIP without unpacking the entire archive.
+     * When the file carries base64 content it is decoded and stored in the
+     * configured filesystem (R2 in production, local in development). The
+     * storage path is saved in relay_zip_path for retrieval from the dashboard.
+     *
+     * Skips creation if a Document with the same relay_name already exists to
+     * remain idempotent on redelivery.
      *
      * @param  Registration     $registration  Parent registration.
-     * @param  SingapurFileDTO  $file          File DTO from the submission package.
+     * @param  SingapurFileDTO  $file          File DTO from the webhook payload.
      * @return void
      */
     private function createDocumentIfNotExists(Registration $registration, SingapurFileDTO $file): void
@@ -208,13 +212,18 @@ class RegistrationUpsertService
             return;
         }
 
-        $relayZipPath = $this->buildRelayZipPath($file);
+        // Store the file in R2 (or local disk in development) when content is provided.
+        $storagePath = null;
+
+        if ($file->hasContent()) {
+            $storagePath = $this->storeFileFromBase64($registration, $file);
+        }
 
         Document::create([
             'registration_id'      => $registration->id,
             'type'                 => $file->documentType(),
             'name'                 => $file->relayName,
-            'relay_zip_path'       => $relayZipPath,
+            'relay_zip_path'       => $storagePath,
             'google_drive_file_id' => null,
             'google_drive_url'     => null,
             'stage'                => RegistrationStageEnum::DATA_RECEIVED,
@@ -222,23 +231,39 @@ class RegistrationUpsertService
     }
 
     /**
-     * Derive the entry path of a file within the relay ZIP archive.
+     * Decode base64 file content and persist it to the configured storage disk.
      *
-     * The relay always organises documents under 'KYC/shareholder_{N}/' where N
-     * is the 1-based shareholder index embedded in the field name suffix.
-     * Non-shareholder files (no numeric suffix) fall directly under 'KYC/'.
+     * Files are stored under documents/{registration_id}/{field}_{originalName}
+     * to avoid collisions between shareholders sharing the same document type.
      *
-     * @param  SingapurFileDTO  $file  File DTO from the submission package.
-     * @return string                  ZIP entry path (e.g. 'KYC/shareholder_1/relay_name.pdf').
+     * @param  Registration     $registration  Parent registration for the path prefix.
+     * @param  SingapurFileDTO  $file          File DTO carrying the base64 content.
+     * @return string                          Storage path where the file was saved.
      */
-    private function buildRelayZipPath(SingapurFileDTO $file): string
+    private function storeFileFromBase64(Registration $registration, SingapurFileDTO $file): string
     {
-        $shareholderIndex = $file->shareholderIndex();
+        $binaryContent = base64_decode($file->content, strict: true);
 
-        if ($shareholderIndex !== null) {
-            return "KYC/shareholder_{$shareholderIndex}/{$file->relayName}";
+        if ($binaryContent === false) {
+            Log::warning('Failed to decode base64 content for document — skipping storage.', [
+                'registration_id' => $registration->id,
+                'field'           => $file->field,
+                'relay_name'      => $file->relayName,
+            ]);
+
+            return "pending/{$registration->id}/{$file->field}_{$file->originalName}";
         }
 
-        return "KYC/{$file->relayName}";
+        $path = "documents/{$registration->id}/{$file->field}_{$file->originalName}";
+
+        Storage::put($path, $binaryContent);
+
+        Log::info('Document stored from webhook payload.', [
+            'registration_id' => $registration->id,
+            'path'            => $path,
+            'size'            => strlen($binaryContent),
+        ]);
+
+        return $path;
     }
 }
