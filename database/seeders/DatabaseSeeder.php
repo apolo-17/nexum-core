@@ -13,13 +13,12 @@ class DatabaseSeeder extends Seeder
      * Seed the application's database.
      *
      * Run order matters: roles must exist before users are assigned to them.
-     *
-     * @return void
      */
     public function run(): void
     {
         $this->call([
             RolesAndPermissionsSeeder::class,
+            AdminUserSeeder::class,
             ChineseCompaniesSeeder::class,
         ]);
     }

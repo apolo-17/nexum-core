@@ -22,19 +22,25 @@ class AsistenteStatsOverview extends StatsOverviewWidget
 {
     /**
      * Sort before Filament built-in widgets (AccountWidget = -2).
-     *
-     * @var int|null
      */
     protected static ?int $sort = -10;
 
     /**
      * Restrict this widget to asistente_notario users only.
-     *
-     * @return bool
      */
     public static function canView(): bool
     {
-        return Auth::user()?->hasRole('asistente_notario') ?? false;
+        $user = Auth::user();
+
+        if ($user === null) {
+            return false;
+        }
+
+        try {
+            return $user->hasRole('asistente_notario');
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**
