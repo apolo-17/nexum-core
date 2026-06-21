@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
@@ -54,11 +55,11 @@ class Registration extends Model
     protected function casts(): array
     {
         return [
-            'stage'                  => RegistrationStageEnum::class,
-            'status'                 => RegistrationStatusEnum::class,
-            'efirma_appointment_at'  => 'datetime',
-            'efirma_status'          => EfirmaAppointmentStatusEnum::class,
-            'completed_at'           => 'datetime',
+            'stage' => RegistrationStageEnum::class,
+            'status' => RegistrationStatusEnum::class,
+            'efirma_appointment_at' => 'datetime',
+            'efirma_status' => EfirmaAppointmentStatusEnum::class,
+            'completed_at' => 'datetime',
         ];
     }
 
@@ -104,6 +105,20 @@ class Registration extends Model
     public function legalNames(): HasMany
     {
         return $this->hasMany(LegalName::class)->orderBy('priority');
+    }
+
+    /**
+     * Get the primary (priority-1) legal name proposed for this registration.
+     *
+     * Exposed as a HasOne to allow efficient eager-loading in table views,
+     * preventing N+1 queries when listing many registrations simultaneously.
+     * Use this relation when you only need the company display name.
+     *
+     * @return HasOne<LegalName, $this>
+     */
+    public function primaryLegalName(): HasOne
+    {
+        return $this->hasOne(LegalName::class)->where('priority', 1)->orderBy('priority');
     }
 
     /**

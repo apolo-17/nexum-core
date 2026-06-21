@@ -45,9 +45,13 @@ class ChineseCompaniesSeeder extends Seeder
     // -------------------------------------------------------------------------
 
     private User $admin;
+
     private User $notario1;
+
     private User $notario2;
+
     private User $asistente1;
+
     private User $asistente2;
 
     // -------------------------------------------------------------------------
@@ -106,10 +110,11 @@ class ChineseCompaniesSeeder extends Seeder
         ['name' => 'QINGDAO TECH INTERNATIONAL',          'folder' => 'QINGDAO TECH INTERNATIONAL',          'type' => 'srl'],
         ['name' => 'ZHENGZHOU DISTRIBUCIONES MEXICO',     'folder' => 'ZHENGZHOU DISTRIBUCIONES MEXICO',     'type' => 'sa'],
         ['name' => 'KUNMING INVESTMENTS MEXICO',          'folder' => 'KUNMING INVESTMENTS MEXICO',          'type' => 'srl'],
-        // BANK_ACCOUNT — codes 000041-000046
+        // PARTNER_SIGNATURE — codes 000041-000043
         ['name' => 'GUANGZHOU IMPORT MEXICO',             'folder' => 'GUANGZHOU IMPORT MEXICO',             'type' => 'sa'],
         ['name' => 'SHENZHEN VENTURES MEXICO',            'folder' => 'SHENZHEN VENTURES MEXICO',            'type' => 'sapi'],
         ['name' => 'BEIJING CONSULTORÍA MEXICO',          'folder' => 'BEIJING CONSULTORIA MEXICO',          'type' => 'sa'],
+        // TAX_ADDRESS — codes 000044-000046
         ['name' => 'SHANGHAI TRADING MEXICO',             'folder' => 'SHANGHAI TRADING MEXICO',             'type' => 'srl'],
         ['name' => 'CHONGQING GROUP MEXICO',              'folder' => 'CHONGQING GROUP MEXICO',              'type' => 'sa'],
         ['name' => 'XIAN EMPRESARIAL MEXICO',             'folder' => 'XIAN EMPRESARIAL MEXICO',             'type' => 'srl'],
@@ -190,8 +195,9 @@ class ChineseCompaniesSeeder extends Seeder
         'data_received',
         'identity_validation',
         'legal_name',
+        'partner_signature',
         'incorporation',
-        'bank_account',
+        'tax_address',
         'sat_registration',
         'efirma_appointment',
         'completed',
@@ -217,7 +223,7 @@ class ChineseCompaniesSeeder extends Seeder
      * @var array<string, list<array{title: string, priority: TaskPriorityEnum}>>
      */
     private const TASKS_BY_STAGE = [
-        'data_received'       => [
+        'data_received' => [
             ['title' => 'Revisar documentos KYC recibidos del relay', 'priority' => TaskPriorityEnum::HIGH],
             ['title' => 'Contactar al cliente para confirmar recepción del expediente', 'priority' => TaskPriorityEnum::MEDIUM],
         ],
@@ -225,23 +231,27 @@ class ChineseCompaniesSeeder extends Seeder
             ['title' => 'Verificar autenticidad del pasaporte del representante legal', 'priority' => TaskPriorityEnum::HIGH],
             ['title' => 'Validar visa vigente del accionista principal', 'priority' => TaskPriorityEnum::MEDIUM],
         ],
-        'legal_name'          => [
+        'legal_name' => [
             ['title' => 'Enviar denominación social a la SE para dictamen', 'priority' => TaskPriorityEnum::HIGH],
             ['title' => 'Notificar resultado del dictamen al cliente', 'priority' => TaskPriorityEnum::MEDIUM],
         ],
-        'incorporation'       => [
+        'incorporation' => [
             ['title' => 'Revisar borrador del acta constitutiva con el notario', 'priority' => TaskPriorityEnum::HIGH],
             ['title' => 'Coordinar firma del acta con el representante legal', 'priority' => TaskPriorityEnum::HIGH],
         ],
-        'bank_account'        => [
-            ['title' => 'Solicitar apertura de cuenta bancaria empresarial', 'priority' => TaskPriorityEnum::MEDIUM],
-            ['title' => 'Recibir y verificar comprobante de cuenta bancaria', 'priority' => TaskPriorityEnum::HIGH],
+        'partner_signature' => [
+            ['title' => 'Enviar documentos a socios para firma electrónica vía DocuSign', 'priority' => TaskPriorityEnum::HIGH],
+            ['title' => 'Verificar que todos los socios hayan firmado correctamente', 'priority' => TaskPriorityEnum::HIGH],
         ],
-        'sat_registration'    => [
+        'tax_address' => [
+            ['title' => 'Registrar domicilio fiscal de la empresa ante el SAT', 'priority' => TaskPriorityEnum::HIGH],
+            ['title' => 'Obtener comprobante de domicilio fiscal actualizado', 'priority' => TaskPriorityEnum::MEDIUM],
+        ],
+        'sat_registration' => [
             ['title' => 'Tramitar RFC ante el SAT', 'priority' => TaskPriorityEnum::HIGH],
             ['title' => 'Obtener Constancia de Situación Fiscal actualizada', 'priority' => TaskPriorityEnum::MEDIUM],
         ],
-        'efirma_appointment'  => [
+        'efirma_appointment' => [
             ['title' => 'Confirmar asistencia del cliente a cita e.firma SAT', 'priority' => TaskPriorityEnum::HIGH],
             ['title' => 'Enviar recordatorio con documentos requeridos para cita SAT', 'priority' => TaskPriorityEnum::MEDIUM],
         ],
@@ -283,8 +293,6 @@ class ChineseCompaniesSeeder extends Seeder
 
     /**
      * Seed 5 team users and 60 Chinese company registrations across all 8 stages.
-     *
-     * @return void
      */
     public function run(): void
     {
@@ -294,39 +302,40 @@ class ChineseCompaniesSeeder extends Seeder
         // in PHP (they are objects), so we use indexed tuples instead.
         // Total must equal count(self::COMPANIES) = 60.
         $distribution = [
-            [RegistrationStageEnum::DATA_RECEIVED,       12],
-            [RegistrationStageEnum::IDENTITY_VALIDATION, 10],
-            [RegistrationStageEnum::LEGAL_NAME,          10],
-            [RegistrationStageEnum::INCORPORATION,        8],
-            [RegistrationStageEnum::BANK_ACCOUNT,         6],
-            [RegistrationStageEnum::SAT_REGISTRATION,     5],
-            [RegistrationStageEnum::EFIRMA_APPOINTMENT,   5],
-            [RegistrationStageEnum::COMPLETED,            4],
+            [RegistrationStageEnum::DATA_RECEIVED,        12],
+            [RegistrationStageEnum::IDENTITY_VALIDATION,  10],
+            [RegistrationStageEnum::LEGAL_NAME,           10],
+            [RegistrationStageEnum::PARTNER_SIGNATURE,     3],
+            [RegistrationStageEnum::INCORPORATION,         8],
+            [RegistrationStageEnum::TAX_ADDRESS,           3],
+            [RegistrationStageEnum::SAT_REGISTRATION,      5],
+            [RegistrationStageEnum::EFIRMA_APPOINTMENT,    5],
+            [RegistrationStageEnum::COMPLETED,             4],
         ];
 
         // Codes (1-based int) that receive a non-ACTIVE status.
-        $onHoldCodes    = [5, 15, 27, 42];
+        $onHoldCodes = [5, 15, 27, 42];
         $cancelledCodes = [3, 19];
 
         $companyIndex = 0;
-        $codeInt      = 1;
+        $codeInt = 1;
 
         foreach ($distribution as [$stage, $count]) {
             for ($i = 0; $i < $count; $i++) {
                 $clientCode = str_pad((string) $codeInt, 6, '0', STR_PAD_LEFT);
 
                 $status = match (true) {
-                    in_array($codeInt, $cancelledCodes, true)          => RegistrationStatusEnum::CANCELLED,
-                    in_array($codeInt, $onHoldCodes, true)             => RegistrationStatusEnum::ON_HOLD,
-                    $stage === RegistrationStageEnum::COMPLETED        => RegistrationStatusEnum::COMPLETED,
-                    default                                            => RegistrationStatusEnum::ACTIVE,
+                    in_array($codeInt, $cancelledCodes, true) => RegistrationStatusEnum::CANCELLED,
+                    in_array($codeInt, $onHoldCodes, true) => RegistrationStatusEnum::ON_HOLD,
+                    $stage === RegistrationStageEnum::COMPLETED => RegistrationStatusEnum::COMPLETED,
+                    default => RegistrationStatusEnum::ACTIVE,
                 };
 
                 $this->createCompany(
-                    clientCode:   $clientCode,
-                    company:      self::COMPANIES[$companyIndex],
-                    stage:        $stage,
-                    status:       $status,
+                    clientCode: $clientCode,
+                    company: self::COMPANIES[$companyIndex],
+                    stage: $stage,
+                    status: $status,
                 );
 
                 $companyIndex++;
@@ -341,17 +350,15 @@ class ChineseCompaniesSeeder extends Seeder
 
     /**
      * Create or find the 5 dashboard team members and assign their roles.
-     *
-     * @return void
      */
     private function createUsers(): void
     {
         $this->admin = User::firstOrCreate(
             ['email' => 'admin@nexum.mx'],
             [
-                'name'               => 'Administrador del Sistema',
-                'password'           => Hash::make('password'),
-                'email_verified_at'  => now(),
+                'name' => 'Administrador del Sistema',
+                'password' => Hash::make('password'),
+                'email_verified_at' => now(),
             ],
         );
         $this->admin->syncRoles(['super_admin']);
@@ -359,9 +366,9 @@ class ChineseCompaniesSeeder extends Seeder
         $this->notario1 = User::firstOrCreate(
             ['email' => 'notario.garcia@nexum.mx'],
             [
-                'name'               => 'Lic. María García Reyes',
-                'password'           => Hash::make('password'),
-                'email_verified_at'  => now(),
+                'name' => 'Lic. María García Reyes',
+                'password' => Hash::make('password'),
+                'email_verified_at' => now(),
             ],
         );
         $this->notario1->syncRoles(['notario']);
@@ -369,9 +376,9 @@ class ChineseCompaniesSeeder extends Seeder
         $this->notario2 = User::firstOrCreate(
             ['email' => 'notario.lopez@nexum.mx'],
             [
-                'name'               => 'Lic. Carlos López Hernández',
-                'password'           => Hash::make('password'),
-                'email_verified_at'  => now(),
+                'name' => 'Lic. Carlos López Hernández',
+                'password' => Hash::make('password'),
+                'email_verified_at' => now(),
             ],
         );
         $this->notario2->syncRoles(['notario']);
@@ -379,9 +386,9 @@ class ChineseCompaniesSeeder extends Seeder
         $this->asistente1 = User::firstOrCreate(
             ['email' => 'asistente.torres@nexum.mx'],
             [
-                'name'               => 'Ana Torres Méndez',
-                'password'           => Hash::make('password'),
-                'email_verified_at'  => now(),
+                'name' => 'Ana Torres Méndez',
+                'password' => Hash::make('password'),
+                'email_verified_at' => now(),
             ],
         );
         $this->asistente1->syncRoles(['asistente_notario']);
@@ -389,9 +396,9 @@ class ChineseCompaniesSeeder extends Seeder
         $this->asistente2 = User::firstOrCreate(
             ['email' => 'asistente.ramirez@nexum.mx'],
             [
-                'name'               => 'Roberto Ramírez Jiménez',
-                'password'           => Hash::make('password'),
-                'email_verified_at'  => now(),
+                'name' => 'Roberto Ramírez Jiménez',
+                'password' => Hash::make('password'),
+                'email_verified_at' => now(),
             ],
         );
         $this->asistente2->syncRoles(['asistente_notario']);
@@ -404,11 +411,10 @@ class ChineseCompaniesSeeder extends Seeder
     /**
      * Create a single registration expedient with all related records.
      *
-     * @param  string                  $clientCode  Six-digit zero-padded code (e.g. '000001').
+     * @param  string  $clientCode  Six-digit zero-padded code (e.g. '000001').
      * @param  array{name: string, folder: string, type: string}  $company  Company data.
-     * @param  RegistrationStageEnum   $stage       Current stage of the expedient.
-     * @param  RegistrationStatusEnum  $status      Operational status.
-     * @return void
+     * @param  RegistrationStageEnum  $stage  Current stage of the expedient.
+     * @param  RegistrationStatusEnum  $status  Operational status.
      */
     private function createCompany(
         string $clientCode,
@@ -419,26 +425,26 @@ class ChineseCompaniesSeeder extends Seeder
         $codeInt = (int) $clientCode;
 
         // Alternate notario/asistente assignment between even and odd codes.
-        $notario   = ($codeInt % 2 === 0) ? $this->notario1 : $this->notario2;
+        $notario = ($codeInt % 2 === 0) ? $this->notario1 : $this->notario2;
         $asistente = ($codeInt % 2 === 0) ? $this->asistente1 : $this->asistente2;
 
         $companyTypeMap = ['sa' => 'SA de CV', 'srl' => 'SRL de CV', 'sapi' => 'SAPI de CV'];
-        $companyType    = $companyTypeMap[$company['type']];
+        $companyType = $companyTypeMap[$company['type']];
 
         $arrivedDaysAgo = $this->estimateArrivalDays($stage);
-        $stageIndex     = $this->stageIndex($stage);
-        $satIndex       = $this->stageIndex(RegistrationStageEnum::SAT_REGISTRATION);
+        $stageIndex = $this->stageIndex($stage);
+        $satIndex = $this->stageIndex(RegistrationStageEnum::SAT_REGISTRATION);
 
         // RFC is only available after SAT_REGISTRATION.
         $rfc = ($stageIndex >= $satIndex) ? $this->generateRfc($company['name']) : null;
 
         // e.firma fields only for EFIRMA_APPOINTMENT stage.
-        $efirmaStatus      = null;
+        $efirmaStatus = null;
         $efirmaAppointment = null;
 
         if ($stage === RegistrationStageEnum::EFIRMA_APPOINTMENT) {
-            $efirmaStatuses    = EfirmaAppointmentStatusEnum::cases();
-            $efirmaStatus      = $efirmaStatuses[$codeInt % count($efirmaStatuses)];
+            $efirmaStatuses = EfirmaAppointmentStatusEnum::cases();
+            $efirmaStatus = $efirmaStatuses[$codeInt % count($efirmaStatuses)];
             $efirmaAppointment = now()->addDays(rand(3, 21));
         }
 
@@ -447,20 +453,20 @@ class ChineseCompaniesSeeder extends Seeder
             : null;
 
         $registration = Registration::create([
-            'singapur_client_code'   => $clientCode,
-            'singapur_package_id'    => fake()->uuid(),
-            'singapur_folder_name'   => "{$clientCode}_{$company['folder']}",
-            'stage'                  => $stage,
-            'status'                 => $status,
-            'assigned_notario_id'    => $notario->id,
-            'assigned_asistente_id'  => $asistente->id,
-            'company_type'           => $companyType,
-            'rfc'                    => $rfc,
-            'efirma_status'          => $efirmaStatus,
-            'efirma_appointment_at'  => $efirmaAppointment,
-            'completed_at'           => $completedAt,
-            'created_at'             => now()->subDays($arrivedDaysAgo),
-            'updated_at'             => now()->subDays(max(0, $arrivedDaysAgo - 1)),
+            'singapur_client_code' => $clientCode,
+            'singapur_package_id' => fake()->uuid(),
+            'singapur_folder_name' => "{$clientCode}_{$company['folder']}",
+            'stage' => $stage,
+            'status' => $status,
+            'assigned_notario_id' => $notario->id,
+            'assigned_asistente_id' => $asistente->id,
+            'company_type' => $companyType,
+            'rfc' => $rfc,
+            'efirma_status' => $efirmaStatus,
+            'efirma_appointment_at' => $efirmaAppointment,
+            'completed_at' => $completedAt,
+            'created_at' => now()->subDays($arrivedDaysAgo),
+            'updated_at' => now()->subDays(max(0, $arrivedDaysAgo - 1)),
         ]);
 
         $shareholderNames = $this->pickShareholderNames($codeInt);
@@ -492,11 +498,8 @@ class ChineseCompaniesSeeder extends Seeder
      * - At LEGAL_NAME stage     → PROCESS (sent to SE, awaiting dictamen).
      * - Past LEGAL_NAME stage   → APPROVED (dictamen resolved before incorporation).
      *
-     * @param  Registration          $registration
-     * @param  string                $companyName   Base denomination (without type suffix).
-     * @param  RegistrationStageEnum $stage
-     * @param  int                   $stageIndex    Numeric position in STAGE_ORDER.
-     * @return void
+     * @param  string  $companyName  Base denomination (without type suffix).
+     * @param  int  $stageIndex  Numeric position in STAGE_ORDER.
      */
     private function createLegalNames(
         Registration $registration,
@@ -507,45 +510,45 @@ class ChineseCompaniesSeeder extends Seeder
         $legalNameIdx = $this->stageIndex(RegistrationStageEnum::LEGAL_NAME);
 
         $primaryStatus = match (true) {
-            $stageIndex < $legalNameIdx  => LegalNameStatusEnum::WAIT,
+            $stageIndex < $legalNameIdx => LegalNameStatusEnum::WAIT,
             $stageIndex === $legalNameIdx => LegalNameStatusEnum::PROCESS,
-            default                       => LegalNameStatusEnum::APPROVED,
+            default => LegalNameStatusEnum::APPROVED,
         };
 
-        $clave                  = null;
+        $clave = null;
         $authorizationTimestamp = null;
-        $submittedAt            = null;
+        $submittedAt = null;
 
         if ($primaryStatus === LegalNameStatusEnum::APPROVED) {
-            $prefix               = strtoupper(substr(preg_replace('/[^A-Z]/i', '', $companyName), 0, 3));
-            $clave                = $prefix . '-' . fake()->numerify('######');
+            $prefix = strtoupper(substr(preg_replace('/[^A-Z]/i', '', $companyName), 0, 3));
+            $clave = $prefix.'-'.fake()->numerify('######');
             $authorizationTimestamp = now()->subDays(rand(5, 40));
-            $submittedAt          = $authorizationTimestamp->copy()->subDays(rand(5, 15));
+            $submittedAt = $authorizationTimestamp->copy()->subDays(rand(5, 15));
         } elseif ($primaryStatus === LegalNameStatusEnum::PROCESS) {
             $submittedAt = now()->subDays(rand(3, 10));
         }
 
         LegalName::create([
-            'registration_id'          => $registration->id,
-            'name'                     => $companyName,
-            'priority'                 => 1,
-            'status'                   => $primaryStatus,
+            'registration_id' => $registration->id,
+            'name' => $companyName,
+            'priority' => 1,
+            'status' => $primaryStatus,
             'clave_unica_denominacion' => $clave,
-            'authorization_timestamp'  => $authorizationTimestamp,
-            'submitted_at'             => $submittedAt,
+            'authorization_timestamp' => $authorizationTimestamp,
+            'submitted_at' => $submittedAt,
         ]);
 
         // Companies at LEGAL_NAME stage often have 1-2 alternate denominations as backup.
         if ($stage === RegistrationStageEnum::LEGAL_NAME) {
             $alternates = [' INTERNACIONAL', ' GLOBAL'];
-            $count      = rand(1, 2);
+            $count = rand(1, 2);
 
             foreach (array_slice($alternates, 0, $count) as $i => $suffix) {
                 LegalName::create([
                     'registration_id' => $registration->id,
-                    'name'            => $companyName . $suffix,
-                    'priority'        => $i + 2,
-                    'status'          => LegalNameStatusEnum::WAIT,
+                    'name' => $companyName.$suffix,
+                    'priority' => $i + 2,
+                    'status' => LegalNameStatusEnum::WAIT,
                 ]);
             }
         }
@@ -558,34 +561,32 @@ class ChineseCompaniesSeeder extends Seeder
     /**
      * Create two shareholders for the registration: legal representative and a socio.
      *
-     * @param  Registration  $registration
-     * @param  list<string>  $names       Two Chinese names from CHINESE_NAMES pool.
-     * @param  int           $codeInt     Numeric company code used to deterministically vary splits.
-     * @return void
+     * @param  list<string>  $names  Two Chinese names from CHINESE_NAMES pool.
+     * @param  int  $codeInt  Numeric company code used to deterministically vary splits.
      */
     private function createShareholders(Registration $registration, array $names, int $codeInt): void
     {
-        $split        = self::PARTICIPATION_SPLITS[$codeInt % count(self::PARTICIPATION_SPLITS)];
+        $split = self::PARTICIPATION_SPLITS[$codeInt % count(self::PARTICIPATION_SPLITS)];
         $passportBase = $codeInt % count(self::PASSPORT_NUMBERS);
 
         Shareholder::create([
-            'registration_id'          => $registration->id,
-            'name'                     => $names[0],
-            'nationality'              => 'china',
-            'passport_number'          => self::PASSPORT_NUMBERS[$passportBase],
+            'registration_id' => $registration->id,
+            'name' => $names[0],
+            'nationality' => 'china',
+            'passport_number' => self::PASSPORT_NUMBERS[$passportBase],
             'participation_percentage' => $split[0],
-            'role'                     => ShareholderRoleEnum::LEGAL_REPRESENTATIVE,
-            'email'                    => "user{$codeInt}a@qq.com",
+            'role' => ShareholderRoleEnum::LEGAL_REPRESENTATIVE,
+            'email' => "user{$codeInt}a@qq.com",
         ]);
 
         Shareholder::create([
-            'registration_id'          => $registration->id,
-            'name'                     => $names[1],
-            'nationality'              => 'china',
-            'passport_number'          => self::PASSPORT_NUMBERS[($passportBase + 1) % count(self::PASSPORT_NUMBERS)],
+            'registration_id' => $registration->id,
+            'name' => $names[1],
+            'nationality' => 'china',
+            'passport_number' => self::PASSPORT_NUMBERS[($passportBase + 1) % count(self::PASSPORT_NUMBERS)],
             'participation_percentage' => $split[1],
-            'role'                     => ShareholderRoleEnum::SHAREHOLDER,
-            'email'                    => "user{$codeInt}b@163.com",
+            'role' => ShareholderRoleEnum::SHAREHOLDER,
+            'email' => "user{$codeInt}b@163.com",
         ]);
     }
 
@@ -603,12 +604,9 @@ class ChineseCompaniesSeeder extends Seeder
      * - SAT_REGISTRATION (5+)   : RFC document upload to Drive.
      * - COMPLETED (7)           : e.firma certificate upload to Drive.
      *
-     * @param  Registration  $registration
-     * @param  string        $clientCode
      * @param  list<string>  $shareholderNames  Two Chinese names (for filenames).
-     * @param  int           $stageIndex        Numeric position in STAGE_ORDER.
-     * @param  User          $uploader          Notario responsible for manual uploads.
-     * @return void
+     * @param  int  $stageIndex  Numeric position in STAGE_ORDER.
+     * @param  User  $uploader  Notario responsible for manual uploads.
      */
     private function createDocuments(
         Registration $registration,
@@ -617,27 +615,27 @@ class ChineseCompaniesSeeder extends Seeder
         int $stageIndex,
         User $uploader,
     ): void {
-        $identityIdx     = $this->stageIndex(RegistrationStageEnum::IDENTITY_VALIDATION);
+        $identityIdx = $this->stageIndex(RegistrationStageEnum::IDENTITY_VALIDATION);
         $incorporationIdx = $this->stageIndex(RegistrationStageEnum::INCORPORATION);
-        $satIdx          = $this->stageIndex(RegistrationStageEnum::SAT_REGISTRATION);
-        $completedIdx    = $this->stageIndex(RegistrationStageEnum::COMPLETED);
+        $satIdx = $this->stageIndex(RegistrationStageEnum::SAT_REGISTRATION);
+        $completedIdx = $this->stageIndex(RegistrationStageEnum::COMPLETED);
 
         $isVerifiedByNow = fn (int $fromIndex): bool => $stageIndex > $fromIndex;
 
         // DATA_RECEIVED: relay KYC tax certificates — both shareholders.
         foreach ([1, 2] as $shareholderIndex) {
-            $field     = "naturalTaxCertificate{$shareholderIndex}";
+            $field = "naturalTaxCertificate{$shareholderIndex}";
             $relayName = "{$clientCode}__{$field}__tax.pdf";
 
             Document::create([
                 'registration_id' => $registration->id,
-                'type'            => DocumentTypeEnum::CSF,
-                'name'            => $relayName,
-                'relay_zip_path'  => "KYC/shareholder_{$shareholderIndex}/{$relayName}",
-                'stage'           => RegistrationStageEnum::DATA_RECEIVED,
-                'uploaded_by'     => null,
-                'verified_at'     => $isVerifiedByNow(0) ? now()->subDays(rand(1, 15)) : null,
-                'verified_by'     => $isVerifiedByNow(0) ? $uploader->id : null,
+                'type' => DocumentTypeEnum::CSF,
+                'name' => $relayName,
+                'storage_path' => "KYC/shareholder_{$shareholderIndex}/{$relayName}",
+                'stage' => RegistrationStageEnum::DATA_RECEIVED,
+                'uploaded_by' => null,
+                'verified_at' => $isVerifiedByNow(0) ? now()->subDays(rand(1, 15)) : null,
+                'verified_by' => $isVerifiedByNow(0) ? $uploader->id : null,
             ]);
         }
 
@@ -647,16 +645,16 @@ class ChineseCompaniesSeeder extends Seeder
                 $driveFileId = $this->fakeDriveFileId();
 
                 Document::create([
-                    'registration_id'      => $registration->id,
-                    'type'                 => DocumentTypeEnum::PASSPORT,
-                    'name'                 => "Pasaporte_Accionista_" . ($idx + 1) . "_{$clientCode}.pdf",
-                    'relay_zip_path'       => null,
+                    'registration_id' => $registration->id,
+                    'type' => DocumentTypeEnum::PASSPORT,
+                    'name' => 'Pasaporte_Accionista_'.($idx + 1)."_{$clientCode}.pdf",
+                    'storage_path' => null,
                     'google_drive_file_id' => $driveFileId,
-                    'google_drive_url'     => "https://drive.google.com/file/d/{$driveFileId}/view",
-                    'stage'                => RegistrationStageEnum::IDENTITY_VALIDATION,
-                    'uploaded_by'          => $uploader->id,
-                    'verified_at'          => $isVerifiedByNow($identityIdx) ? now()->subDays(rand(1, 20)) : null,
-                    'verified_by'          => $isVerifiedByNow($identityIdx) ? $uploader->id : null,
+                    'google_drive_url' => "https://drive.google.com/file/d/{$driveFileId}/view",
+                    'stage' => RegistrationStageEnum::IDENTITY_VALIDATION,
+                    'uploaded_by' => $uploader->id,
+                    'verified_at' => $isVerifiedByNow($identityIdx) ? now()->subDays(rand(1, 20)) : null,
+                    'verified_by' => $isVerifiedByNow($identityIdx) ? $uploader->id : null,
                 ]);
             }
         }
@@ -666,16 +664,16 @@ class ChineseCompaniesSeeder extends Seeder
             $driveFileId = $this->fakeDriveFileId();
 
             Document::create([
-                'registration_id'      => $registration->id,
-                'type'                 => DocumentTypeEnum::INCORPORATION_ACT,
-                'name'                 => "Acta_Constitutiva_{$clientCode}.pdf",
-                'relay_zip_path'       => null,
+                'registration_id' => $registration->id,
+                'type' => DocumentTypeEnum::INCORPORATION_ACT,
+                'name' => "Acta_Constitutiva_{$clientCode}.pdf",
+                'storage_path' => null,
                 'google_drive_file_id' => $driveFileId,
-                'google_drive_url'     => "https://drive.google.com/file/d/{$driveFileId}/view",
-                'stage'                => RegistrationStageEnum::INCORPORATION,
-                'uploaded_by'          => $uploader->id,
-                'verified_at'          => $isVerifiedByNow($incorporationIdx) ? now()->subDays(rand(1, 25)) : null,
-                'verified_by'          => $isVerifiedByNow($incorporationIdx) ? $uploader->id : null,
+                'google_drive_url' => "https://drive.google.com/file/d/{$driveFileId}/view",
+                'stage' => RegistrationStageEnum::INCORPORATION,
+                'uploaded_by' => $uploader->id,
+                'verified_at' => $isVerifiedByNow($incorporationIdx) ? now()->subDays(rand(1, 25)) : null,
+                'verified_by' => $isVerifiedByNow($incorporationIdx) ? $uploader->id : null,
             ]);
         }
 
@@ -684,16 +682,16 @@ class ChineseCompaniesSeeder extends Seeder
             $driveFileId = $this->fakeDriveFileId();
 
             Document::create([
-                'registration_id'      => $registration->id,
-                'type'                 => DocumentTypeEnum::RFC_DOCUMENT,
-                'name'                 => "RFC_{$clientCode}.pdf",
-                'relay_zip_path'       => null,
+                'registration_id' => $registration->id,
+                'type' => DocumentTypeEnum::RFC_DOCUMENT,
+                'name' => "RFC_{$clientCode}.pdf",
+                'storage_path' => null,
                 'google_drive_file_id' => $driveFileId,
-                'google_drive_url'     => "https://drive.google.com/file/d/{$driveFileId}/view",
-                'stage'                => RegistrationStageEnum::SAT_REGISTRATION,
-                'uploaded_by'          => $uploader->id,
-                'verified_at'          => $isVerifiedByNow($satIdx) ? now()->subDays(rand(1, 15)) : null,
-                'verified_by'          => $isVerifiedByNow($satIdx) ? $uploader->id : null,
+                'google_drive_url' => "https://drive.google.com/file/d/{$driveFileId}/view",
+                'stage' => RegistrationStageEnum::SAT_REGISTRATION,
+                'uploaded_by' => $uploader->id,
+                'verified_at' => $isVerifiedByNow($satIdx) ? now()->subDays(rand(1, 15)) : null,
+                'verified_by' => $isVerifiedByNow($satIdx) ? $uploader->id : null,
             ]);
         }
 
@@ -702,16 +700,16 @@ class ChineseCompaniesSeeder extends Seeder
             $driveFileId = $this->fakeDriveFileId();
 
             Document::create([
-                'registration_id'      => $registration->id,
-                'type'                 => DocumentTypeEnum::EFIRMA,
-                'name'                 => "Efirma_{$clientCode}.cer",
-                'relay_zip_path'       => null,
+                'registration_id' => $registration->id,
+                'type' => DocumentTypeEnum::EFIRMA,
+                'name' => "Efirma_{$clientCode}.cer",
+                'storage_path' => null,
                 'google_drive_file_id' => $driveFileId,
-                'google_drive_url'     => "https://drive.google.com/file/d/{$driveFileId}/view",
-                'stage'                => RegistrationStageEnum::EFIRMA_APPOINTMENT,
-                'uploaded_by'          => $uploader->id,
-                'verified_at'          => now()->subDays(rand(1, 10)),
-                'verified_by'          => $uploader->id,
+                'google_drive_url' => "https://drive.google.com/file/d/{$driveFileId}/view",
+                'stage' => RegistrationStageEnum::EFIRMA_APPOINTMENT,
+                'uploaded_by' => $uploader->id,
+                'verified_at' => now()->subDays(rand(1, 10)),
+                'verified_by' => $uploader->id,
             ]);
         }
     }
@@ -726,12 +724,9 @@ class ChineseCompaniesSeeder extends Seeder
      * The first transition (null → DATA_RECEIVED) is system-generated and has no performer.
      * All subsequent transitions are credited to the assigned notario, spaced out in time.
      *
-     * @param  Registration          $registration
-     * @param  RegistrationStageEnum $currentStage
-     * @param  int                   $currentStageIndex  Position of currentStage in STAGE_ORDER.
-     * @param  User                  $notario            Assigned notario for performed_by.
-     * @param  int                   $arrivedDaysAgo     How many days ago the webhook arrived.
-     * @return void
+     * @param  int  $currentStageIndex  Position of currentStage in STAGE_ORDER.
+     * @param  User  $notario  Assigned notario for performed_by.
+     * @param  int  $arrivedDaysAgo  How many days ago the webhook arrived.
      */
     private function createStageTransitions(
         Registration $registration,
@@ -745,26 +740,26 @@ class ChineseCompaniesSeeder extends Seeder
         // First entry: webhook arrival — system-generated, no performer.
         StageTransition::create([
             'registration_id' => $registration->id,
-            'from_stage'      => null,
-            'to_stage'        => RegistrationStageEnum::DATA_RECEIVED,
-            'performed_by'    => null,
-            'reason'          => 'Expediente recibido vía webhook del relay Singapur.',
-            'created_at'      => now()->subDays($arrivedDaysAgo),
+            'from_stage' => null,
+            'to_stage' => RegistrationStageEnum::DATA_RECEIVED,
+            'performed_by' => null,
+            'reason' => 'Expediente recibido vía webhook del relay Singapur.',
+            'created_at' => now()->subDays($arrivedDaysAgo),
         ]);
 
         // Subsequent advances — one per stage step, evenly spaced over the elapsed time.
         for ($i = 0; $i < $currentStageIndex; $i++) {
-            $elapsed    = $arrivedDaysAgo - max(0, $arrivedDaysAgo - (int) round($arrivedDaysAgo * ($i + 1) / $currentStageIndex));
-            $daysAgo    = max(1, $arrivedDaysAgo - $elapsed);
-            $reasonIdx  = $i % count(self::TRANSITION_REASONS);
+            $elapsed = $arrivedDaysAgo - max(0, $arrivedDaysAgo - (int) round($arrivedDaysAgo * ($i + 1) / $currentStageIndex));
+            $daysAgo = max(1, $arrivedDaysAgo - $elapsed);
+            $reasonIdx = $i % count(self::TRANSITION_REASONS);
 
             StageTransition::create([
                 'registration_id' => $registration->id,
-                'from_stage'      => $orderedStages[$i],
-                'to_stage'        => $orderedStages[$i + 1],
-                'performed_by'    => $notario->id,
-                'reason'          => self::TRANSITION_REASONS[$reasonIdx],
-                'created_at'      => now()->subDays($daysAgo),
+                'from_stage' => $orderedStages[$i],
+                'to_stage' => $orderedStages[$i + 1],
+                'performed_by' => $notario->id,
+                'reason' => self::TRANSITION_REASONS[$reasonIdx],
+                'created_at' => now()->subDays($daysAgo),
             ]);
         }
     }
@@ -776,10 +771,7 @@ class ChineseCompaniesSeeder extends Seeder
     /**
      * Create one pending task appropriate for the current stage.
      *
-     * @param  Registration          $registration
-     * @param  RegistrationStageEnum $stage
-     * @param  User                  $assignee     Notario responsible for this task.
-     * @return void
+     * @param  User  $assignee  Notario responsible for this task.
      */
     private function createTask(Registration $registration, RegistrationStageEnum $stage, User $assignee): void
     {
@@ -793,33 +785,31 @@ class ChineseCompaniesSeeder extends Seeder
 
         Task::create([
             'registration_id' => $registration->id,
-            'title'           => $taskData['title'],
-            'description'     => null,
-            'priority'        => $taskData['priority'],
-            'type'            => TaskTypeEnum::MANUAL,
-            'assigned_to'     => $assignee->id,
-            'created_by'      => $this->admin->id,
-            'due_date'        => now()->addDays(rand(3, 14)),
+            'title' => $taskData['title'],
+            'description' => null,
+            'priority' => $taskData['priority'],
+            'type' => TaskTypeEnum::MANUAL,
+            'assigned_to' => $assignee->id,
+            'created_by' => $this->admin->id,
+            'due_date' => now()->addDays(rand(3, 14)),
         ]);
     }
 
     /**
      * Create one internal note for the registration.
      *
-     * @param  Registration  $registration
-     * @param  int           $codeInt  Numeric company code, used to select content deterministically.
-     * @return void
+     * @param  int  $codeInt  Numeric company code, used to select content deterministically.
      */
     private function createNote(Registration $registration, int $codeInt): void
     {
         $noteContent = self::NOTE_TEMPLATES[$codeInt % count(self::NOTE_TEMPLATES)];
-        $author      = ($codeInt % 2 === 0) ? $this->notario1 : $this->notario2;
+        $author = ($codeInt % 2 === 0) ? $this->notario1 : $this->notario2;
 
         Note::create([
             'registration_id' => $registration->id,
-            'content'         => $noteContent,
-            'created_by'      => $author->id,
-            'is_pinned'       => ($codeInt % 7 === 0),
+            'content' => $noteContent,
+            'created_by' => $author->id,
+            'is_pinned' => ($codeInt % 7 === 0),
         ]);
     }
 
@@ -829,9 +819,6 @@ class ChineseCompaniesSeeder extends Seeder
 
     /**
      * Return the numeric index of a stage within STAGE_ORDER.
-     *
-     * @param  RegistrationStageEnum  $stage
-     * @return int
      */
     private function stageIndex(RegistrationStageEnum $stage): int
     {
@@ -842,21 +829,19 @@ class ChineseCompaniesSeeder extends Seeder
      * Estimate how many calendar days ago the relay webhook arrived for a given stage.
      *
      * More advanced stages imply older arrival dates, giving a realistic timeline.
-     *
-     * @param  RegistrationStageEnum  $stage
-     * @return int
      */
     private function estimateArrivalDays(RegistrationStageEnum $stage): int
     {
         return match ($stage) {
-            RegistrationStageEnum::DATA_RECEIVED       => rand(1,   10),
-            RegistrationStageEnum::IDENTITY_VALIDATION => rand(10,  25),
-            RegistrationStageEnum::LEGAL_NAME          => rand(25,  45),
-            RegistrationStageEnum::INCORPORATION       => rand(45,  70),
-            RegistrationStageEnum::BANK_ACCOUNT        => rand(70,  100),
-            RegistrationStageEnum::SAT_REGISTRATION    => rand(100, 135),
-            RegistrationStageEnum::EFIRMA_APPOINTMENT  => rand(135, 160),
-            RegistrationStageEnum::COMPLETED           => rand(160, 200),
+            RegistrationStageEnum::DATA_RECEIVED => rand(1, 10),
+            RegistrationStageEnum::IDENTITY_VALIDATION => rand(10, 25),
+            RegistrationStageEnum::LEGAL_NAME => rand(25, 45),
+            RegistrationStageEnum::PARTNER_SIGNATURE => rand(45, 60),
+            RegistrationStageEnum::INCORPORATION => rand(60, 85),
+            RegistrationStageEnum::TAX_ADDRESS => rand(85, 110),
+            RegistrationStageEnum::SAT_REGISTRATION => rand(110, 145),
+            RegistrationStageEnum::EFIRMA_APPOINTMENT => rand(145, 170),
+            RegistrationStageEnum::COMPLETED => rand(170, 210),
         };
     }
 
@@ -866,14 +851,13 @@ class ChineseCompaniesSeeder extends Seeder
      * Format: 3-letter prefix + 6-digit date + 3 alphanumeric homoclave.
      *
      * @param  string  $companyName  Base denomination for deriving the prefix.
-     * @return string
      */
     private function generateRfc(string $companyName): string
     {
         $letters = preg_replace('/[^A-Za-z]/u', '', $companyName);
-        $prefix  = strtoupper(substr($letters, 0, 3));
-        $date    = fake()->dateTimeBetween('-3 years', '-6 months')->format('ymd');
-        $suffix  = strtoupper(fake()->bothify('##?'));
+        $prefix = strtoupper(substr($letters, 0, 3));
+        $date = fake()->dateTimeBetween('-3 years', '-6 months')->format('ymd');
+        $suffix = strtoupper(fake()->bothify('##?'));
 
         return "{$prefix}{$date}{$suffix}";
     }
@@ -882,11 +866,11 @@ class ChineseCompaniesSeeder extends Seeder
      * Pick two shareholder names deterministically from the pool by company code.
      *
      * @param  int  $codeInt  Numeric company code.
-     * @return list<string>   Two distinct Chinese names.
+     * @return list<string> Two distinct Chinese names.
      */
     private function pickShareholderNames(int $codeInt): array
     {
-        $total  = count(self::CHINESE_NAMES);
+        $total = count(self::CHINESE_NAMES);
         $index1 = ($codeInt * 2) % $total;
         $index2 = ($codeInt * 2 + 1) % $total;
 
@@ -895,11 +879,9 @@ class ChineseCompaniesSeeder extends Seeder
 
     /**
      * Generate a fake Google Drive file ID (33-character base64url string).
-     *
-     * @return string
      */
     private function fakeDriveFileId(): string
     {
-        return '1' . substr(str_replace(['+', '/', '='], ['A', 'B', 'C'], base64_encode(random_bytes(24))), 0, 32);
+        return '1'.substr(str_replace(['+', '/', '='], ['A', 'B', 'C'], base64_encode(random_bytes(24))), 0, 32);
     }
 }
