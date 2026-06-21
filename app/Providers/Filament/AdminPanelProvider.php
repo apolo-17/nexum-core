@@ -27,7 +27,11 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
-            ->brandName('Nexum')
+            ->brandName('nexumcore')
+            ->brandLogo(asset('brand/lockup-color.svg'))
+            ->darkModeBrandLogo(asset('brand/lockup-white.svg'))
+            ->brandLogoHeight('2.25rem')
+            ->favicon(asset('favicon.svg'))
             ->colors([
                 'primary' => Color::Blue,
             ])
