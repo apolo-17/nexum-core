@@ -50,7 +50,7 @@ class ProcessSingapurWebhookJobTest extends TestCase
 
         $event = WebhookEvent::factory()->create([
             'payload' => $this->validPayload(),
-            'status'  => WebhookEventStatusEnum::PENDING,
+            'status' => WebhookEventStatusEnum::PENDING,
         ]);
 
         ProcessSingapurWebhook::dispatchSync($event);
@@ -68,7 +68,7 @@ class ProcessSingapurWebhookJobTest extends TestCase
 
         $event = WebhookEvent::factory()->create([
             'payload' => $this->validPayload(),
-            'status'  => WebhookEventStatusEnum::PENDING,
+            'status' => WebhookEventStatusEnum::PENDING,
         ]);
 
         ProcessSingapurWebhook::dispatchSync($event);
@@ -89,7 +89,7 @@ class ProcessSingapurWebhookJobTest extends TestCase
 
         $event = WebhookEvent::factory()->create([
             'payload' => $this->validPayload(),
-            'status'  => WebhookEventStatusEnum::PENDING,
+            'status' => WebhookEventStatusEnum::PENDING,
         ]);
 
         ProcessSingapurWebhook::dispatchSync($event);
@@ -106,15 +106,15 @@ class ProcessSingapurWebhookJobTest extends TestCase
 
         $event = WebhookEvent::factory()->create([
             'payload' => $this->validPayload(),
-            'status'  => WebhookEventStatusEnum::PENDING,
+            'status' => WebhookEventStatusEnum::PENDING,
         ]);
 
         ProcessSingapurWebhook::dispatchSync($event);
 
         $this->assertDatabaseHas('notifications', [
             'notifiable_type' => User::class,
-            'notifiable_id'   => $admin->id,
-            'type'            => NewExpedienteReceived::class,
+            'notifiable_id' => $admin->id,
+            'type' => NewExpedienteReceived::class,
         ]);
     }
 
@@ -126,7 +126,7 @@ class ProcessSingapurWebhookJobTest extends TestCase
 
         $event = WebhookEvent::factory()->create([
             'payload' => $this->validPayload(),
-            'status'  => WebhookEventStatusEnum::PENDING,
+            'status' => WebhookEventStatusEnum::PENDING,
         ]);
 
         ProcessSingapurWebhook::dispatchSync($event);
@@ -149,36 +149,34 @@ class ProcessSingapurWebhookJobTest extends TestCase
     private function validPayload(): array
     {
         return [
-            'event_id'            => 'evt-notify-test-001',
-            'id'                  => '7dde1760-57d4-4f4e-b81b-3ae2b93025d0',
-            'type'                => 'company-registration',
+            'event_id' => 'evt-notify-test-001',
+            'id' => '7dde1760-57d4-4f4e-b81b-3ae2b93025d0',
+            'type' => 'company-registration',
             'registration_number' => '000001',
             'company_folder_name' => '000001_NOVA CONSULTORA EMPRESARIAL',
-            'document_group'      => 'KYC',
-            'created_at'          => '2026-06-14T22:35:56.765341+00:00',
-            'fields'              => [
-                'companyName'              => 'NOVA CONSULTORÍA EMPRESARIAL',
-                'companyType'              => 'sa',
-                'shareholderCount'         => '1',
-                'shareholderType1'         => 'natural',
-                'naturalShareholderName1'  => 'Jiaxin Wu',
+            'document_group' => 'KYC',
+            'created_at' => '2026-06-14T22:35:56.765341+00:00',
+            'fields' => [
+                'companyName' => 'NOVA CONSULTORÍA EMPRESARIAL',
+                'companyType' => 'sa',
+                'shareholderCount' => '1',
+                'shareholderType1' => 'natural',
+                'naturalShareholderName1' => 'Jiaxin Wu',
                 'naturalShareholderEmail1' => 'jiaxin@example.com',
-                'naturalSharePercentage1'  => '100',
-                'naturalNationality1'      => 'china',
+                'naturalSharePercentage1' => '100',
+                'naturalNationality1' => 'china',
                 'naturalOtherNationality1' => '',
-                'naturalMarried1'          => 'no',
-                '_language'                => 'zh',
+                'naturalMarried1' => 'no',
+                '_language' => 'zh',
             ],
             'files' => [
                 [
-                    'field'         => 'naturalTaxCertificate1',
+                    'field' => 'naturalTaxCertificate1',
                     'original_name' => 'JIAXIN_WU_TAX_ID.pdf',
-                    'stored_name'   => 'uuid-notify-test.pdf',
-                    'relay_name'    => '000001__naturalTaxCertificate1__JIAXIN_WU_TAX_ID.pdf',
-                    'storage'       => 'local',
-                    'path'          => '/var/lib/nuolian/uploads/uuid-notify-test.pdf',
-                    'size'          => 108548,
-                    'content_type'  => 'application/pdf',
+                    'relay_name' => '000001__naturalTaxCertificate1__JIAXIN_WU_TAX_ID.pdf',
+                    'size' => 108548,
+                    'content_type' => 'application/pdf',
+                    'content' => base64_encode('fake-pdf-content'),
                 ],
             ],
         ];

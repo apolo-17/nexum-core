@@ -20,7 +20,7 @@ use Filament\Tables\Table;
  * Manages documents for a registration expedient.
  *
  * Documents come from two sources:
- * - Relay KYC files: received via webhook, stored as metadata with relay_zip_path.
+ * - Relay KYC files: received via webhook, stored as metadata with storage_path.
  *   Downloaded on-demand via the "Descargar del relay" action.
  * - Manual uploads: added by the notary team and linked to Google Drive.
  */
@@ -32,9 +32,6 @@ class DocumentsRelationManager extends RelationManager
 
     /**
      * Define the form schema for uploading and editing document references.
-     *
-     * @param  Schema  $schema
-     * @return Schema
      */
     public function form(Schema $schema): Schema
     {
@@ -54,9 +51,6 @@ class DocumentsRelationManager extends RelationManager
 
     /**
      * Define the table columns and actions for the documents list.
-     *
-     * @param  Table  $table
-     * @return Table
      */
     public function table(Table $table): Table
     {
@@ -70,15 +64,15 @@ class DocumentsRelationManager extends RelationManager
                 TextColumn::make('type')
                     ->label('Tipo')
                     ->formatStateUsing(fn (DocumentTypeEnum $state) => $state->label()),
-                IconColumn::make('relay_zip_path')
+                IconColumn::make('storage_path')
                     ->label('Origen')
                     ->boolean()
                     ->trueIcon('heroicon-o-cloud-arrow-down')
                     ->falseIcon('heroicon-o-user')
                     ->trueColor('info')
                     ->falseColor('gray')
-                    ->state(fn (Document $record): bool => filled($record->relay_zip_path))
-                    ->tooltip(fn (Document $record): string => filled($record->relay_zip_path)
+                    ->state(fn (Document $record): bool => filled($record->storage_path))
+                    ->tooltip(fn (Document $record): string => filled($record->storage_path)
                         ? 'Documento del relay (descarga disponible)'
                         : 'Documento manual'
                     ),
@@ -102,7 +96,7 @@ class DocumentsRelationManager extends RelationManager
                         )
                     )
                     ->openUrlInNewTab()
-                    ->visible(fn (Document $record): bool => filled($record->relay_zip_path)),
+                    ->visible(fn (Document $record): bool => filled($record->storage_path)),
                 EditAction::make(),
                 DeleteAction::make(),
             ])

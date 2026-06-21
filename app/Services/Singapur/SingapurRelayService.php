@@ -2,20 +2,19 @@
 
 namespace App\Services\Singapur;
 
-use App\Models\Document;
-use App\Models\Registration;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use ZipArchive;
 
 /**
- * Downloads document packages from the Singapur relay server.
+ * Downloads bulk document packages from the Singapur relay server.
  *
- * Responsible only for retrieving binary document files (ZIP) from the relay
- * when the workflow reaches a document-requiring stage (e.g., identity validation).
- * Registration field data is ingested separately via the webhook JSON payload —
- * this service has no role in parsing submission metadata.
+ * NOTE: As of the base64 inline-delivery architecture, individual document files
+ * arrive embedded in the webhook JSON payload and are stored directly in R2 by
+ * RegistrationUpsertService. This service is retained only for bulk ZIP downloads
+ * (e.g., re-downloading an entire KYC package for batch reprocessing). It is NOT
+ * involved in normal webhook processing.
  */
 class SingapurRelayService
 {
@@ -26,15 +25,15 @@ class SingapurRelayService
      * cleanupExtractDirectory() when finished with the extracted files.
      *
      * @param  string  $companyFolderName  Full folder name as registered in the relay (e.g., '000001_NOVA CONSULTORA EMPRESARIAL').
-     * @param  string  $documentGroup      Document group to download (defaults to 'KYC').
-     * @return string  Absolute path to the extracted directory containing the PDFs.
+     * @param  string  $documentGroup  Document group to download (defaults to 'KYC').
+     * @return string Absolute path to the extracted directory containing the PDFs.
      *
-     * @throws RequestException  When the relay returns a non-2xx HTTP response.
-     * @throws RuntimeException  When the ZIP is invalid or cannot be extracted.
+     * @throws RequestException When the relay returns a non-2xx HTTP response.
+     * @throws RuntimeException When the ZIP is invalid or cannot be extracted.
      */
     public function downloadDocumentsTo(string $companyFolderName, string $documentGroup = 'KYC'): string
     {
-        $zipPath    = $this->downloadZip($companyFolderName, $documentGroup);
+        $zipPath = $this->downloadZip($companyFolderName, $documentGroup);
         $extractDir = $this->extractZip($zipPath);
 
         // Remove the ZIP immediately — only the extracted PDFs are needed going forward.
@@ -50,7 +49,6 @@ class SingapurRelayService
      * to avoid accumulating temp files on the server.
      *
      * @param  string  $extractDir  Absolute path returned by downloadDocumentsTo().
-     * @return void
      */
     public function cleanupExtractDirectory(string $extractDir): void
     {
@@ -60,114 +58,29 @@ class SingapurRelayService
     }
 
     /**
-     * Download a single document from the relay ZIP and return its binary content.
-     *
-     * Downloads the full ZIP for the registration's company folder, extracts only
-     * the file identified by the document's relay_zip_path, then immediately deletes
-     * the ZIP. This avoids storing the entire archive on disk.
-     *
-     * @param  Registration  $registration  The registration that owns the document.
-     * @param  Document      $document      The document to fetch; must have relay_zip_path set.
-     * @return string                       Raw binary content of the file.
-     *
-     * @throws RuntimeException  When relay_zip_path is not set, the ZIP entry is missing,
-     *                           or the content cannot be read.
-     * @throws RequestException  When the relay returns a non-2xx HTTP response.
-     */
-    public function streamDocument(Registration $registration, Document $document): string
-    {
-        if (blank($document->relay_zip_path)) {
-            throw new RuntimeException(
-                "Document [{$document->id}] has no relay_zip_path — cannot download from relay."
-            );
-        }
-
-        // The document group is the first path segment of relay_zip_path (e.g. 'KYC').
-        $documentGroup = explode('/', $document->relay_zip_path, 2)[0];
-
-        $zipPath = $this->downloadZip(
-            $registration->singapur_folder_name,
-            $documentGroup,
-        );
-
-        try {
-            $content = $this->extractSingleEntry($zipPath, $document->relay_zip_path);
-        } finally {
-            // Always remove the ZIP regardless of success or failure.
-            @unlink($zipPath);
-        }
-
-        return $content;
-    }
-
-    /**
-     * Extract a single entry from a ZIP archive by its internal path.
-     *
-     * Uses ZipArchive::getStream() to avoid writing the file to disk.
-     *
-     * @param  string  $zipPath    Absolute path to the ZIP archive on disk.
-     * @param  string  $entryPath  Entry path within the ZIP (e.g. 'KYC/shareholder_1/file.pdf').
-     * @return string              Binary content of the requested entry.
-     *
-     * @throws RuntimeException  When the ZIP cannot be opened or the entry is not found.
-     */
-    private function extractSingleEntry(string $zipPath, string $entryPath): string
-    {
-        $zip    = new ZipArchive();
-        $result = $zip->open($zipPath);
-
-        if ($result !== true) {
-            throw new RuntimeException(
-                "Failed to open ZIP archive (ZipArchive error code: {$result})"
-            );
-        }
-
-        $stream = $zip->getStream($entryPath);
-
-        if ($stream === false) {
-            $zip->close();
-            throw new RuntimeException(
-                "Entry '{$entryPath}' not found in relay ZIP archive."
-            );
-        }
-
-        $content = stream_get_contents($stream);
-        fclose($stream);
-        $zip->close();
-
-        if ($content === false) {
-            throw new RuntimeException(
-                "Failed to read content of entry '{$entryPath}' from relay ZIP."
-            );
-        }
-
-        return $content;
-    }
-
-    /**
      * Send the download request to the relay and persist the binary ZIP response.
      *
      * @param  string  $companyFolderName  Relay folder identifier.
-     * @param  string  $documentGroup      Document group identifier.
-     * @return string  Absolute path to the downloaded ZIP file.
+     * @param  string  $documentGroup  Document group identifier.
+     * @return string Absolute path to the downloaded ZIP file.
      *
-     * @throws RequestException  When the relay returns a non-2xx response.
-     * @throws RuntimeException  When the temp file cannot be written.
+     * @throws RequestException When the relay returns a non-2xx response.
+     * @throws RuntimeException When the temp file cannot be written.
      */
     private function downloadZip(string $companyFolderName, string $documentGroup): string
     {
-        $baseUrl     = config('services.singapur.base_url');
+        $baseUrl = config('services.singapur.base_url');
         $bearerToken = config('services.singapur.bearer_token');
 
         $response = Http::withToken($bearerToken)
             ->timeout(120)
             ->post("{$baseUrl}/api/company-registration/download-folder", [
                 'company_folder_name' => $companyFolderName,
-                'document_group'      => $documentGroup,
+                'document_group' => $documentGroup,
             ])
             ->throw();
 
-        $zipPath = sys_get_temp_dir() . '/nexum_singapur_' . uniqid() . '.zip';
+        $zipPath = sys_get_temp_dir().'/nexum_singapur_'.uniqid().'.zip';
         $written = file_put_contents($zipPath, $response->body());
 
         if ($written === false) {
@@ -181,19 +94,19 @@ class SingapurRelayService
      * Extract the downloaded ZIP archive to a temporary directory.
      *
      * @param  string  $zipPath  Absolute path to the ZIP file.
-     * @return string  Absolute path to the extracted directory.
+     * @return string Absolute path to the extracted directory.
      *
-     * @throws RuntimeException  When the ZIP cannot be opened or extracted.
+     * @throws RuntimeException When the ZIP cannot be opened or extracted.
      */
     private function extractZip(string $zipPath): string
     {
-        $extractDir = sys_get_temp_dir() . '/nexum_singapur_' . uniqid() . '/';
+        $extractDir = sys_get_temp_dir().'/nexum_singapur_'.uniqid().'/';
 
         if (! mkdir($extractDir, 0o755, true)) {
             throw new RuntimeException("Failed to create extraction directory: {$extractDir}");
         }
 
-        $zip = new ZipArchive();
+        $zip = new ZipArchive;
         $result = $zip->open($zipPath);
 
         if ($result !== true) {
@@ -210,11 +123,10 @@ class SingapurRelayService
      * Recursively delete a directory and its contents.
      *
      * @param  string  $dir  Directory to delete.
-     * @return void
      */
     private function deleteDirectory(string $dir): void
     {
-        $items = glob($dir . '{,.}[!.,!..]*', GLOB_MARK | GLOB_BRACE);
+        $items = glob($dir.'{,.}[!.,!..]*', GLOB_MARK | GLOB_BRACE);
 
         if ($items === false) {
             return;

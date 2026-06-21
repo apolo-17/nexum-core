@@ -11,11 +11,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
- * Represents a file attached to a registration expedient and stored in Google Drive.
+ * Represents a file attached to a registration expedient.
  *
- * Documents are uploaded by the notary team during specific stages.
- * The google_drive_file_id is the authoritative reference; the URL is cached for quick access.
- * Soft-deleted documents are retained for audit purposes.
+ * Documents arrive from the Singapur webhook as base64 content and are stored
+ * in R2 (or local disk in development). The storage_path column holds the
+ * path where the file was persisted. Soft-deleted records are retained for audit.
  */
 class Document extends Model
 {
@@ -28,7 +28,7 @@ class Document extends Model
         'registration_id',
         'type',
         'name',
-        'relay_zip_path',
+        'storage_path',
         'google_drive_file_id',
         'google_drive_url',
         'stage',
@@ -45,8 +45,8 @@ class Document extends Model
     protected function casts(): array
     {
         return [
-            'type'        => DocumentTypeEnum::class,
-            'stage'       => RegistrationStageEnum::class,
+            'type' => DocumentTypeEnum::class,
+            'stage' => RegistrationStageEnum::class,
             'verified_at' => 'datetime',
         ];
     }
