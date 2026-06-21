@@ -36,13 +36,14 @@ return [
     ],
 
     'singapur' => [
-        'base_url'       => env('SINGAPUR_API_URL', 'http://152.42.206.224:8789'),
-        'bearer_token'   => env('SINGAPUR_BEARER_TOKEN'),
+        'base_url' => env('SINGAPUR_API_URL', 'http://152.42.206.224:8789'),
+        'bearer_token' => env('SINGAPUR_BEARER_TOKEN'),
         'webhook_secret' => env('SINGAPUR_WEBHOOK_SECRET'),
     ],
 
-    // MUA bot — shares a secret with the external bot process for HMAC authentication.
+    // MUA bot — Python microservice that automates the SE/MUA portal via Playwright.
     'mua_bot' => [
+        'url' => env('MUA_BOT_URL', 'http://mua-bot:8000'),
         'secret_key' => env('MUA_BOT_SECRET_KEY'),
     ],
 
