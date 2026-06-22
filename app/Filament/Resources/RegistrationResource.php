@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\DocumentTypeEnum;
 use App\Enums\EfirmaAppointmentStatusEnum;
 use App\Enums\RegistrationStageEnum;
 use App\Enums\RegistrationStatusEnum;
@@ -315,7 +316,58 @@ class RegistrationResource extends Resource
                 ]),
 
             // ----------------------------------------------------------------
-            // Row 3 — E.firma context block.
+            // Row 3 — Acta preparation context block.
+            // Visible from ACTA_PREPARATION onwards so the notary can verify
+            // the corporate data before generating the draft.
+            // ----------------------------------------------------------------
+            Section::make('Datos para el Acta Constitutiva')
+                ->columnSpan(3)
+                ->columns(3)
+                ->visible(fn (Registration $record): bool => in_array(
+                    $record->stage,
+                    [
+                        RegistrationStageEnum::ACTA_PREPARATION,
+                        RegistrationStageEnum::PARTNER_SIGNATURE,
+                        RegistrationStageEnum::INCORPORATION,
+                        RegistrationStageEnum::TAX_ADDRESS,
+                        RegistrationStageEnum::SAT_REGISTRATION,
+                        RegistrationStageEnum::EFIRMA_APPOINTMENT,
+                        RegistrationStageEnum::COMPLETED,
+                    ],
+                    true,
+                ))
+                ->schema([
+                    TextEntry::make('company_object')
+                        ->label('Objeto social')
+                        ->placeholder('⚠️ Sin objeto social — debe llegar en el webhook o editarse manualmente')
+                        ->columnSpan(2),
+
+                    TextEntry::make('capital_social')
+                        ->label('Capital social')
+                        ->money('MXN')
+                        ->placeholder('⚠️ Sin capital social — default $50,000 MXN'),
+
+                    TextEntry::make('acta_draft_status')
+                        ->label('Borrador del acta')
+                        ->columnSpan(3)
+                        ->state(function (Registration $record): string {
+                            $draft = $record->documents()
+                                ->where('type', DocumentTypeEnum::ACTA_DRAFT->value)
+                                ->latest()
+                                ->first();
+
+                            if ($draft === null) {
+                                return '⚠️ Sin borrador — usa el botón "📋 Preparar borrador del acta" para compilarlo';
+                            }
+
+                            $ts = $draft->updated_at?->format('d/m/Y H:i') ?? '—';
+
+                            return "✓ Borrador compilado el {$ts}. Puedes ver el JSON completo en la pestaña Documentos.";
+                        }),
+                ]),
+
+            // ----------------------------------------------------------------
+            // Row 4 — E.firma context block.
             // Only visible when the expedient is at the EFIRMA_APPOINTMENT stage,
             // keeping the view clean for all other stages.
             // ----------------------------------------------------------------
@@ -389,7 +441,10 @@ class RegistrationResource extends Resource
                     ->tooltip(fn (RegistrationStageEnum $state): string => $state->label())
                     ->colors([
                         'gray' => RegistrationStageEnum::DATA_RECEIVED->value,
-                        'warning' => RegistrationStageEnum::IDENTITY_VALIDATION->value,
+                        'warning' => [
+                            RegistrationStageEnum::IDENTITY_VALIDATION->value,
+                            RegistrationStageEnum::ACTA_PREPARATION->value,
+                        ],
                         'info' => [
                             RegistrationStageEnum::LEGAL_NAME->value,
                             RegistrationStageEnum::PARTNER_SIGNATURE->value,
