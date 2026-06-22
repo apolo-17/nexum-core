@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Laravel\Horizon\HorizonServiceProvider;
 
 /**
  * Application-level service provider for cross-cutting registrations.
@@ -16,8 +17,6 @@ class AppServiceProvider extends ServiceProvider
 {
     /**
      * Register any application services.
-     *
-     * @return void
      */
     public function register(): void
     {
@@ -25,17 +24,7 @@ class AppServiceProvider extends ServiceProvider
         // Register it manually in all environments except testing, where its
         // Redis queue connector would trigger phpredis initialization and crash.
         if (! $this->app->environment('testing')) {
-            $this->app->register(\Laravel\Horizon\HorizonServiceProvider::class);
+            $this->app->register(HorizonServiceProvider::class);
         }
-    }
-
-    /**
-     * Bootstrap any application services.
-     *
-     * @return void
-     */
-    public function boot(): void
-    {
-        //
     }
 }

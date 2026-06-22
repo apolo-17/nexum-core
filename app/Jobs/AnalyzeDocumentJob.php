@@ -53,10 +53,21 @@ class AnalyzeDocumentJob implements ShouldQueue
     /**
      * Execute the job — call Claude vision and persist the extracted fields.
      *
+     * Immediately marks the document as "processing" (analyzed=false, no error)
+     * so the dashboard can show a spinner while the API call is in flight.
+     * The polling on the Filament table will pick up the state change.
+     *
      * @param  DocumentAnalysisService  $service  Injected analysis service.
      */
     public function handle(DocumentAnalysisService $service): void
     {
+        // Mark as processing before the API call so the UI can show a spinner.
+        // analyzed=false with no error_message = "in progress" (distinct from failed).
+        DocumentAnalysis::updateOrCreate(
+            ['document_id' => $this->document->id],
+            ['analyzed' => false, 'error_message' => null],
+        );
+
         Log::info('AnalyzeDocumentJob: starting analysis.', [
             'document_id' => $this->document->id,
             'document_type' => $this->document->type->value,

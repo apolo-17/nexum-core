@@ -5,7 +5,6 @@ namespace App\Filament\Resources\RegistrationResource\RelationManagers;
 use App\Enums\DocumentTypeEnum;
 use App\Jobs\AnalyzeDocumentJob;
 use App\Models\Document;
-use App\Models\DocumentAnalysis;
 use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
@@ -19,8 +18,8 @@ use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
-use Filament\Tables\Columns\BadgeColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Columns\ViewColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Support\Collection;
@@ -105,10 +104,23 @@ class DocumentsRelationManager extends RelationManager
 
     /**
      * Define the table columns and actions for the documents list.
+     *
+     * Shareholders are loaded once per render cycle and captured via `use` so every
+     * row in the "Socio" column can look up the shareholder name without an N+1 query.
      */
     public function table(Table $table): Table
     {
+        // One query per Livewire render — captured by closures below via `use`.
+        $shareholders = $this->ownerRecord
+            ->shareholders()
+            ->orderBy('created_at')
+            ->get();
+
         return $table
+            // Auto-refresh every 3 s so the IA column updates without manual reload.
+            ->poll('3s')
+            // Eager-load analysis to avoid N+1: one extra JOIN instead of one query per row.
+            ->modifyQueryUsing(fn ($query) => $query->with('analysis'))
             ->description(function (): ?string {
                 $registration = $this->ownerRecord->load('shareholders', 'documents');
                 $missing = $registration->missingKycDocuments();
@@ -139,37 +151,40 @@ class DocumentsRelationManager extends RelationManager
                     ->formatStateUsing(fn (DocumentTypeEnum $state) => $state->label())
                     ->grow(false),
 
-                BadgeColumn::make('analysis_status')
-                    ->label('IA')
-                    ->state(function (Document $record): string {
-                        $analysis = DocumentAnalysis::where('document_id', $record->id)->first();
-
-                        if ($analysis === null) {
-                            return 'none';
+                TextColumn::make('shareholder_index')
+                    ->label('Socio')
+                    ->state(fn (Document $record): string => $record->shareholder_index
+                        ? "S{$record->shareholder_index}"
+                        : ''
+                    )
+                    ->description(function (Document $record) use ($shareholders): ?string {
+                        if (! $record->shareholder_index) {
+                            return null;
                         }
 
-                        return $analysis->analyzed ? 'done' : 'failed';
+                        // $shareholders was loaded once above — no extra query per row.
+                        return $shareholders->get($record->shareholder_index - 1)?->name;
                     })
-                    ->colors([
-                        'gray' => 'none',
-                        'success' => 'done',
-                        'danger' => 'failed',
-                    ])
-                    ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'done' => '✓ Extraído',
-                        'failed' => '✗ Error',
-                        default => '— Pendiente',
-                    })
+                    ->placeholder('—')
                     ->grow(false),
 
-                BadgeColumn::make('evaluation_status')
+                // "IA" column — rendered via a Blade view (ViewColumn) so the animated
+                // brain SVG is not stripped by Filament's HTML sanitizer. State logic
+                // lives in Document::aiAnalysisState(); the view handles presentation.
+                ViewColumn::make('analysis_status')
+                    ->label('IA')
+                    ->view('filament.documents.analysis-column')
+                    ->grow(false),
+
+                TextColumn::make('evaluation_status')
                     ->label('Estado')
+                    ->badge()
                     ->state(fn (Document $record): string => $record->evaluationStatus())
-                    ->colors([
-                        'warning' => 'pending',
-                        'success' => 'approved',
-                        'danger' => 'rejected',
-                    ])
+                    ->color(fn (string $state): string => match ($state) {
+                        'approved' => 'success',
+                        'rejected' => 'danger',
+                        default => 'warning',
+                    })
                     ->formatStateUsing(fn (string $state): string => match ($state) {
                         'approved' => 'Aprobado',
                         'rejected' => 'Rechazado',
@@ -237,6 +252,7 @@ class DocumentsRelationManager extends RelationManager
                             'previewUrl' => route('admin.documents.preview', $record),
                             'isImage' => $record->isImage(),
                             'isPdf' => $record->isPdf(),
+                            'analysis' => $record->analysis,
                         ]
                     ))
                     ->action(function (Document $record, array $data): void {
@@ -298,6 +314,41 @@ class DocumentsRelationManager extends RelationManager
                     )
                     ->openUrlInNewTab()
                     ->visible(fn (Document $record): bool => filled($record->storage_path)),
+
+                // Retry AI extraction — visible only when the previous attempt failed.
+                // Not shown while processing (the job is already running).
+                Action::make('retryAnalysis')
+                    ->label('Reintentar extracción IA')
+                    ->icon('heroicon-o-arrow-path')
+                    ->color('warning')
+                    ->iconButton()
+                    ->tooltip('Reintentar extracción de datos con IA')
+                    ->visible(function (Document $record): bool {
+                        if (! filled($record->storage_path) || $record->evaluationStatus() !== 'approved') {
+                            return false;
+                        }
+
+                        // Uses eager-loaded relationship — no extra query.
+                        $analysis = $record->analysis;
+
+                        // Only show retry when there is a failed analysis (not while processing).
+                        return $analysis !== null
+                            && ! $analysis->analyzed
+                            && filled($analysis->error_message);
+                    })
+                    ->action(function (Document $record): void {
+                        // Delete the failed record so the job starts fresh
+                        // and immediately marks it as processing.
+                        $record->analysis()->delete();
+
+                        AnalyzeDocumentJob::dispatch($record);
+
+                        Notification::make()
+                            ->title('Reintento encolado')
+                            ->body('La extracción iniciará en breve.')
+                            ->success()
+                            ->send();
+                    }),
 
                 // Delete — with confirmation.
                 DeleteAction::make()
