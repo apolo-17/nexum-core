@@ -3,7 +3,9 @@
 namespace App\Filament\Resources\RegistrationResource\RelationManagers;
 
 use App\Enums\DocumentTypeEnum;
+use App\Jobs\AnalyzeDocumentJob;
 use App\Models\Document;
+use App\Models\DocumentAnalysis;
 use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
@@ -137,6 +139,29 @@ class DocumentsRelationManager extends RelationManager
                     ->formatStateUsing(fn (DocumentTypeEnum $state) => $state->label())
                     ->grow(false),
 
+                BadgeColumn::make('analysis_status')
+                    ->label('IA')
+                    ->state(function (Document $record): string {
+                        $analysis = DocumentAnalysis::where('document_id', $record->id)->first();
+
+                        if ($analysis === null) {
+                            return 'none';
+                        }
+
+                        return $analysis->analyzed ? 'done' : 'failed';
+                    })
+                    ->colors([
+                        'gray' => 'none',
+                        'success' => 'done',
+                        'danger' => 'failed',
+                    ])
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        'done' => '✓ Extraído',
+                        'failed' => '✗ Error',
+                        default => '— Pendiente',
+                    })
+                    ->grow(false),
+
                 BadgeColumn::make('evaluation_status')
                     ->label('Estado')
                     ->state(fn (Document $record): string => $record->evaluationStatus())
@@ -251,6 +276,12 @@ class DocumentsRelationManager extends RelationManager
                         }
 
                         $record->update($update);
+
+                        // Dispatch Claude vision analysis for approved KYC documents.
+                        // The job is idempotent — re-approving refreshes the existing analysis.
+                        if ($data['evaluation'] === 'approved' && filled($record->storage_path)) {
+                            AnalyzeDocumentJob::dispatch($record)->afterCommit();
+                        }
                     }),
 
                 // Download — force browser download.
@@ -340,6 +371,11 @@ class DocumentsRelationManager extends RelationManager
                                     'rejected_by' => null,
                                     'rejection_reason' => null,
                                 ]);
+
+                                // Dispatch Claude vision analysis for each approved KYC document.
+                                if (filled($record->storage_path)) {
+                                    AnalyzeDocumentJob::dispatch($record)->afterCommit();
+                                }
                             }
 
                             self::notifyBulkResult($pending->count(), $locked->count(), 'aprobado');

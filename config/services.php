@@ -47,4 +47,9 @@ return [
         'secret_key' => env('MUA_BOT_SECRET_KEY'),
     ],
 
+    // Anthropic Claude API — used by DocumentAnalysisService for KYC document vision extraction.
+    'anthropic' => [
+        'api_key' => env('ANTHROPIC_API_KEY'),
+    ],
+
 ];
