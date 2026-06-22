@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Storage;
 /**
  * Extracts structured identity data from KYC documents using Claude vision API.
  *
- * Sends the document image (or PDF) to Anthropic's Claude claude-opus-4-8 model and parses
+ * Sends the document image (or PDF) to Anthropic's Claude claude-opus-4-6 model and parses
  * the structured JSON response into a DocumentAnalysis record. Supports three
  * document categories with dedicated extraction prompts:
  *
@@ -36,10 +36,10 @@ class DocumentAnalysisService
 
     /**
      * Claude model to use for document analysis.
-     * Opus 4.8 is the most capable vision model, chosen for the highest accuracy
+     * Opus 4 is the most capable vision model, chosen for the highest accuracy
      * extracting identity fields from KYC documents.
      */
-    private const CLAUDE_MODEL = 'claude-opus-4-8';
+    private const CLAUDE_MODEL = 'claude-opus-4-6';
 
     /**
      * Analyse a document and persist the extracted fields as a DocumentAnalysis record.
@@ -213,7 +213,7 @@ class DocumentAnalysisService
      * Send the document to the Claude vision API and return the parsed JSON response.
      *
      * Uses Laravel's HTTP client. The document is sent as a base64-encoded inline
-     * source so no public URL is required. Claude claude-opus-4-8 supports both image
+     * source so no public URL is required. Claude claude-opus-4-6 supports both image
      * formats and PDF documents natively.
      *
      * @param  string  $base64Content  Base64-encoded file contents.
