@@ -8,6 +8,8 @@ use App\Enums\LegalNameStatusEnum;
 use App\Models\LegalName;
 use App\Models\MuaAccount;
 use Illuminate\Console\Command;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -44,7 +46,7 @@ class SubmitDenominationsToMuaCommand extends Command
      * by fewest active submissions), and submits each one. On success the denomination
      * is moved to PENDING; on failure it stays in WAIT for the next run.
      *
-     * @return int  Command::SUCCESS or Command::FAILURE
+     * @return int Command::SUCCESS or Command::FAILURE
      */
     public function handle(): int
     {
@@ -86,6 +88,7 @@ class SubmitDenominationsToMuaCommand extends Command
 
             if ($isDryRun) {
                 $accountIndex++;
+
                 continue;
             }
 
@@ -93,24 +96,24 @@ class SubmitDenominationsToMuaCommand extends Command
                 $this->submitToMua($legalName, $account);
 
                 $legalName->update([
-                    'status'          => LegalNameStatusEnum::PENDING->value,
-                    'mua_account_id'  => $account->id,
-                    'submitted_at'    => now(),
+                    'status' => LegalNameStatusEnum::PENDING->value,
+                    'mua_account_id' => $account->id,
+                    'submitted_at' => now(),
                 ]);
 
                 $account->increment('active_submissions');
 
                 Log::info('Denomination submitted to MUA.', [
-                    'legal_name_id'  => $legalName->id,
-                    'name'           => $legalName->name,
+                    'legal_name_id' => $legalName->id,
+                    'name' => $legalName->name,
                     'mua_account_id' => $account->id,
                 ]);
             } catch (\Throwable $th) {
                 Log::error('Failed to submit denomination to MUA.', [
-                    'legal_name_id'  => $legalName->id,
-                    'name'           => $legalName->name,
+                    'legal_name_id' => $legalName->id,
+                    'name' => $legalName->name,
                     'mua_account_id' => $account->id,
-                    'exception'      => $th->getMessage(),
+                    'exception' => $th->getMessage(),
                 ]);
 
                 $this->error("  ✗ Failed: {$th->getMessage()}");
@@ -125,39 +128,41 @@ class SubmitDenominationsToMuaCommand extends Command
     }
 
     /**
-     * Perform the actual HTTP submission to the MUA portal.
+     * Send the denomination to the MUA bot microservice for portal submission.
      *
-     * The MUA portal (mua.economia.gob.mx) uses FIEL (e.firma) certificate-based
-     * authentication for the reservation flow. This method:
-     *   1. Loads the decoded .cer certificate and decrypted .key from the account.
-     *   2. Signs the request payload using the private key.
-     *   3. POSTs the denomination and company type to the MUA reservation endpoint.
+     * The bot receives the denomination name and the FIEL credentials (base64-encoded
+     * .cer and .key files plus the password) and handles all browser automation
+     * against the SE portal asynchronously. Laravel is notified of the result
+     * later via the POST /api/v3/webhook/mua-bot callback.
      *
-     * IMPORTANT: The exact MUA submission API/flow must be validated against the
-     * real portal before this method goes to production. Use --dry-run to test
-     * the scheduling and account-selection logic without making live requests.
+     * @param  LegalName  $legalName  The denomination to submit.
+     * @param  MuaAccount  $account  The FIEL account whose credentials the bot will use.
      *
-     * @param  LegalName   $legalName  The denomination to submit.
-     * @param  MuaAccount  $account    The FIEL account to authenticate with.
-     *
-     * @return void
-     *
-     * @throws \RuntimeException When the submission request fails or is rejected by the SE.
+     * @throws \RuntimeException When credentials are missing or the bot returns an error.
+     * @throws RequestException When the bot HTTP call fails.
      */
     private function submitToMua(LegalName $legalName, MuaAccount $account): void
     {
-        // TODO: Implement actual FIEL-authenticated MUA submission.
-        // Steps:
-        //   $cert     = base64_decode($account->getCredential('certificate'));
-        //   $keyPem   = base64_decode($account->getCredential('private_key'));
-        //   $password = $account->getCredential('password');
-        //
-        //   Use openssl_pkcs12_read or a PHP FIEL library to load the cert + key,
-        //   then sign and POST to the MUA reservation endpoint.
-        //
-        // For now, throw to prevent accidental production submissions.
-        throw new \RuntimeException(
-            'MUA submission not yet implemented. Run with --dry-run to test scheduling.'
-        );
+        $cert = $account->getCredential('certificate');
+        $keyPem = $account->getCredential('private_key');
+        $password = $account->getCredential('password');
+
+        if (! $cert || ! $keyPem || ! $password) {
+            throw new \RuntimeException(
+                "MuaAccount [{$account->id}] is missing one or more FIEL credentials."
+            );
+        }
+
+        $botUrl = rtrim((string) config('services.mua_bot.url'), '/');
+
+        Http::timeout(30)
+            ->post("{$botUrl}/submit", [
+                'legal_name_id' => $legalName->id,
+                'denomination' => $legalName->name,
+                'cert_base64' => $cert,
+                'key_base64' => $keyPem,
+                'password' => $password,
+            ])
+            ->throw();
     }
 }

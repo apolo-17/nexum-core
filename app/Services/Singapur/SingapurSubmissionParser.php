@@ -19,7 +19,6 @@ class SingapurSubmissionParser
      * Parse the decoded content of submission.json into a SingapurSubmissionDTO.
      *
      * @param  array<string, mixed>  $data  Decoded submission.json array.
-     * @return SingapurSubmissionDTO
      *
      * @throws RuntimeException When required top-level fields are missing.
      */
@@ -31,22 +30,24 @@ class SingapurSubmissionParser
         $shareholderCount = (int) ($fields['shareholderCount'] ?? 0);
 
         return new SingapurSubmissionDTO(
-            id:                 $data['id'],
+            id: $data['id'],
             registrationNumber: $data['registration_number'],
-            companyFolderName:  $data['company_folder_name'],
-            companyName:        $fields['companyName'] ?? '',
-            companyType:        $fields['companyType'] ?? '',
-            language:           $fields['_language'] ?? 'zh',
-            shareholders:       $this->parseShareholders($fields, $shareholderCount),
-            files:              $this->parseFiles($data['files'] ?? []),
+            companyFolderName: $data['company_folder_name'],
+            companyName: $fields['companyName'] ?? '',
+            companyType: $fields['companyType'] ?? '',
+            language: $fields['_language'] ?? 'zh',
+            companyObject: $fields['companyObject'] ?? null,
+            capitalSocial: isset($fields['capitalSocial']) ? (float) $fields['capitalSocial'] : null,
+            shareholders: $this->parseShareholders($fields, $shareholderCount),
+            files: $this->parseFiles($data['files'] ?? []),
         );
     }
 
     /**
      * Build shareholder DTOs by iterating the expected 1-based index range.
      *
-     * @param  array<string, mixed>  $fields           The `fields` section of submission.json.
-     * @param  int                   $shareholderCount  Number of shareholders declared.
+     * @param  array<string, mixed>  $fields  The `fields` section of submission.json.
+     * @param  int  $shareholderCount  Number of shareholders declared.
      * @return list<SingapurShareholderDTO>
      */
     private function parseShareholders(array $fields, int $shareholderCount): array
@@ -59,13 +60,20 @@ class SingapurSubmissionParser
             // Only natural persons are supported in the initial relay contract.
             // Juridica (legal entity) shareholders are stored with a placeholder name.
             $shareholders[] = new SingapurShareholderDTO(
-                index:                  $i,
-                type:                   $type,
-                name:                   $fields["naturalShareholderName{$i}"] ?? $fields["juridicaShareholderName{$i}"] ?? "Shareholder {$i}",
-                nationality:            $fields["naturalNationality{$i}"] ?? $fields["naturalOtherNationality{$i}"] ?? '',
-                email:                  $fields["naturalShareholderEmail{$i}"] ?? '',
+                index: $i,
+                type: $type,
+                name: $fields["naturalShareholderName{$i}"] ?? $fields["juridicaShareholderName{$i}"] ?? "Shareholder {$i}",
+                nationality: $fields["naturalNationality{$i}"] ?? $fields["naturalOtherNationality{$i}"] ?? '',
+                email: $fields["naturalShareholderEmail{$i}"] ?? '',
                 participationPercentage: (float) ($fields["naturalSharePercentage{$i}"] ?? 0),
-                isMarried:              strtolower($fields["naturalMarried{$i}"] ?? 'no') === 'yes',
+                isMarried: strtolower($fields["naturalMarried{$i}"] ?? 'no') === 'yes',
+                gender: $fields["naturalGender{$i}"] ?? null,
+                birthdate: $fields["naturalBirthdate{$i}"] ?? null,
+                birthplace: $fields["naturalBirthplace{$i}"] ?? null,
+                civilStatus: $fields["naturalCivilStatus{$i}"] ?? null,
+                phone: $fields["naturalPhone{$i}"] ?? null,
+                phoneCountryCode: $fields["naturalPhoneCountryCode{$i}"] ?? null,
+                taxId: $fields["naturalTaxId{$i}"] ?? null,
             );
         }
 
@@ -91,9 +99,8 @@ class SingapurSubmissionParser
     /**
      * Assert that required keys are present in the data array.
      *
-     * @param  array<string, mixed>  $data      Data to validate.
-     * @param  list<string>          $required  Required key names.
-     * @return void
+     * @param  array<string, mixed>  $data  Data to validate.
+     * @param  list<string>  $required  Required key names.
      *
      * @throws RuntimeException When any required key is missing.
      */

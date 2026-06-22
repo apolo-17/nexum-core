@@ -50,8 +50,8 @@ class RegistrationUpsertServiceTest extends TestCase
         $this->assertInstanceOf(Registration::class, $registration);
         $this->assertDatabaseHas('registrations', [
             'singapur_client_code' => '000001',
-            'singapur_package_id'  => '7dde1760-57d4-4f4e-b81b-3ae2b93025d0',
-            'company_type'         => 'SA de CV',
+            'singapur_package_id' => '7dde1760-57d4-4f4e-b81b-3ae2b93025d0',
+            'company_type' => 'SA de CV',
         ]);
     }
 
@@ -101,9 +101,9 @@ class RegistrationUpsertServiceTest extends TestCase
         $this->service->upsert($this->makeSubmissionDTO());
 
         $this->assertDatabaseHas('legal_names', [
-            'name'     => 'NOVA CONSULTORÍA EMPRESARIAL',
+            'name' => 'NOVA CONSULTORÍA EMPRESARIAL',
             'priority' => 1,
-            'status'   => LegalNameStatusEnum::WAIT->value,
+            'status' => LegalNameStatusEnum::WAIT->value,
         ]);
     }
 
@@ -143,8 +143,8 @@ class RegistrationUpsertServiceTest extends TestCase
 
         $this->assertSame(2, Shareholder::count());
         $this->assertDatabaseHas('shareholders', [
-            'name'                     => '吴佳鑫',
-            'nationality'              => 'china',
+            'name' => '吴佳鑫',
+            'nationality' => 'china',
             'participation_percentage' => '50.00',
         ]);
     }
@@ -198,9 +198,9 @@ class RegistrationUpsertServiceTest extends TestCase
 
         $this->assertSame(2, Document::count());
         $this->assertDatabaseHas('documents', [
-            'name'                 => '000001__naturalTaxCertificate1__tax.pdf',
+            'name' => '000001__naturalTaxCertificate1__tax.pdf',
             'google_drive_file_id' => null,
-            'google_drive_url'     => null,
+            'google_drive_url' => null,
         ]);
     }
 
@@ -223,20 +223,26 @@ class RegistrationUpsertServiceTest extends TestCase
     }
 
     #[Test]
-    public function it_persists_the_relay_zip_path_for_shareholder_documents(): void
+    public function it_persists_the_storage_path_for_shareholder_documents(): void
     {
-        $this->service->upsert($this->makeSubmissionDTO());
+        $registration = $this->service->upsert($this->makeSubmissionDTO());
 
-        // naturalTaxCertificate1 → shareholder index 1 → KYC/shareholder_1/relay_name
-        $this->assertDatabaseHas('documents', [
-            'name'           => '000001__naturalTaxCertificate1__tax.pdf',
-            'relay_zip_path' => 'KYC/shareholder_1/000001__naturalTaxCertificate1__tax.pdf',
-        ]);
+        // Files with base64 content are decoded and stored under documents/{id}/{field}_{originalName}.
+        $doc1 = Document::where('name', '000001__naturalTaxCertificate1__tax.pdf')->first();
+        $doc2 = Document::where('name', '000001__naturalTaxCertificate2__tax.pdf')->first();
 
-        $this->assertDatabaseHas('documents', [
-            'name'           => '000001__naturalTaxCertificate2__tax.pdf',
-            'relay_zip_path' => 'KYC/shareholder_2/000001__naturalTaxCertificate2__tax.pdf',
-        ]);
+        $this->assertNotNull($doc1, 'Document for naturalTaxCertificate1 should be created.');
+        $this->assertNotNull($doc2, 'Document for naturalTaxCertificate2 should be created.');
+
+        $this->assertStringStartsWith(
+            "documents/{$registration->id}/naturalTaxCertificate1_",
+            $doc1->storage_path,
+        );
+
+        $this->assertStringStartsWith(
+            "documents/{$registration->id}/naturalTaxCertificate2_",
+            $doc2->storage_path,
+        );
     }
 
     #[Test]
@@ -245,8 +251,8 @@ class RegistrationUpsertServiceTest extends TestCase
         $this->service->upsert($this->makeSubmissionDTO());
 
         $this->assertDatabaseHas('registrations', [
-            'singapur_client_code'  => '000001',
-            'singapur_folder_name'  => '000001_NOVA CONSULTORA EMPRESARIAL',
+            'singapur_client_code' => '000001',
+            'singapur_folder_name' => '000001_NOVA CONSULTORA EMPRESARIAL',
         ]);
     }
 
@@ -271,10 +277,9 @@ class RegistrationUpsertServiceTest extends TestCase
     /**
      * Build a SingapurSubmissionDTO for use in tests.
      *
-     * @param  string  $id           Submission UUID.
-     * @param  string  $companyName        Proposed company name.
+     * @param  string  $id  Submission UUID.
+     * @param  string  $companyName  Proposed company name.
      * @param  string  $companyFolderName  Relay folder identifier.
-     * @return SingapurSubmissionDTO
      */
     private function makeSubmissionDTO(
         string $id = '7dde1760-57d4-4f4e-b81b-3ae2b93025d0',
@@ -282,48 +287,48 @@ class RegistrationUpsertServiceTest extends TestCase
         string $companyFolderName = '000001_NOVA CONSULTORA EMPRESARIAL',
     ): SingapurSubmissionDTO {
         return new SingapurSubmissionDTO(
-            id:                 $id,
+            id: $id,
             registrationNumber: '000001',
-            companyFolderName:  $companyFolderName,
-            companyName:        $companyName,
-            companyType:        'sa',
-            language:           'zh',
+            companyFolderName: $companyFolderName,
+            companyName: $companyName,
+            companyType: 'sa',
+            language: 'zh',
             shareholders: [
                 new SingapurShareholderDTO(
-                    index:                   1,
-                    type:                    'natural',
-                    name:                    '吴佳鑫',
-                    nationality:             'china',
-                    email:                   '上海',
+                    index: 1,
+                    type: 'natural',
+                    name: '吴佳鑫',
+                    nationality: 'china',
+                    email: '上海',
                     participationPercentage: 50.0,
-                    isMarried:               true,
+                    isMarried: true,
                 ),
                 new SingapurShareholderDTO(
-                    index:                   2,
-                    type:                    'natural',
-                    name:                    '李锐佳',
-                    nationality:             'china',
-                    email:                   '上海',
+                    index: 2,
+                    type: 'natural',
+                    name: '李锐佳',
+                    nationality: 'china',
+                    email: '上海',
                     participationPercentage: 50.0,
-                    isMarried:               true,
+                    isMarried: true,
                 ),
             ],
             files: [
                 SingapurFileDTO::fromArray([
-                    'field'         => 'naturalTaxCertificate1',
+                    'field' => 'naturalTaxCertificate1',
                     'original_name' => 'JIAXIN_WU_TAX_ID.pdf',
-                    'stored_name'   => 'uuid-1.pdf',
-                    'relay_name'    => '000001__naturalTaxCertificate1__tax.pdf',
-                    'content_type'  => 'application/pdf',
-                    'size'          => 108548,
+                    'relay_name' => '000001__naturalTaxCertificate1__tax.pdf',
+                    'content_type' => 'application/pdf',
+                    'size' => 108548,
+                    'content' => base64_encode('fake-pdf-content-1'),
                 ]),
                 SingapurFileDTO::fromArray([
-                    'field'         => 'naturalTaxCertificate2',
+                    'field' => 'naturalTaxCertificate2',
                     'original_name' => 'RUIJIA_LI_TAX_ID.pdf',
-                    'stored_name'   => 'uuid-2.pdf',
-                    'relay_name'    => '000001__naturalTaxCertificate2__tax.pdf',
-                    'content_type'  => 'application/pdf',
-                    'size'          => 108121,
+                    'relay_name' => '000001__naturalTaxCertificate2__tax.pdf',
+                    'content_type' => 'application/pdf',
+                    'size' => 108121,
+                    'content' => base64_encode('fake-pdf-content-2'),
                 ]),
             ],
         );

@@ -5,15 +5,14 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Adds relay-tracking columns needed for lazy document download.
+ * Adds singapur_folder_name to registrations.
  *
  * registrations.singapur_folder_name — the folder identifier used to request
  *   the document ZIP from the Singapur relay API (e.g. '000001_NOVA CONSULTORA EMPRESARIAL').
  *
- * documents.relay_zip_path — the entry path within the ZIP archive for this
- *   specific file (e.g. 'KYC/shareholder_1/000001__...pdf'). Used by
- *   SingapurRelayService to extract only the requested file without unpacking
- *   the entire archive.
+ * NOTE: documents.relay_zip_path was previously added here but has been removed.
+ * storage_path (its successor) is now defined directly in the create_documents_table
+ * migration. The rename migration (2026_06_20) is consequently a no-op.
  */
 return new class extends Migration
 {
@@ -28,13 +27,6 @@ return new class extends Migration
                 ->after('singapur_package_id')
                 ->comment('Relay folder name used to request the document ZIP (e.g. 000001_NOVA CONSULTORA EMPRESARIAL)');
         });
-
-        Schema::table('documents', function (Blueprint $table) {
-            $table->string('relay_zip_path')
-                ->nullable()
-                ->after('name')
-                ->comment('Entry path within the relay ZIP archive (e.g. KYC/shareholder_1/relay_name.pdf)');
-        });
     }
 
     /**
@@ -44,10 +36,6 @@ return new class extends Migration
     {
         Schema::table('registrations', function (Blueprint $table) {
             $table->dropColumn('singapur_folder_name');
-        });
-
-        Schema::table('documents', function (Blueprint $table) {
-            $table->dropColumn('relay_zip_path');
         });
     }
 };

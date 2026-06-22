@@ -25,7 +25,7 @@ class WebhookController extends Controller
      * and dispatches the processing job asynchronously.
      *
      * @param  Request  $request  Incoming HTTP request with event payload.
-     * @return JsonResponse       202 Accepted on success, 409 if already received, 401 if unauthorized.
+     * @return JsonResponse 202 Accepted on success, 409 if already received, 401 if unauthorized.
      */
     public function singapur(Request $request): JsonResponse
     {
@@ -39,11 +39,12 @@ class WebhookController extends Controller
             );
         }
 
-        $eventId = $request->input('event_id');
+        // China sends the submission UUID in the `id` field (see submission.json).
+        $eventId = $request->input('id');
 
         if (blank($eventId)) {
             return response()->json(
-                ['error' => 'Missing event_id'],
+                ['error' => 'Missing id'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -59,9 +60,9 @@ class WebhookController extends Controller
         // Persist the raw event before dispatching to avoid losing data on job failure.
         $webhookEvent = WebhookEvent::create([
             'event_id' => $eventId,
-            'source'   => 'singapur_relay',
-            'payload'  => $request->all(),
-            'status'   => 'pending',
+            'source' => 'singapur_relay',
+            'payload' => $request->all(),
+            'status' => 'pending',
         ]);
 
         ProcessSingapurWebhook::dispatch($webhookEvent);

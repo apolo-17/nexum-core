@@ -23,6 +23,7 @@ return new class extends Migration
             $table->string('role')->comment('legal_representative, shareholder, commissary');
             $table->string('email')->nullable();
             $table->string('phone')->nullable()->comment('Phone number with country code');
+            $table->boolean('is_married')->default(false)->comment('Whether the shareholder is married — determines which KYC documents are expected (marriage cert + spouse passport)');
 
             $table->timestamps();
         });

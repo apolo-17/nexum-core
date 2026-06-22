@@ -21,19 +21,25 @@ class NotarioStatsOverview extends StatsOverviewWidget
 {
     /**
      * Sort before Filament built-in widgets (AccountWidget = -2).
-     *
-     * @var int|null
      */
     protected static ?int $sort = -10;
 
     /**
      * Restrict this widget to notario users only.
-     *
-     * @return bool
      */
     public static function canView(): bool
     {
-        return Auth::user()?->hasRole('notario') ?? false;
+        $user = Auth::user();
+
+        if ($user === null) {
+            return false;
+        }
+
+        try {
+            return $user->hasRole('notario');
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**

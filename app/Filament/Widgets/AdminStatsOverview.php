@@ -20,19 +20,31 @@ class AdminStatsOverview extends StatsOverviewWidget
 {
     /**
      * Sort before Filament built-in widgets (AccountWidget = -2).
-     *
-     * @var int|null
      */
     protected static ?int $sort = -10;
 
     /**
-     * Restrict this widget to super_admin users only.
+     * Visible to super_admin users and to users who have no role yet (initial setup).
      *
-     * @return bool
+     * Falls back to true when Spatie roles are not yet seeded so the dashboard is
+     * not a blank page on a fresh deployment. Once roles are seeded, only super_admin
+     * will see this widget — notario and asistente_notario have their own widgets.
      */
     public static function canView(): bool
     {
-        return Auth::user()?->hasRole('super_admin') ?? false;
+        $user = Auth::user();
+
+        if ($user === null) {
+            return false;
+        }
+
+        try {
+            // Show for super_admin and for accounts with no role yet (fresh setup).
+            return $user->hasRole('super_admin') || $user->roles->isEmpty();
+        } catch (\Throwable) {
+            // If Spatie is not configured yet, show to all authenticated admin users.
+            return true;
+        }
     }
 
     /**
@@ -45,8 +57,8 @@ class AdminStatsOverview extends StatsOverviewWidget
      */
     protected function getStats(): array
     {
-        $active    = Registration::where('status', RegistrationStatusEnum::ACTIVE)->count();
-        $onHold    = Registration::where('status', RegistrationStatusEnum::ON_HOLD)->count();
+        $active = Registration::where('status', RegistrationStatusEnum::ACTIVE)->count();
+        $onHold = Registration::where('status', RegistrationStatusEnum::ON_HOLD)->count();
         $completed = Registration::where('status', RegistrationStatusEnum::COMPLETED)->count();
         $cancelled = Registration::where('status', RegistrationStatusEnum::CANCELLED)->count();
 

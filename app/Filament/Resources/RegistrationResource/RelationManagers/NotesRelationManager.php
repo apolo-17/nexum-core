@@ -25,10 +25,15 @@ class NotesRelationManager extends RelationManager
     protected static ?string $title = 'Notas internas';
 
     /**
+     * Allow mutations (create, edit, delete) even when rendered inside a ViewRecord page.
+     */
+    public function isReadOnly(): bool
+    {
+        return false;
+    }
+
+    /**
      * Define the form schema for creating and editing notes.
-     *
-     * @param  Schema  $schema
-     * @return Schema
      */
     public function form(Schema $schema): Schema
     {
@@ -44,9 +49,6 @@ class NotesRelationManager extends RelationManager
 
     /**
      * Define the table columns for the notes feed.
-     *
-     * @param  Table  $table
-     * @return Table
      */
     public function table(Table $table): Table
     {

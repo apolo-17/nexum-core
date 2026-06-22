@@ -3,43 +3,68 @@
 namespace App\Enums;
 
 /**
- * Represents the eight sequential stages of a company registration process.
+ * Represents the nine sequential stages of a company registration process.
  *
- * Each case maps to a specific phase the notary team tracks in the dashboard.
- * Transitions are recorded in stage_transitions and enforced by the state machine service.
+ * Order reflects the real notary workflow:
+ *   Data → Identity → Legal name → Partner signatures (DocuSign) →
+ *   Incorporation → Tax address → SAT registration → e.firma → Completed
+ *
+ * Stages advance sequentially via StageTransitionService::advance().
+ * No hard gates — the notary team confirms each stage when ready.
  */
 enum RegistrationStageEnum: string
 {
-    case DATA_RECEIVED        = 'data_received';
-    case IDENTITY_VALIDATION  = 'identity_validation';
-    case LEGAL_NAME           = 'legal_name';
-    case INCORPORATION        = 'incorporation';
-    case BANK_ACCOUNT         = 'bank_account';
-    case SAT_REGISTRATION     = 'sat_registration';
-    case EFIRMA_APPOINTMENT   = 'efirma_appointment';
-    case COMPLETED            = 'completed';
+    case DATA_RECEIVED = 'data_received';
+    case IDENTITY_VALIDATION = 'identity_validation';
+    case LEGAL_NAME = 'legal_name';
+    case ACTA_PREPARATION = 'acta_preparation';
+    case PARTNER_SIGNATURE = 'partner_signature';
+    case INCORPORATION = 'incorporation';
+    case TAX_ADDRESS = 'tax_address';
+    case SAT_REGISTRATION = 'sat_registration';
+    case EFIRMA_APPOINTMENT = 'efirma_appointment';
+    case COMPLETED = 'completed';
 
     /**
-     * Return a human-readable Spanish label for display in the dashboard.
-     *
-     * @return string
+     * Return a human-readable Spanish label for display in the dashboard pipeline.
      */
     public function label(): string
     {
-        return match($this) {
-            self::DATA_RECEIVED       => 'Datos recibidos',
+        return match ($this) {
+            self::DATA_RECEIVED => 'Datos recibidos',
             self::IDENTITY_VALIDATION => 'Validación de identidad',
-            self::LEGAL_NAME          => 'Denominación social',
-            self::INCORPORATION       => 'Constitución de empresa',
-            self::BANK_ACCOUNT        => 'Apertura de cuenta bancaria',
-            self::SAT_REGISTRATION    => 'Alta en el SAT',
-            self::EFIRMA_APPOINTMENT  => 'Cita e.firma SAT',
-            self::COMPLETED           => 'Empresa operativa',
+            self::LEGAL_NAME => 'Denominación social',
+            self::ACTA_PREPARATION => 'Preparación del acta',
+            self::PARTNER_SIGNATURE => 'Firma de socios',
+            self::INCORPORATION => 'Constitución de empresa',
+            self::TAX_ADDRESS => 'Domicilio fiscal',
+            self::SAT_REGISTRATION => 'Alta en el SAT',
+            self::EFIRMA_APPOINTMENT => 'Cita e.firma SAT',
+            self::COMPLETED => 'Empresa operativa',
         };
     }
 
     /**
-     * Return the ordered list of all stages for state machine validation.
+     * Return a short label suitable for use in the compact horizontal pipeline stepper.
+     */
+    public function shortLabel(): string
+    {
+        return match ($this) {
+            self::DATA_RECEIVED => 'Datos',
+            self::IDENTITY_VALIDATION => 'Identidad',
+            self::LEGAL_NAME => 'Denominación',
+            self::ACTA_PREPARATION => 'Borrador acta',
+            self::PARTNER_SIGNATURE => 'Firma socios',
+            self::INCORPORATION => 'Constitución',
+            self::TAX_ADDRESS => 'Dom. fiscal',
+            self::SAT_REGISTRATION => 'Alta SAT',
+            self::EFIRMA_APPOINTMENT => 'e.firma',
+            self::COMPLETED => 'Operativo',
+        };
+    }
+
+    /**
+     * Return the ordered list of all active stages for state machine validation.
      *
      * @return array<int, self>
      */
@@ -49,8 +74,10 @@ enum RegistrationStageEnum: string
             self::DATA_RECEIVED,
             self::IDENTITY_VALIDATION,
             self::LEGAL_NAME,
+            self::ACTA_PREPARATION,
+            self::PARTNER_SIGNATURE,
             self::INCORPORATION,
-            self::BANK_ACCOUNT,
+            self::TAX_ADDRESS,
             self::SAT_REGISTRATION,
             self::EFIRMA_APPOINTMENT,
             self::COMPLETED,

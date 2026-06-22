@@ -19,22 +19,16 @@ class StageDistributionChart extends ChartWidget
 {
     /**
      * Widget heading shown above the chart.
-     *
-     * @var string|null
      */
     protected ?string $heading = 'Distribución por etapa';
 
     /**
      * Description shown below the heading.
-     *
-     * @var string|null
      */
     protected ?string $description = 'Expedientes activos y en pausa por etapa (excluye cancelados)';
 
     /**
      * Sort immediately after AdminStatsOverview (sort = -10).
-     *
-     * @var int|null
      */
     protected static ?int $sort = -9;
 
@@ -43,16 +37,24 @@ class StageDistributionChart extends ChartWidget
      *
      * @var int|string|array<string, mixed>
      */
-    protected int | string | array $columnSpan = 'full';
+    protected int|string|array $columnSpan = 'full';
 
     /**
-     * Restrict this widget to super_admin users only.
-     *
-     * @return bool
+     * Visible to super_admin users and to users with no role yet (initial setup).
      */
     public static function canView(): bool
     {
-        return Auth::user()?->hasRole('super_admin') ?? false;
+        $user = Auth::user();
+
+        if ($user === null) {
+            return false;
+        }
+
+        try {
+            return $user->hasRole('super_admin') || $user->roles->isEmpty();
+        } catch (\Throwable) {
+            return true;
+        }
     }
 
     /**
@@ -72,22 +74,22 @@ class StageDistributionChart extends ChartWidget
             ->toArray();
 
         $labels = [];
-        $data   = [];
+        $data = [];
 
         foreach (RegistrationStageEnum::orderedStages() as $stage) {
             $labels[] = $stage->label();
-            $data[]   = $countsRaw[$stage->value] ?? 0;
+            $data[] = $countsRaw[$stage->value] ?? 0;
         }
 
         return [
             'datasets' => [
                 [
-                    'label'           => 'Expedientes',
-                    'data'            => $data,
+                    'label' => 'Expedientes',
+                    'data' => $data,
                     'backgroundColor' => 'rgba(59, 130, 246, 0.85)',
-                    'borderColor'     => 'rgba(37, 99, 235, 1)',
-                    'borderWidth'     => 1,
-                    'borderRadius'    => 4,
+                    'borderColor' => 'rgba(37, 99, 235, 1)',
+                    'borderWidth' => 1,
+                    'borderRadius' => 4,
                 ],
             ],
             'labels' => $labels,
@@ -119,7 +121,7 @@ class StageDistributionChart extends ChartWidget
                 ],
                 'y' => [
                     'beginAtZero' => true,
-                    'ticks'       => [
+                    'ticks' => [
                         'stepSize' => 1,
                     ],
                 ],
@@ -129,8 +131,6 @@ class StageDistributionChart extends ChartWidget
 
     /**
      * Return the chart type identifier for Chart.js.
-     *
-     * @return string
      */
     protected function getType(): string
     {

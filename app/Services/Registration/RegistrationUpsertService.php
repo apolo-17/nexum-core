@@ -14,6 +14,8 @@ use App\Models\LegalName;
 use App\Models\Registration;
 use App\Models\Shareholder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Creates or updates a Registration and all its related entities from a Singapur submission.
@@ -32,7 +34,7 @@ class RegistrationUpsertService
      * to Drive is a separate manual step performed by the notary team.
      *
      * @param  SingapurSubmissionDTO  $dto  Parsed submission package.
-     * @return Registration                 The created or updated registration.
+     * @return Registration The created or updated registration.
      */
     public function upsert(SingapurSubmissionDTO $dto): Registration
     {
@@ -54,7 +56,6 @@ class RegistrationUpsertService
      * Stage and status are never regressed by an update.
      *
      * @param  SingapurSubmissionDTO  $dto  Parsed submission package.
-     * @return Registration
      */
     private function upsertRegistration(SingapurSubmissionDTO $dto): Registration
     {
@@ -62,21 +63,35 @@ class RegistrationUpsertService
         $registration = Registration::firstOrCreate(
             ['singapur_client_code' => $dto->registrationNumber],
             [
-                'singapur_package_id'  => $dto->id,
+                'singapur_package_id' => $dto->id,
                 'singapur_folder_name' => $dto->companyFolderName,
-                'company_type'         => $dto->resolvedCompanyType(),
-                'stage'                => RegistrationStageEnum::DATA_RECEIVED,
-                'status'               => RegistrationStatusEnum::ACTIVE,
+                'company_type' => $dto->resolvedCompanyType(),
+                'company_object' => $dto->companyObject,
+                'capital_social' => $dto->capitalSocial,
+                'stage' => RegistrationStageEnum::DATA_RECEIVED,
+                'status' => RegistrationStatusEnum::ACTIVE,
             ],
         );
 
         // Refresh relay metadata on subsequent deliveries without touching stage/status.
+        // Corporate fields (company_object, capital_social) are only updated when the relay
+        // provides them, so manual edits by the notary team are not silently overwritten.
         if (! $registration->wasRecentlyCreated) {
-            $registration->update([
-                'singapur_package_id'  => $dto->id,
+            $updates = [
+                'singapur_package_id' => $dto->id,
                 'singapur_folder_name' => $dto->companyFolderName,
-                'company_type'         => $dto->resolvedCompanyType(),
-            ]);
+                'company_type' => $dto->resolvedCompanyType(),
+            ];
+
+            if (filled($dto->companyObject)) {
+                $updates['company_object'] = $dto->companyObject;
+            }
+
+            if (filled($dto->capitalSocial)) {
+                $updates['capital_social'] = $dto->capitalSocial;
+            }
+
+            $registration->update($updates);
         }
 
         return $registration;
@@ -90,8 +105,7 @@ class RegistrationUpsertService
      * (not in PROCESS or APPROVED state) to preserve notary team work.
      *
      * @param  Registration  $registration  Target registration.
-     * @param  string        $companyName   Proposed company denomination from the relay.
-     * @return void
+     * @param  string  $companyName  Proposed company denomination from the relay.
      */
     private function upsertInitialLegalName(Registration $registration, string $companyName): void
     {
@@ -105,9 +119,9 @@ class RegistrationUpsertService
         if ($existing === null) {
             LegalName::create([
                 'registration_id' => $registration->id,
-                'name'            => $companyName,
-                'priority'        => 1,
-                'status'          => LegalNameStatusEnum::WAIT,
+                'name' => $companyName,
+                'priority' => 1,
+                'status' => LegalNameStatusEnum::WAIT,
             ]);
 
             return;
@@ -127,9 +141,8 @@ class RegistrationUpsertService
      * The first shareholder (index 1) is assigned the LEGAL_REPRESENTATIVE role
      * by default; the rest are SHAREHOLDER.
      *
-     * @param  Registration                   $registration   Target registration.
-     * @param  list<SingapurShareholderDTO>   $shareholders   Parsed shareholder DTOs.
-     * @return void
+     * @param  Registration  $registration  Target registration.
+     * @param  list<SingapurShareholderDTO>  $shareholders  Parsed shareholder DTOs.
      */
     private function syncShareholders(Registration $registration, array $shareholders): void
     {
@@ -144,9 +157,8 @@ class RegistrationUpsertService
     /**
      * Persist a single shareholder record.
      *
-     * @param  Registration           $registration  Parent registration.
-     * @param  SingapurShareholderDTO $dto           Shareholder data from the relay.
-     * @return Shareholder
+     * @param  Registration  $registration  Parent registration.
+     * @param  SingapurShareholderDTO  $dto  Shareholder data from the relay.
      */
     private function createShareholder(Registration $registration, SingapurShareholderDTO $dto): Shareholder
     {
@@ -156,15 +168,23 @@ class RegistrationUpsertService
             : ShareholderRoleEnum::SHAREHOLDER;
 
         return Shareholder::create([
-            'registration_id'         => $registration->id,
-            'name'                    => $dto->name,
-            'nationality'             => $dto->nationality,
-            'email'                   => $dto->email,
+            'registration_id' => $registration->id,
+            'name' => $dto->name,
+            'nationality' => $dto->nationality,
+            'email' => $dto->email,
             'participation_percentage' => $dto->participationPercentage,
-            'role'                    => $role,
-            // Passport number is not available from the relay; it is filled
-            // manually by the notary team after reviewing the passport document.
-            'passport_number'         => null,
+            'role' => $role,
+            'is_married' => $dto->isMarried,
+            'gender' => $dto->gender,
+            'birthdate' => $dto->birthdate,
+            'birthplace' => $dto->birthplace,
+            'civil_status' => $dto->civilStatus,
+            'phone' => $dto->phone,
+            'phone_country_code' => $dto->phoneCountryCode,
+            'tax_id' => $dto->taxId,
+            // Passport number is not in the relay; filled manually by the notary
+            // team or extracted automatically from the passport via Claude vision.
+            'passport_number' => null,
         ]);
     }
 
@@ -175,9 +195,8 @@ class RegistrationUpsertService
      * duplicates on redelivery. Google Drive fields remain null until the notary
      * team uploads the physical file via the dashboard.
      *
-     * @param  Registration           $registration  Target registration.
-     * @param  list<SingapurFileDTO>  $files         File entries from the submission.
-     * @return void
+     * @param  Registration  $registration  Target registration.
+     * @param  list<SingapurFileDTO>  $files  File entries from the submission.
      */
     private function createDocumentMetadata(Registration $registration, array $files): void
     {
@@ -187,16 +206,17 @@ class RegistrationUpsertService
     }
 
     /**
-     * Persist a Document metadata record if one with the same relay_name does not exist.
+     * Persist a Document record for an incoming file entry.
      *
-     * The relay_zip_path is derived from the document group ('KYC'), the shareholder
-     * index embedded in the field name (e.g. naturalTaxCertificate1 → 1), and the
-     * relay_name filename. This path is used later by SingapurRelayService to extract
-     * a single file from the ZIP without unpacking the entire archive.
+     * When the file carries base64 content it is decoded and stored in the
+     * configured filesystem (R2 in production, local in development). The
+     * storage path is saved in storage_path for retrieval from the dashboard.
      *
-     * @param  Registration     $registration  Parent registration.
-     * @param  SingapurFileDTO  $file          File DTO from the submission package.
-     * @return void
+     * Skips creation if a Document with the same relay_name already exists to
+     * remain idempotent on redelivery.
+     *
+     * @param  Registration  $registration  Parent registration.
+     * @param  SingapurFileDTO  $file  File DTO from the webhook payload.
      */
     private function createDocumentIfNotExists(Registration $registration, SingapurFileDTO $file): void
     {
@@ -208,37 +228,60 @@ class RegistrationUpsertService
             return;
         }
 
-        $relayZipPath = $this->buildRelayZipPath($file);
+        // Store the file in R2 (or local disk in development) when content is provided.
+        $storagePath = null;
+
+        if ($file->hasContent()) {
+            $storagePath = $this->storeFileFromBase64($registration, $file);
+        }
 
         Document::create([
-            'registration_id'      => $registration->id,
-            'type'                 => $file->documentType(),
-            'name'                 => $file->relayName,
-            'relay_zip_path'       => $relayZipPath,
+            'registration_id' => $registration->id,
+            'type' => $file->documentType(),
+            'name' => $file->relayName,
+            'storage_path' => $storagePath,
             'google_drive_file_id' => null,
-            'google_drive_url'     => null,
-            'stage'                => RegistrationStageEnum::DATA_RECEIVED,
+            'google_drive_url' => null,
+            'stage' => RegistrationStageEnum::DATA_RECEIVED,
+            // Link KYC documents to their shareholder via 1-based relay index.
+            'shareholder_index' => $file->shareholderIndex(),
         ]);
     }
 
     /**
-     * Derive the entry path of a file within the relay ZIP archive.
+     * Decode base64 file content and persist it to the configured storage disk.
      *
-     * The relay always organises documents under 'KYC/shareholder_{N}/' where N
-     * is the 1-based shareholder index embedded in the field name suffix.
-     * Non-shareholder files (no numeric suffix) fall directly under 'KYC/'.
+     * Files are stored under documents/{registration_id}/{field}_{originalName}
+     * to avoid collisions between shareholders sharing the same document type.
      *
-     * @param  SingapurFileDTO  $file  File DTO from the submission package.
-     * @return string                  ZIP entry path (e.g. 'KYC/shareholder_1/relay_name.pdf').
+     * @param  Registration  $registration  Parent registration for the path prefix.
+     * @param  SingapurFileDTO  $file  File DTO carrying the base64 content.
+     * @return string Storage path where the file was saved.
      */
-    private function buildRelayZipPath(SingapurFileDTO $file): string
+    private function storeFileFromBase64(Registration $registration, SingapurFileDTO $file): string
     {
-        $shareholderIndex = $file->shareholderIndex();
+        $binaryContent = base64_decode($file->content, strict: true);
 
-        if ($shareholderIndex !== null) {
-            return "KYC/shareholder_{$shareholderIndex}/{$file->relayName}";
+        if ($binaryContent === false) {
+            Log::warning('Failed to decode base64 content for document — skipping storage.', [
+                'registration_id' => $registration->id,
+                'field' => $file->field,
+                'relay_name' => $file->relayName,
+            ]);
+
+            return "pending/{$registration->id}/{$file->field}_{$file->originalName}";
         }
 
-        return "KYC/{$file->relayName}";
+        $path = "documents/{$registration->id}/{$file->field}_{$file->originalName}";
+
+        Storage::put($path, $binaryContent);
+
+        Log::info('Document stored from webhook payload.', [
+            'registration_id' => $registration->id,
+            'path' => $path,
+            'size' => strlen($binaryContent),
+        ]);
+
+        return $path;
     }
 }

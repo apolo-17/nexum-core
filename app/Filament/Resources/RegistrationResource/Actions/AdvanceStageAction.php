@@ -20,10 +20,9 @@ class AdvanceStageAction
     /**
      * Build and return the configured Filament Action instance.
      *
-     * @param  Registration          $registration          The current registration record.
-     * @param  Authenticatable       $performedBy           The authenticated dashboard user.
-     * @param  StageTransitionService $stageTransitionService  Injected service handling the transition.
-     * @return Action
+     * @param  Registration  $registration  The current registration record.
+     * @param  Authenticatable  $performedBy  The authenticated dashboard user.
+     * @param  StageTransitionService  $stageTransitionService  Injected service handling the transition.
      */
     public static function make(
         Registration $registration,
@@ -31,19 +30,21 @@ class AdvanceStageAction
         StageTransitionService $stageTransitionService,
     ): Action {
         return Action::make('advance_stage')
-            ->label('Avanzar etapa')
-            ->icon('heroicon-o-arrow-right-circle')
+            ->label(
+                fn (): string => '✓ Confirmar: '.($stageTransitionService->nextStage($registration->stage)?->label() ?? 'completado')
+            )
+            ->icon('heroicon-o-check-circle')
             ->color('success')
             ->visible(fn (): bool => $stageTransitionService->canAdvance($registration))
-            ->modalHeading('Avanzar etapa del expediente')
+            ->modalHeading(fn (): string => 'Confirmar etapa: '.($stageTransitionService->nextStage($registration->stage)?->label() ?? ''))
             ->modalDescription(
                 fn (): string => sprintf(
-                    'Actualmente en: **%s**. Se avanzará a: **%s**.',
+                    'La etapa **%s** quedará marcada como completada y el expediente avanzará a **%s**.',
                     $registration->stage->label(),
                     $stageTransitionService->nextStage($registration->stage)?->label() ?? '—',
                 )
             )
-            ->modalSubmitActionLabel('Confirmar avance')
+            ->modalSubmitActionLabel('Confirmar ✓')
             ->modalIcon('heroicon-o-arrow-right-circle')
             ->form([
                 Textarea::make('reason')

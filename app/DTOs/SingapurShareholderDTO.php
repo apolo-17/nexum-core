@@ -7,17 +7,28 @@ namespace App\DTOs;
  *
  * All shareholder fields come from the `fields` section of submission.json
  * using the pattern `natural{Field}{index}` for natural persons.
+ *
+ * Identity fields (gender, birthdate, birthplace) are optional: when provided
+ * by the relay they are persisted immediately; when absent they are extracted
+ * automatically by AnalyzeDocumentJob once the passport is approved.
  */
 readonly class SingapurShareholderDTO
 {
     /**
-     * @param  int     $index                   1-based index as received in the submission.
-     * @param  string  $type                    Shareholder type: 'natural' or 'juridica'.
-     * @param  string  $name                    Full legal name.
-     * @param  string  $nationality             Country of nationality as received (e.g., 'china').
-     * @param  string  $email                   Email address (may contain city names in legacy submissions).
-     * @param  float   $participationPercentage Ownership share as a percentage.
-     * @param  bool    $isMarried               Whether the shareholder is married.
+     * @param  int  $index  1-based index as received in the submission.
+     * @param  string  $type  Shareholder type: 'natural' or 'juridica'.
+     * @param  string  $name  Full legal name.
+     * @param  string  $nationality  Country of nationality as received (e.g., 'china').
+     * @param  string  $email  Email address.
+     * @param  float  $participationPercentage  Ownership share as a percentage.
+     * @param  bool  $isMarried  Whether the shareholder is married.
+     * @param  string|null  $gender  'M' or 'F'. Extracted from passport if not provided.
+     * @param  string|null  $birthdate  ISO-8601 date (YYYY-MM-DD). Extracted from passport if not provided.
+     * @param  string|null  $birthplace  City / country of birth. Extracted from passport if not provided.
+     * @param  string|null  $civilStatus  soltero | casado | divorciado | viudo. Derived from isMarried if not provided.
+     * @param  string|null  $phone  Phone number. Used for DocuSign SMS verification.
+     * @param  string|null  $phoneCountryCode  E.164 dialling code, e.g. '+86'.
+     * @param  string|null  $taxId  Foreign tax ID (NIF, TIN, etc.). Not applicable for Chinese nationals.
      */
     public function __construct(
         public int $index,
@@ -27,5 +38,12 @@ readonly class SingapurShareholderDTO
         public string $email,
         public float $participationPercentage,
         public bool $isMarried,
+        public ?string $gender,
+        public ?string $birthdate,
+        public ?string $birthplace,
+        public ?string $civilStatus,
+        public ?string $phone,
+        public ?string $phoneCountryCode,
+        public ?string $taxId,
     ) {}
 }

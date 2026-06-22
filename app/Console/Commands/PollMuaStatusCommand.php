@@ -7,6 +7,7 @@ namespace App\Console\Commands;
 use App\Enums\LegalNameStatusEnum;
 use App\Models\LegalName;
 use App\Models\Registration;
+use App\Notifications\DenominationResolvedNotification;
 use App\Services\LegalName\CheckMuaAvailabilityService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -225,10 +226,9 @@ class PollMuaStatusCommand extends Command
             return;
         }
 
-        // TODO: Create DenominationResolvedNotification class.
-        // Notification::send($notario, new DenominationResolvedNotification($registration, $name, $approved));
+        Notification::send($notario, new DenominationResolvedNotification($registration, $name, $approved));
 
-        Log::info('Notario notification queued (implementation pending).', [
+        Log::info('Denomination resolution notification sent to notario.', [
             'registration_id' => $registration->id,
             'notario_id'      => $notario->id,
             'name'            => $name,

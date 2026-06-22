@@ -28,10 +28,15 @@ class LegalNamesRelationManager extends RelationManager
     protected static ?string $title = 'Denominaciones sociales';
 
     /**
+     * Allow mutations (create, edit, delete) even when rendered inside a ViewRecord page.
+     */
+    public function isReadOnly(): bool
+    {
+        return false;
+    }
+
+    /**
      * Define the form schema for creating and editing legal name proposals.
-     *
-     * @param  Schema  $schema
-     * @return Schema
      */
     public function form(Schema $schema): Schema
     {
@@ -59,9 +64,6 @@ class LegalNamesRelationManager extends RelationManager
 
     /**
      * Define the table columns for the legal names list.
-     *
-     * @param  Table  $table
-     * @return Table
      */
     public function table(Table $table): Table
     {
@@ -73,11 +75,11 @@ class LegalNamesRelationManager extends RelationManager
                     ->label('Estatus')
                     ->formatStateUsing(fn (LegalNameStatusEnum $state) => $state->label())
                     ->colors([
-                        'gray'    => LegalNameStatusEnum::WAIT->value,
+                        'gray' => LegalNameStatusEnum::WAIT->value,
                         'warning' => LegalNameStatusEnum::PENDING->value,
-                        'info'    => LegalNameStatusEnum::PROCESS->value,
+                        'info' => LegalNameStatusEnum::PROCESS->value,
                         'success' => LegalNameStatusEnum::APPROVED->value,
-                        'danger'  => LegalNameStatusEnum::REJECTED->value,
+                        'danger' => LegalNameStatusEnum::REJECTED->value,
                     ]),
                 TextColumn::make('clave_unica_denominacion')->label('Clave SE')->placeholder('—'),
             ])

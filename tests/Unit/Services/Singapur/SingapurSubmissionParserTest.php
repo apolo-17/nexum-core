@@ -21,7 +21,7 @@ class SingapurSubmissionParserTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->parser = new SingapurSubmissionParser();
+        $this->parser = new SingapurSubmissionParser;
     }
 
     // -------------------------------------------------------------------------
@@ -115,7 +115,7 @@ class SingapurSubmissionParserTest extends TestCase
     }
 
     #[Test]
-    public function it_maps_naturalPassport_field_to_passport_document_type(): void
+    public function it_maps_natural_passport_field_to_passport_document_type(): void
     {
         $data = $this->sampleSubmission();
         $data['files'] = [$this->makeFile('naturalPassport1', 'passport.pdf')];
@@ -126,7 +126,7 @@ class SingapurSubmissionParserTest extends TestCase
     }
 
     #[Test]
-    public function it_maps_naturalTaxCertificate_field_to_csf_document_type(): void
+    public function it_maps_natural_tax_certificate_field_to_csf_document_type(): void
     {
         $data = $this->sampleSubmission();
         $data['files'] = [$this->makeFile('naturalTaxCertificate1', 'tax.pdf')];
@@ -223,43 +223,43 @@ class SingapurSubmissionParserTest extends TestCase
     private function sampleSubmission(): array
     {
         return [
-            'id'                  => '7dde1760-57d4-4f4e-b81b-3ae2b93025d0',
-            'type'                => 'company-registration',
+            'id' => '7dde1760-57d4-4f4e-b81b-3ae2b93025d0',
+            'type' => 'company-registration',
             'registration_number' => '000001',
             'company_folder_name' => '000001_NOVA CONSULTORA EMPRESARIAL',
-            'document_group'      => 'KYC',
-            'created_at'          => '2026-06-14T22:35:56.765341+00:00',
+            'document_group' => 'KYC',
+            'created_at' => '2026-06-14T22:35:56.765341+00:00',
             'fields' => [
-                'companyName'              => 'NOVA CONSULTORÍA EMPRESARIAL',
-                'companyType'              => 'sa',
-                'shareholderCount'         => '2',
-                'shareholderType1'         => 'natural',
-                'naturalShareholderName1'  => '吴佳鑫',
+                'companyName' => 'NOVA CONSULTORÍA EMPRESARIAL',
+                'companyType' => 'sa',
+                'shareholderCount' => '2',
+                'shareholderType1' => 'natural',
+                'naturalShareholderName1' => '吴佳鑫',
                 'naturalShareholderEmail1' => '上海',
-                'naturalSharePercentage1'  => '50',
-                'naturalNationality1'      => 'china',
+                'naturalSharePercentage1' => '50',
+                'naturalNationality1' => 'china',
                 'naturalOtherNationality1' => '',
-                'naturalMarried1'          => 'yes',
-                'shareholderType2'         => 'natural',
-                'naturalShareholderName2'  => '李锐佳',
+                'naturalMarried1' => 'yes',
+                'shareholderType2' => 'natural',
+                'naturalShareholderName2' => '李锐佳',
                 'naturalShareholderEmail2' => '上海',
-                'naturalSharePercentage2'  => '50',
-                'naturalNationality2'      => 'china',
+                'naturalSharePercentage2' => '50',
+                'naturalNationality2' => 'china',
                 'naturalOtherNationality2' => '',
-                'naturalMarried2'          => 'yes',
-                '_formId'                  => 'companyRegistrationForm',
-                '_page'                    => '/company-registration/',
-                '_language'                => 'zh',
+                'naturalMarried2' => 'yes',
+                '_formId' => 'companyRegistrationForm',
+                '_page' => '/company-registration/',
+                '_language' => 'zh',
             ],
             'files' => [
-                $this->makeFile('naturalTaxCertificate1',      'JIAXIN_WU_TAX_ID.pdf'),
-                $this->makeFile('naturalProofAddress1',        'JIAXIN_WU_PROOF_OF_ADDRESS.pdf'),
+                $this->makeFile('naturalTaxCertificate1', 'JIAXIN_WU_TAX_ID.pdf'),
+                $this->makeFile('naturalProofAddress1', 'JIAXIN_WU_PROOF_OF_ADDRESS.pdf'),
                 $this->makeFile('naturalMarriageCertificate1', 'JIAXIN_WU_MARRIAGE.pdf'),
-                $this->makeFile('naturalSpousePassport1',      'JIAXIN_WU_SPOUSE_PASSPORT.pdf'),
-                $this->makeFile('naturalTaxCertificate2',      'RUIJIA_LI_TAX_ID.pdf'),
-                $this->makeFile('naturalProofAddress2',        'RUIJIA_LI_PROOF_OF_ADDRESS.pdf'),
+                $this->makeFile('naturalSpousePassport1', 'JIAXIN_WU_SPOUSE_PASSPORT.pdf'),
+                $this->makeFile('naturalTaxCertificate2', 'RUIJIA_LI_TAX_ID.pdf'),
+                $this->makeFile('naturalProofAddress2', 'RUIJIA_LI_PROOF_OF_ADDRESS.pdf'),
                 $this->makeFile('naturalMarriageCertificate2', 'RUIJIA_LI_MARRIAGE.pdf'),
-                $this->makeFile('naturalSpousePassport2',      'RUIJIA_LI_SPOUSE_PASSPORT.pdf'),
+                $this->makeFile('naturalSpousePassport2', 'RUIJIA_LI_SPOUSE_PASSPORT.pdf'),
             ],
         ];
     }
@@ -267,21 +267,19 @@ class SingapurSubmissionParserTest extends TestCase
     /**
      * Build a minimal file entry array for a submission.
      *
-     * @param  string  $field        Form field name.
-     * @param  string  $originalName File name.
+     * @param  string  $field  Form field name.
+     * @param  string  $originalName  File name.
      * @return array<string, mixed>
      */
     private function makeFile(string $field, string $originalName): array
     {
         return [
-            'field'         => $field,
+            'field' => $field,
             'original_name' => $originalName,
-            'stored_name'   => 'uuid-' . $field . '.pdf',
-            'relay_name'    => '000001__' . $field . '__' . $originalName,
-            'storage'       => 'local',
-            'path'          => '/var/lib/uploads/' . $field . '.pdf',
-            'size'          => 100000,
-            'content_type'  => 'application/pdf',
+            'relay_name' => '000001__'.$field.'__'.$originalName,
+            'size' => 100000,
+            'content_type' => 'application/pdf',
+            'content' => base64_encode('fake-pdf-content-for-'.$field),
         ];
     }
 }

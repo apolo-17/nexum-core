@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\DocumentTypeEnum;
 use App\Enums\EfirmaAppointmentStatusEnum;
 use App\Enums\RegistrationStageEnum;
 use App\Enums\RegistrationStatusEnum;
@@ -10,6 +11,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
@@ -35,6 +37,8 @@ class Registration extends Model
         'assigned_notario_id',
         'assigned_asistente_id',
         'company_type',
+        'company_object',
+        'capital_social',
         'rfc',
         'efirma_appointment_at',
         'efirma_status',
@@ -54,11 +58,12 @@ class Registration extends Model
     protected function casts(): array
     {
         return [
-            'stage'                  => RegistrationStageEnum::class,
-            'status'                 => RegistrationStatusEnum::class,
-            'efirma_appointment_at'  => 'datetime',
-            'efirma_status'          => EfirmaAppointmentStatusEnum::class,
-            'completed_at'           => 'datetime',
+            'stage' => RegistrationStageEnum::class,
+            'status' => RegistrationStatusEnum::class,
+            'capital_social' => 'decimal:2',
+            'efirma_appointment_at' => 'datetime',
+            'efirma_status' => EfirmaAppointmentStatusEnum::class,
+            'completed_at' => 'datetime',
         ];
     }
 
@@ -107,6 +112,20 @@ class Registration extends Model
     }
 
     /**
+     * Get the primary (priority-1) legal name proposed for this registration.
+     *
+     * Exposed as a HasOne to allow efficient eager-loading in table views,
+     * preventing N+1 queries when listing many registrations simultaneously.
+     * Use this relation when you only need the company display name.
+     *
+     * @return HasOne<LegalName, $this>
+     */
+    public function primaryLegalName(): HasOne
+    {
+        return $this->hasOne(LegalName::class)->where('priority', 1)->orderBy('priority');
+    }
+
+    /**
      * Get all documents attached to this registration expedient.
      *
      * @return HasMany<Document, $this>
@@ -144,5 +163,79 @@ class Registration extends Model
     public function notes(): HasMany
     {
         return $this->hasMany(Note::class)->orderByDesc('is_pinned')->orderByDesc('created_at');
+    }
+
+    // -------------------------------------------------------------------------
+    // KYC completeness
+    // -------------------------------------------------------------------------
+
+    /**
+     * Calculate which KYC document types are expected but not yet received.
+     *
+     * Uses each shareholder's is_married flag to compute the expected count per
+     * KYC document type, then subtracts what is actually present in documents.
+     * Returns a map of DocumentTypeEnum value → number of missing copies.
+     *
+     * Example — 2 married shareholders, but one marriage cert missing:
+     *   ['kyc_marriage_certificate' => 1]
+     *
+     * An empty array means the KYC package is complete.
+     *
+     * @return array<string, int> Map of DocumentTypeEnum::value → missing count.
+     */
+    public function missingKycDocuments(): array
+    {
+        $shareholders = $this->relationLoaded('shareholders')
+            ? $this->shareholders
+            : $this->shareholders()->get();
+
+        $documents = $this->relationLoaded('documents')
+            ? $this->documents
+            : $this->documents()->get();
+
+        // Build expected count per KYC type summing across all shareholders.
+        $expected = [];
+
+        foreach ($shareholders as $shareholder) {
+            foreach ($shareholder->expectedKycDocumentTypes() as $type) {
+                $expected[$type->value] = ($expected[$type->value] ?? 0) + 1;
+            }
+        }
+
+        if (empty($expected)) {
+            return [];
+        }
+
+        // Build actual count per KYC type from received documents.
+        $actual = [];
+
+        foreach ($documents as $document) {
+            if ($document->type->isKyc()) {
+                $actual[$document->type->value] = ($actual[$document->type->value] ?? 0) + 1;
+            }
+        }
+
+        // Return types where expected count exceeds actual count.
+        $missing = [];
+
+        foreach ($expected as $typeValue => $expectedCount) {
+            $deficit = $expectedCount - ($actual[$typeValue] ?? 0);
+
+            if ($deficit > 0) {
+                $missing[$typeValue] = $deficit;
+            }
+        }
+
+        return $missing;
+    }
+
+    /**
+     * Return true if any KYC document expected from China has not yet arrived.
+     *
+     * Convenience wrapper around missingKycDocuments() for conditional rendering.
+     */
+    public function hasMissingKycDocuments(): bool
+    {
+        return ! empty($this->missingKycDocuments());
     }
 }
