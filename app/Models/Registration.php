@@ -37,6 +37,8 @@ class Registration extends Model
         'assigned_notario_id',
         'assigned_asistente_id',
         'company_type',
+        'company_object',
+        'capital_social',
         'rfc',
         'efirma_appointment_at',
         'efirma_status',
@@ -58,6 +60,7 @@ class Registration extends Model
         return [
             'stage' => RegistrationStageEnum::class,
             'status' => RegistrationStatusEnum::class,
+            'capital_social' => 'decimal:2',
             'efirma_appointment_at' => 'datetime',
             'efirma_status' => EfirmaAppointmentStatusEnum::class,
             'completed_at' => 'datetime',

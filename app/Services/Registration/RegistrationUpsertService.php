@@ -66,18 +66,32 @@ class RegistrationUpsertService
                 'singapur_package_id' => $dto->id,
                 'singapur_folder_name' => $dto->companyFolderName,
                 'company_type' => $dto->resolvedCompanyType(),
+                'company_object' => $dto->companyObject,
+                'capital_social' => $dto->capitalSocial,
                 'stage' => RegistrationStageEnum::DATA_RECEIVED,
                 'status' => RegistrationStatusEnum::ACTIVE,
             ],
         );
 
         // Refresh relay metadata on subsequent deliveries without touching stage/status.
+        // Corporate fields (company_object, capital_social) are only updated when the relay
+        // provides them, so manual edits by the notary team are not silently overwritten.
         if (! $registration->wasRecentlyCreated) {
-            $registration->update([
+            $updates = [
                 'singapur_package_id' => $dto->id,
                 'singapur_folder_name' => $dto->companyFolderName,
                 'company_type' => $dto->resolvedCompanyType(),
-            ]);
+            ];
+
+            if (filled($dto->companyObject)) {
+                $updates['company_object'] = $dto->companyObject;
+            }
+
+            if (filled($dto->capitalSocial)) {
+                $updates['capital_social'] = $dto->capitalSocial;
+            }
+
+            $registration->update($updates);
         }
 
         return $registration;
@@ -161,8 +175,15 @@ class RegistrationUpsertService
             'participation_percentage' => $dto->participationPercentage,
             'role' => $role,
             'is_married' => $dto->isMarried,
-            // Passport number is not available from the relay; it is filled
-            // manually by the notary team after reviewing the passport document.
+            'gender' => $dto->gender,
+            'birthdate' => $dto->birthdate,
+            'birthplace' => $dto->birthplace,
+            'civil_status' => $dto->civilStatus,
+            'phone' => $dto->phone,
+            'phone_country_code' => $dto->phoneCountryCode,
+            'tax_id' => $dto->taxId,
+            // Passport number is not in the relay; filled manually by the notary
+            // team or extracted automatically from the passport via Claude vision.
             'passport_number' => null,
         ]);
     }

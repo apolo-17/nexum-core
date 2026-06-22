@@ -31,7 +31,14 @@ class Shareholder extends Model
         'role',
         'email',
         'phone',
+        'phone_country_code',
         'is_married',
+        'gender',
+        'birthdate',
+        'birthplace',
+        'civil_status',
+        'tax_id',
+        'address_line',
     ];
 
     /**
@@ -45,7 +52,46 @@ class Shareholder extends Model
             'role' => ShareholderRoleEnum::class,
             'participation_percentage' => 'decimal:2',
             'is_married' => 'boolean',
+            'birthdate' => 'date',
         ];
+    }
+
+    // -------------------------------------------------------------------------
+    // Computed helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Return the effective civil status for use in the acta constitutiva.
+     *
+     * If civil_status was provided by the relay or set manually it is returned
+     * as-is. Otherwise it is derived from the is_married boolean as a fallback.
+     */
+    public function effectiveCivilStatus(): string
+    {
+        if (filled($this->civil_status)) {
+            return $this->civil_status;
+        }
+
+        return $this->is_married ? 'casado' : 'soltero';
+    }
+
+    /**
+     * Return the RFC for use in the acta constitutiva.
+     *
+     * Chinese and other foreign nationals do not have a Mexican RFC. The SAT
+     * assigns the standard generic RFC EXTF900101NI1 to all foreign natural
+     * persons. Mexican nationals should have their RFC set manually.
+     */
+    public function effectiveRfc(): string
+    {
+        // Chinese nationals always use the generic foreigner RFC.
+        if (strtolower($this->nationality) === 'china' || strtolower($this->nationality) === 'chinese') {
+            return 'EXTF900101NI1';
+        }
+
+        // Other foreigners also use the generic RFC unless a real one was set.
+        // Mexican nationals should have their real RFC in tax_id or a dedicated field.
+        return 'EXTF900101NI1';
     }
 
     // -------------------------------------------------------------------------
