@@ -160,6 +160,7 @@ class RegistrationUpsertService
             'email' => $dto->email,
             'participation_percentage' => $dto->participationPercentage,
             'role' => $role,
+            'is_married' => $dto->isMarried,
             // Passport number is not available from the relay; it is filled
             // manually by the notary team after reviewing the passport document.
             'passport_number' => null,

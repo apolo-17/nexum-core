@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\DocumentTypeEnum;
 use App\Enums\EfirmaAppointmentStatusEnum;
 use App\Enums\RegistrationStageEnum;
 use App\Enums\RegistrationStatusEnum;
@@ -159,5 +160,79 @@ class Registration extends Model
     public function notes(): HasMany
     {
         return $this->hasMany(Note::class)->orderByDesc('is_pinned')->orderByDesc('created_at');
+    }
+
+    // -------------------------------------------------------------------------
+    // KYC completeness
+    // -------------------------------------------------------------------------
+
+    /**
+     * Calculate which KYC document types are expected but not yet received.
+     *
+     * Uses each shareholder's is_married flag to compute the expected count per
+     * KYC document type, then subtracts what is actually present in documents.
+     * Returns a map of DocumentTypeEnum value → number of missing copies.
+     *
+     * Example — 2 married shareholders, but one marriage cert missing:
+     *   ['kyc_marriage_certificate' => 1]
+     *
+     * An empty array means the KYC package is complete.
+     *
+     * @return array<string, int> Map of DocumentTypeEnum::value → missing count.
+     */
+    public function missingKycDocuments(): array
+    {
+        $shareholders = $this->relationLoaded('shareholders')
+            ? $this->shareholders
+            : $this->shareholders()->get();
+
+        $documents = $this->relationLoaded('documents')
+            ? $this->documents
+            : $this->documents()->get();
+
+        // Build expected count per KYC type summing across all shareholders.
+        $expected = [];
+
+        foreach ($shareholders as $shareholder) {
+            foreach ($shareholder->expectedKycDocumentTypes() as $type) {
+                $expected[$type->value] = ($expected[$type->value] ?? 0) + 1;
+            }
+        }
+
+        if (empty($expected)) {
+            return [];
+        }
+
+        // Build actual count per KYC type from received documents.
+        $actual = [];
+
+        foreach ($documents as $document) {
+            if ($document->type->isKyc()) {
+                $actual[$document->type->value] = ($actual[$document->type->value] ?? 0) + 1;
+            }
+        }
+
+        // Return types where expected count exceeds actual count.
+        $missing = [];
+
+        foreach ($expected as $typeValue => $expectedCount) {
+            $deficit = $expectedCount - ($actual[$typeValue] ?? 0);
+
+            if ($deficit > 0) {
+                $missing[$typeValue] = $deficit;
+            }
+        }
+
+        return $missing;
+    }
+
+    /**
+     * Return true if any KYC document expected from China has not yet arrived.
+     *
+     * Convenience wrapper around missingKycDocuments() for conditional rendering.
+     */
+    public function hasMissingKycDocuments(): bool
+    {
+        return ! empty($this->missingKycDocuments());
     }
 }
