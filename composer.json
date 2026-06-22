@@ -13,6 +13,7 @@
         "laravel/horizon": "^5.47",
         "laravel/tinker": "^3.0",
         "league/flysystem-aws-s3-v3": "^3.0",
+        "phpoffice/phpword": "^1.4",
         "spatie/laravel-permission": "^8.0",
         "tymon/jwt-auth": "^2.3"
     },

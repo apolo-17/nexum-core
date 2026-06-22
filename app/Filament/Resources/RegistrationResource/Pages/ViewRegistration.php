@@ -5,10 +5,14 @@ namespace App\Filament\Resources\RegistrationResource\Pages;
 use App\Filament\Resources\RegistrationResource;
 use App\Filament\Resources\RegistrationResource\Actions\AdvanceStageAction;
 use App\Filament\Resources\RegistrationResource\Actions\ConfirmEfirmaOutcomeAction;
+use App\Filament\Resources\RegistrationResource\Actions\EditActaDraftAction;
+use App\Filament\Resources\RegistrationResource\Actions\GenerateActaDocxAction;
 use App\Filament\Resources\RegistrationResource\Actions\PrepareActaAction;
 use App\Filament\Resources\RegistrationResource\Actions\RequestEfirmaAppointmentAction;
+use App\Filament\Resources\RegistrationResource\Actions\ViewActaRenderAction;
 use App\Models\Registration;
 use App\Services\Registration\ActaPreparationService;
+use App\Services\Registration\GenerateActaDocxService;
 use App\Services\Registration\StageTransitionService;
 use Filament\Actions\Action;
 use Filament\Actions\EditAction;
@@ -29,6 +33,14 @@ class ViewRegistration extends ViewRecord
     /**
      * Return the header actions available on the view page.
      *
+     * Action visibility by stage:
+     *   - ACTA_PREPARATION  → PrepareActaAction (compile/refresh draft)
+     *   - Any stage after ACTA_PREPARATION → ViewActaRenderAction (HTML preview)
+     *   - Any stage after ACTA_PREPARATION → EditActaDraftAction (edit template_data)
+     *   - Any stage after ACTA_PREPARATION → GenerateActaDocxAction (generate .docx from template)
+     *   - EFIRMA_APPOINTMENT → e.firma appointment actions
+     *   - All stages         → AdvanceStageAction
+     *
      * @return array<Action>
      */
     protected function getHeaderActions(): array
@@ -37,6 +49,18 @@ class ViewRegistration extends ViewRecord
         $record = $this->record;
 
         return [
+            // Rendered legal document preview — visible whenever an ACTA_DRAFT exists.
+            ViewActaRenderAction::make(registration: $record),
+
+            // Edit form for the compiled template_data — visible whenever an ACTA_DRAFT exists.
+            EditActaDraftAction::make(registration: $record),
+
+            // Generate the final .docx using PhpWord + sa.docx template.
+            GenerateActaDocxAction::make(
+                registration: $record,
+                service: resolve(GenerateActaDocxService::class),
+            ),
+
             // Acta draft compilation — visible only at ACTA_PREPARATION stage.
             PrepareActaAction::make(
                 registration: $record,
