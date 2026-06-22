@@ -25,7 +25,7 @@ class AdminUserSeeder extends Seeder
     public function run(): void
     {
         $email = env('ADMIN_EMAIL', 'admin@nexumcore.app');
-        $password = env('ADMIN_PASSWORD', 'changeme123');
+        $password = env('ADMIN_PASSWORD', 'password');
         $name = env('ADMIN_NAME', 'Administrador');
 
         $user = User::firstOrCreate(
