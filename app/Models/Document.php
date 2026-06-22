@@ -35,6 +35,9 @@ class Document extends Model
         'uploaded_by',
         'verified_at',
         'verified_by',
+        'rejected_at',
+        'rejected_by',
+        'rejection_reason',
     ];
 
     /**
@@ -48,6 +51,7 @@ class Document extends Model
             'type' => DocumentTypeEnum::class,
             'stage' => RegistrationStageEnum::class,
             'verified_at' => 'datetime',
+            'rejected_at' => 'datetime',
         ];
     }
 
@@ -83,5 +87,100 @@ class Document extends Model
     public function verifier(): BelongsTo
     {
         return $this->belongsTo(User::class, 'verified_by');
+    }
+
+    /**
+     * Get the user who rejected this document.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function rejector(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'rejected_by');
+    }
+
+    // -------------------------------------------------------------------------
+    // File type helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Derive the MIME type from the stored file extension without hitting storage.
+     *
+     * Used by the preview blade to choose the appropriate renderer (PDF.js vs
+     * native <img> tag). Falls back to 'application/octet-stream' for unknown
+     * extensions.
+     *
+     * @return string MIME type string, e.g. 'application/pdf' or 'image/jpeg'.
+     */
+    public function mimeType(): string
+    {
+        if (blank($this->storage_path)) {
+            return 'application/octet-stream';
+        }
+
+        $ext = strtolower(pathinfo($this->storage_path, PATHINFO_EXTENSION));
+
+        return match ($ext) {
+            'pdf' => 'application/pdf',
+            'jpg', 'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp',
+            default => 'application/octet-stream',
+        };
+    }
+
+    /**
+     * Return true if the stored file is an image (jpeg, png, gif, webp).
+     */
+    public function isImage(): bool
+    {
+        return str_starts_with($this->mimeType(), 'image/');
+    }
+
+    /**
+     * Return true if the stored file is a PDF document.
+     */
+    public function isPdf(): bool
+    {
+        return $this->mimeType() === 'application/pdf';
+    }
+
+    // -------------------------------------------------------------------------
+    // Evaluation helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Return the evaluation state as a string for display purposes.
+     *
+     * States:
+     *   approved → verified_at is set
+     *   rejected → rejected_at is set
+     *   pending  → neither is set
+     *
+     * @return string 'approved' | 'rejected' | 'pending'
+     */
+    public function evaluationStatus(): string
+    {
+        if ($this->verified_at !== null) {
+            return 'approved';
+        }
+
+        if ($this->rejected_at !== null) {
+            return 'rejected';
+        }
+
+        return 'pending';
+    }
+
+    /**
+     * Return true when the document already has a final evaluation (approved or rejected).
+     *
+     * Once a document is evaluated its status is final and cannot be changed.
+     * Only pending documents may be approved or rejected, individually or in bulk.
+     */
+    public function isEvaluated(): bool
+    {
+        return $this->evaluationStatus() !== 'pending';
     }
 }

@@ -380,11 +380,13 @@ class RegistrationResource extends Resource
                 TextColumn::make('singapur_client_code')
                     ->label('Código')
                     ->searchable()
-                    ->sortable(),
+                    ->sortable()
+                    ->grow(false),
 
                 BadgeColumn::make('stage')
                     ->label('Etapa')
-                    ->formatStateUsing(fn (RegistrationStageEnum $state) => $state->label())
+                    ->formatStateUsing(fn (RegistrationStageEnum $state) => $state->shortLabel())
+                    ->tooltip(fn (RegistrationStageEnum $state): string => $state->label())
                     ->colors([
                         'gray' => RegistrationStageEnum::DATA_RECEIVED->value,
                         'warning' => RegistrationStageEnum::IDENTITY_VALIDATION->value,
@@ -397,7 +399,8 @@ class RegistrationResource extends Resource
                             RegistrationStageEnum::EFIRMA_APPOINTMENT->value,
                         ],
                         'success' => RegistrationStageEnum::COMPLETED->value,
-                    ]),
+                    ])
+                    ->grow(false),
 
                 BadgeColumn::make('status')
                     ->label('Estatus')
@@ -407,21 +410,27 @@ class RegistrationResource extends Resource
                         'warning' => RegistrationStatusEnum::ON_HOLD->value,
                         'danger' => RegistrationStatusEnum::CANCELLED->value,
                         'gray' => RegistrationStatusEnum::COMPLETED->value,
-                    ]),
+                    ])
+                    ->grow(false),
 
                 TextColumn::make('notario.name')
                     ->label('Notario')
-                    ->placeholder('—'),
+                    ->placeholder('—')
+                    ->limit(18)
+                    ->tooltip(fn (?string $state): ?string => $state)
+                    ->grow(false),
 
                 TextColumn::make('tasks_pending_count')
-                    ->label('Tareas pendientes')
+                    ->label('Tareas')
                     ->badge()
-                    ->color('warning'),
+                    ->color('warning')
+                    ->grow(false),
 
                 TextColumn::make('created_at')
-                    ->label('Fecha de ingreso')
+                    ->label('Ingreso')
                     ->date('d/m/Y')
-                    ->sortable(),
+                    ->sortable()
+                    ->grow(false),
             ])
             ->defaultSort('created_at', 'desc')
             ->filters([
@@ -444,8 +453,8 @@ class RegistrationResource extends Resource
                     ->options(User::role('notario')->pluck('name', 'id')),
             ])
             ->actions([
-                ViewAction::make(),
-                EditAction::make(),
+                ViewAction::make()->iconButton(),
+                EditAction::make()->iconButton(),
             ])
             ->bulkActions([
                 BulkActionGroup::make([
@@ -461,10 +470,17 @@ class RegistrationResource extends Resource
      */
     public static function getRelations(): array
     {
+        // Order mirrors the pipeline process:
+        // 1. Documents  — first review in every stage (identity validation, acta, RFC, etc.)
+        // 2. Shareholders — validate data against the KYC documents
+        // 3. Legal Names  — only active work at the LEGAL_NAME stage
+        // 4. Tasks        — cross-stage action items
+        // 5. Notes        — cross-stage internal observations
+        // 6. Stage transitions — audit trail, always last
         return [
+            RelationManagers\DocumentsRelationManager::class,
             RelationManagers\ShareholdersRelationManager::class,
             RelationManagers\LegalNamesRelationManager::class,
-            RelationManagers\DocumentsRelationManager::class,
             RelationManagers\TasksRelationManager::class,
             RelationManagers\NotesRelationManager::class,
             RelationManagers\StageTransitionsRelationManager::class,

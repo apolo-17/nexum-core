@@ -13,4 +13,11 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () 
         'documents/{document}/relay-download',
         [DocumentRelayDownloadController::class, 'download']
     )->name('documents.relay-download');
+
+    // Serves the file inline (Content-Disposition: inline) so it can be embedded
+    // in an iframe inside the document preview modal.
+    Route::get(
+        'documents/{document}/preview',
+        [DocumentRelayDownloadController::class, 'preview']
+    )->name('documents.preview');
 });
