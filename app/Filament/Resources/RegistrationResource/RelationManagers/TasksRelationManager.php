@@ -34,10 +34,15 @@ class TasksRelationManager extends RelationManager
     protected static ?string $title = 'Tareas';
 
     /**
+     * Allow mutations (create, edit, delete) even when rendered inside a ViewRecord page.
+     */
+    public function isReadOnly(): bool
+    {
+        return false;
+    }
+
+    /**
      * Define the form schema for creating and editing tasks.
-     *
-     * @param  Schema  $schema
-     * @return Schema
      */
     public function form(Schema $schema): Schema
     {
@@ -63,9 +68,6 @@ class TasksRelationManager extends RelationManager
 
     /**
      * Define the table columns and actions for the tasks list.
-     *
-     * @param  Table  $table
-     * @return Table
      */
     public function table(Table $table): Table
     {
@@ -81,9 +83,9 @@ class TasksRelationManager extends RelationManager
                     ->label('Prioridad')
                     ->formatStateUsing(fn (TaskPriorityEnum $state) => $state->label())
                     ->colors([
-                        'gray'    => TaskPriorityEnum::LOW->value,
+                        'gray' => TaskPriorityEnum::LOW->value,
                         'warning' => TaskPriorityEnum::MEDIUM->value,
-                        'danger'  => TaskPriorityEnum::HIGH->value,
+                        'danger' => TaskPriorityEnum::HIGH->value,
                     ]),
                 BadgeColumn::make('type')
                     ->label('Tipo')
@@ -115,7 +117,7 @@ class TasksRelationManager extends RelationManager
                     ->label('Nueva tarea')
                     ->mutateFormDataUsing(function (array $data): array {
                         $data['created_by'] = auth()->id();
-                        $data['type']       = TaskTypeEnum::MANUAL->value;
+                        $data['type'] = TaskTypeEnum::MANUAL->value;
 
                         return $data;
                     }),
