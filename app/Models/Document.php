@@ -32,6 +32,8 @@ class Document extends Model
         'google_drive_file_id',
         'google_drive_url',
         'stage',
+        'shareholder_index',
+        'template_data',
         'uploaded_by',
         'verified_at',
         'verified_by',
@@ -50,6 +52,7 @@ class Document extends Model
         return [
             'type' => DocumentTypeEnum::class,
             'stage' => RegistrationStageEnum::class,
+            'template_data' => 'array',
             'verified_at' => 'datetime',
             'rejected_at' => 'datetime',
         ];

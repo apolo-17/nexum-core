@@ -17,6 +17,7 @@ enum RegistrationStageEnum: string
     case DATA_RECEIVED = 'data_received';
     case IDENTITY_VALIDATION = 'identity_validation';
     case LEGAL_NAME = 'legal_name';
+    case ACTA_PREPARATION = 'acta_preparation';
     case PARTNER_SIGNATURE = 'partner_signature';
     case INCORPORATION = 'incorporation';
     case TAX_ADDRESS = 'tax_address';
@@ -33,6 +34,7 @@ enum RegistrationStageEnum: string
             self::DATA_RECEIVED => 'Datos recibidos',
             self::IDENTITY_VALIDATION => 'Validación de identidad',
             self::LEGAL_NAME => 'Denominación social',
+            self::ACTA_PREPARATION => 'Preparación del acta',
             self::PARTNER_SIGNATURE => 'Firma de socios',
             self::INCORPORATION => 'Constitución de empresa',
             self::TAX_ADDRESS => 'Domicilio fiscal',
@@ -51,6 +53,7 @@ enum RegistrationStageEnum: string
             self::DATA_RECEIVED => 'Datos',
             self::IDENTITY_VALIDATION => 'Identidad',
             self::LEGAL_NAME => 'Denominación',
+            self::ACTA_PREPARATION => 'Borrador acta',
             self::PARTNER_SIGNATURE => 'Firma socios',
             self::INCORPORATION => 'Constitución',
             self::TAX_ADDRESS => 'Dom. fiscal',
@@ -71,6 +74,7 @@ enum RegistrationStageEnum: string
             self::DATA_RECEIVED,
             self::IDENTITY_VALIDATION,
             self::LEGAL_NAME,
+            self::ACTA_PREPARATION,
             self::PARTNER_SIGNATURE,
             self::INCORPORATION,
             self::TAX_ADDRESS,

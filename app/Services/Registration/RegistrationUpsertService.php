@@ -243,6 +243,8 @@ class RegistrationUpsertService
             'google_drive_file_id' => null,
             'google_drive_url' => null,
             'stage' => RegistrationStageEnum::DATA_RECEIVED,
+            // Link KYC documents to their shareholder via 1-based relay index.
+            'shareholder_index' => $file->shareholderIndex(),
         ]);
     }
 

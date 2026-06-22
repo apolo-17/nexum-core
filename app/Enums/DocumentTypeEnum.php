@@ -42,6 +42,9 @@ enum DocumentTypeEnum: string
     /** Power of attorney from the shareholder. */
     case POWER_OF_ATTORNEY = 'power_of_attorney';
 
+    /** Draft of the acta constitutiva — compiled at ACTA_PREPARATION stage, sent to DocuSign later. */
+    case ACTA_DRAFT = 'acta_draft';
+
     /** Signed acta constitutiva — generated at INCORPORATION stage. */
     case INCORPORATION_ACT = 'incorporation_act';
 
@@ -73,6 +76,7 @@ enum DocumentTypeEnum: string
             self::PASSPORT => 'Pasaporte del accionista',
             self::VISA => 'Visa',
             self::POWER_OF_ATTORNEY => 'Poder notarial',
+            self::ACTA_DRAFT => 'Borrador del Acta Constitutiva',
             self::INCORPORATION_ACT => 'Acta constitutiva',
             self::CSF => 'Constancia de Situación Fiscal (SAT)',
             self::BANK_PROOF => 'Comprobante bancario',
