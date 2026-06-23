@@ -38,12 +38,14 @@ readonly class SingapurShareholderDTO
         public string $email,
         public float $participationPercentage,
         public bool $isMarried,
-        public ?string $gender,
-        public ?string $birthdate,
-        public ?string $birthplace,
-        public ?string $civilStatus,
-        public ?string $phone,
-        public ?string $phoneCountryCode,
-        public ?string $taxId,
+        // Optional identity fields — absent in the initial webhook, filled later
+        // from the KYC documents (AI extraction) or manually by the notary team.
+        public ?string $gender = null,
+        public ?string $birthdate = null,
+        public ?string $birthplace = null,
+        public ?string $civilStatus = null,
+        public ?string $phone = null,
+        public ?string $phoneCountryCode = null,
+        public ?string $taxId = null,
     ) {}
 }

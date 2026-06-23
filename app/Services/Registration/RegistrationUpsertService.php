@@ -27,6 +27,24 @@ use Illuminate\Support\Facades\Storage;
 class RegistrationUpsertService
 {
     /**
+     * Maximum decoded size (bytes) accepted for a single webhook document. Larger
+     * payloads are rejected to protect storage from abusive or malformed submissions.
+     */
+    private const MAX_FILE_BYTES = 25 * 1024 * 1024;
+
+    /**
+     * MIME types accepted from the relay. Anything else is recorded but not stored.
+     *
+     * @var list<string>
+     */
+    private const ALLOWED_MIME_TYPES = [
+        'application/pdf',
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+    ];
+
+    /**
      * Create or update a Registration from a parsed Singapur submission DTO.
      *
      * Upserts the Registration, its initial LegalName denomination, all Shareholders,
@@ -270,6 +288,23 @@ class RegistrationUpsertService
             ]);
 
             return "pending/{$registration->id}/{$file->field}_{$file->originalName}";
+        }
+
+        // Reject files that are too large or of a disallowed type. The declared
+        // content_type is advisory, but the decoded length is authoritative, so it
+        // is the primary guard against storage abuse. The document row is still
+        // created (see caller) so the notary team can see the file was rejected.
+        if (strlen($binaryContent) > self::MAX_FILE_BYTES
+            || ! in_array($file->contentType, self::ALLOWED_MIME_TYPES, strict: true)) {
+            Log::warning('Rejected webhook document — exceeds size limit or disallowed MIME type.', [
+                'registration_id' => $registration->id,
+                'field' => $file->field,
+                'relay_name' => $file->relayName,
+                'content_type' => $file->contentType,
+                'size' => strlen($binaryContent),
+            ]);
+
+            return "rejected/{$registration->id}/{$file->field}_{$file->originalName}";
         }
 
         $path = "documents/{$registration->id}/{$file->field}_{$file->originalName}";

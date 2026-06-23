@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Document;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
@@ -56,6 +57,8 @@ class DocumentRelayDownloadController extends Controller
      */
     private function stream(Document $document, bool $attachment): StreamedResponse|Response
     {
+        $this->authorizeAccess();
+
         if (blank($document->storage_path)) {
             return $this->unavailableResponse(
                 'Este documento no tiene archivo almacenado aún.',
@@ -88,6 +91,28 @@ class DocumentRelayDownloadController extends Controller
             'Content-Type' => $contentType,
             'Content-Disposition' => "{$disposition}; filename=\"{$filename}\"",
         ]);
+    }
+
+    /**
+     * Ensure the current user belongs to the notary team before serving KYC files.
+     *
+     * These routes sit behind the `auth` middleware, but that alone would let any
+     * authenticated session enumerate document IDs and download biometric KYC files.
+     * Restrict access to the three notary-team roles; aborts with 403 otherwise.
+     *
+     * NOTE: this is a role gate, not per-expediente ownership — it matches the panel,
+     * which currently shows every expediente to all staff. Tighten to assigned-only
+     * (assigned_notario_id / assigned_asistente_id) when the panel is scoped per user.
+     */
+    private function authorizeAccess(): void
+    {
+        $user = Auth::user();
+
+        abort_unless(
+            $user !== null && $user->hasAnyRole(['super_admin', 'notario', 'asistente_notario']),
+            Response::HTTP_FORBIDDEN,
+            'No tienes permiso para acceder a este documento.',
+        );
     }
 
     /**

@@ -16,10 +16,17 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        // Roles and the initial admin are required in every environment, production included.
         $this->call([
             RolesAndPermissionsSeeder::class,
             AdminUserSeeder::class,
-            ChineseCompaniesSeeder::class,
         ]);
+
+        // Demo expedientes are for local/staging only — never seed 60 fake companies
+        // into production. Run `php artisan db:seed --class=ChineseCompaniesSeeder`
+        // explicitly if you ever need them in a non-production environment.
+        if (! app()->environment('production')) {
+            $this->call(ChineseCompaniesSeeder::class);
+        }
     }
 }
