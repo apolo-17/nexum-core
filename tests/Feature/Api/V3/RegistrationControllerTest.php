@@ -110,9 +110,9 @@ class RegistrationControllerTest extends TestCase
     #[Test]
     public function it_orders_registrations_by_most_recently_created(): void
     {
-        $first  = Registration::factory()->create(['created_at' => now()->subDays(2)]);
+        $first = Registration::factory()->create(['created_at' => now()->subDays(2)]);
         $second = Registration::factory()->create(['created_at' => now()->subDay()]);
-        $third  = Registration::factory()->create(['created_at' => now()]);
+        $third = Registration::factory()->create(['created_at' => now()]);
 
         $response = $this->actingAs($this->user, 'api')
             ->getJson('/api/v3/registrations');
@@ -140,9 +140,9 @@ class RegistrationControllerTest extends TestCase
     {
         $registration = Registration::factory()->create([
             'singapur_client_code' => '000001',
-            'company_type'         => 'SA de CV',
-            'stage'                => RegistrationStageEnum::DATA_RECEIVED,
-            'status'               => RegistrationStatusEnum::ACTIVE,
+            'company_type' => 'SA de CV',
+            'stage' => RegistrationStageEnum::DATA_RECEIVED,
+            'status' => RegistrationStatusEnum::ACTIVE,
         ]);
 
         $response = $this->actingAs($this->user, 'api')
@@ -154,7 +154,7 @@ class RegistrationControllerTest extends TestCase
             ->assertJsonPath('data.stage', 'data_received')
             ->assertJsonPath('data.stage_label', 'Datos recibidos')
             ->assertJsonPath('data.stage_progress', 1)
-            ->assertJsonPath('data.stage_total', 8)
+            ->assertJsonPath('data.stage_total', 10)
             ->assertJsonPath('data.status', 'active')
             ->assertJsonPath('data.company_type', 'SA de CV');
     }
@@ -177,9 +177,9 @@ class RegistrationControllerTest extends TestCase
 
         LegalName::factory()->create([
             'registration_id' => $registration->id,
-            'name'            => 'NOVA CONSULTORÍA EMPRESARIAL',
-            'priority'        => 1,
-            'status'          => LegalNameStatusEnum::WAIT,
+            'name' => 'NOVA CONSULTORÍA EMPRESARIAL',
+            'priority' => 1,
+            'status' => LegalNameStatusEnum::WAIT,
         ]);
 
         $response = $this->actingAs($this->user, 'api')
@@ -197,11 +197,11 @@ class RegistrationControllerTest extends TestCase
         ]);
 
         Shareholder::factory()->create([
-            'registration_id'         => $registration->id,
-            'name'                    => '吴佳鑫',
-            'nationality'             => 'china',
+            'registration_id' => $registration->id,
+            'name' => '吴佳鑫',
+            'nationality' => 'china',
             'participation_percentage' => 50.00,
-            'role'                    => ShareholderRoleEnum::LEGAL_REPRESENTATIVE,
+            'role' => ShareholderRoleEnum::LEGAL_REPRESENTATIVE,
         ]);
 
         $response = $this->actingAs($this->user, 'api')
@@ -219,7 +219,7 @@ class RegistrationControllerTest extends TestCase
     {
         Registration::factory()->create([
             'singapur_client_code' => '000004',
-            'stage'                => RegistrationStageEnum::INCORPORATION,
+            'stage' => RegistrationStageEnum::INCORPORATION,
         ]);
 
         $response = $this->actingAs($this->user, 'api')
@@ -227,7 +227,7 @@ class RegistrationControllerTest extends TestCase
 
         $response->assertStatus(Response::HTTP_OK)
             ->assertJsonPath('data.stage', 'incorporation')
-            ->assertJsonPath('data.stage_progress', 4)
-            ->assertJsonPath('data.stage_total', 8);
+            ->assertJsonPath('data.stage_progress', 6)
+            ->assertJsonPath('data.stage_total', 10);
     }
 }

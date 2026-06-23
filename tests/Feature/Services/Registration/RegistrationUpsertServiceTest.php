@@ -293,6 +293,8 @@ class RegistrationUpsertServiceTest extends TestCase
             companyName: $companyName,
             companyType: 'sa',
             language: 'zh',
+            companyObject: null,
+            capitalSocial: null,
             shareholders: [
                 new SingapurShareholderDTO(
                     index: 1,

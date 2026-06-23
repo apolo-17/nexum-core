@@ -126,21 +126,21 @@ class SingapurSubmissionParserTest extends TestCase
     }
 
     #[Test]
-    public function it_maps_natural_tax_certificate_field_to_csf_document_type(): void
+    public function it_maps_natural_tax_certificate_field_to_kyc_tax_certificate_document_type(): void
     {
         $data = $this->sampleSubmission();
         $data['files'] = [$this->makeFile('naturalTaxCertificate1', 'tax.pdf')];
 
         $dto = $this->parser->parse($data);
 
-        $this->assertSame(DocumentTypeEnum::CSF, $dto->files[0]->documentType());
+        $this->assertSame(DocumentTypeEnum::KYC_TAX_CERTIFICATE, $dto->files[0]->documentType());
     }
 
     #[Test]
     public function it_maps_unknown_field_to_other_document_type(): void
     {
         $data = $this->sampleSubmission();
-        $data['files'] = [$this->makeFile('naturalMarriageCertificate1', 'marriage.pdf')];
+        $data['files'] = [$this->makeFile('someUnknownRelayField1', 'misc.pdf')];
 
         $dto = $this->parser->parse($data);
 

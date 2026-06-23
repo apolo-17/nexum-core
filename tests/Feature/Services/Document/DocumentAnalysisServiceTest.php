@@ -113,7 +113,7 @@ class DocumentAnalysisServiceTest extends TestCase
     }
 
     /**
-     * The request targets Opus 4.8 with the authenticated headers and an inline image block.
+     * The request targets Opus 4.6 with the authenticated headers and an inline image block.
      */
     #[Test]
     public function it_sends_the_opus_model_with_an_inline_image_block(): void
@@ -130,7 +130,7 @@ class DocumentAnalysisServiceTest extends TestCase
             return $request->url() === 'https://api.anthropic.com/v1/messages'
                 && $request->hasHeader('x-api-key', 'test-key')
                 && $request->hasHeader('anthropic-version', '2023-06-01')
-                && $body['model'] === 'claude-opus-4-8'
+                && $body['model'] === 'claude-opus-4-6'
                 && $body['messages'][0]['content'][0]['type'] === 'image'
                 && $body['messages'][0]['content'][0]['source']['media_type'] === 'image/jpeg'
                 && $body['messages'][0]['content'][0]['source']['data'] === base64_encode('fake-binary-content');
