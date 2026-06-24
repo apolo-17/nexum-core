@@ -44,6 +44,7 @@ return [
     // MUA bot — Python microservice that automates the SE/MUA portal via Playwright.
     'mua_bot' => [
         'url' => env('MUA_BOT_URL', 'http://mua-bot:8000'),
+        'api_key' => env('MUA_BOT_API_KEY'),
         'secret_key' => env('MUA_BOT_SECRET_KEY'),
     ],
 

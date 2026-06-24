@@ -127,6 +127,7 @@ class MuaBotCallbackController extends Controller
         $claveUnica      = (string) $request->input('clave_unica');
         $authorizationAt = (string) $request->input('authorization_at');
         $pdfBase64       = (string) $request->input('constancia_pdf_base64');
+        $portalStatus    = (string) $request->input('portal_status', 'Autorizada');
 
         if (! $claveUnica || ! $authorizationAt || ! $pdfBase64) {
             throw new \RuntimeException('Missing required fields for approval: clave_unica, authorization_at, constancia_pdf_base64.');
@@ -141,7 +142,7 @@ class MuaBotCallbackController extends Controller
         $registration = $legalName->registration;
         $s3Path       = "registrations/{$registration->id}/constancia_denominacion_{$legalName->id}.pdf";
 
-        DB::transaction(function () use ($legalName, $registration, $claveUnica, $authorizationAt, $pdfContent, $s3Path): void {
+        DB::transaction(function () use ($legalName, $registration, $claveUnica, $authorizationAt, $portalStatus, $pdfContent, $s3Path): void {
             // Persist constancia PDF to S3.
             Storage::disk('s3')->put($s3Path, $pdfContent);
 
@@ -170,6 +171,7 @@ class MuaBotCallbackController extends Controller
                 'status'                   => LegalNameStatusEnum::APPROVED->value,
                 'clave_unica_denominacion' => $claveUnica,
                 'authorization_timestamp'  => $authorizationAt,
+                'portal_status'            => $portalStatus,
             ]);
 
             // Decrement the soldado's active submission counter.
@@ -196,11 +198,13 @@ class MuaBotCallbackController extends Controller
      */
     private function processRejection(Request $request, LegalName $legalName): void
     {
-        $reason = (string) $request->input('rejection_reason', 'Rechazada por la Secretaría de Economía.');
+        $reason       = (string) $request->input('rejection_reason', 'Rechazada por la Secretaría de Economía.');
+        $portalStatus = (string) $request->input('portal_status', 'Rechazada por dictamen');
 
         $legalName->update([
             'status'           => LegalNameStatusEnum::REJECTED->value,
             'rejection_reason' => $reason,
+            'portal_status'    => $portalStatus,
         ]);
 
         if ($legalName->muaAccount) {

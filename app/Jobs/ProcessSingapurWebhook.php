@@ -2,7 +2,9 @@
 
 namespace App\Jobs;
 
+use App\Enums\LegalNameStatusEnum;
 use App\Enums\WebhookEventStatusEnum;
+use App\Models\LegalName;
 use App\Models\User;
 use App\Models\WebhookEvent;
 use App\Notifications\NewExpedienteReceived;
@@ -56,14 +58,14 @@ class ProcessSingapurWebhook implements ShouldQueue
     /**
      * Execute the job — parse the webhook payload, upsert the registration, and notify admins.
      *
-     * The relay sends the full submission JSON in the webhook body, so no ZIP
-     * download is required. The payload is passed directly to the parser and
-     * the resulting DTO is handed to RegistrationUpsertService. After a successful
-     * upsert, all admin users receive a database notification visible in the
-     * Filament top-bar bell icon.
+     * After a successful upsert, dispatches SubmitLegalNameToMuaJob for each new
+     * denomination in WAIT status so the submission is attempted immediately if
+     * business hours and FIEL availability conditions are met. If not, the cron
+     * (mua:submit) will pick the denominations up on the next eligible window.
      *
-     * @param  SingapurSubmissionParser  $parser         Parses the raw payload into a DTO.
-     * @param  RegistrationUpsertService $upsertService  Creates or updates the registration.
+     * @param  SingapurSubmissionParser   $parser         Parses the raw payload into a DTO.
+     * @param  RegistrationUpsertService  $upsertService  Creates or updates the registration.
+     *
      * @return void
      *
      * @throws \RuntimeException  When the payload is missing required submission fields.
@@ -79,6 +81,16 @@ class ProcessSingapurWebhook implements ShouldQueue
         User::role('super_admin')->each(
             fn (User $admin) => $admin->notify(new NewExpedienteReceived($registration))
         );
+
+        // Attempt immediate MUA submission for every denomination in WAIT status.
+        // SubmitLegalNameToMuaJob checks business hours and FIEL availability;
+        // if conditions are not met it exits cleanly and the cron retries later.
+        $registration->legalNames()
+            ->where('status', LegalNameStatusEnum::WAIT->value)
+            ->whereNull('mua_account_id')
+            ->each(function (LegalName $legalName): void {
+                SubmitLegalNameToMuaJob::dispatch($legalName->id);
+            });
 
         $this->webhookEvent->update([
             'status'       => WebhookEventStatusEnum::PROCESSED,

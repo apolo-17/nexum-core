@@ -35,6 +35,7 @@ class LegalName extends Model
         'mua_account_id',
         'rejection_reason',
         'mua_available',
+        'portal_status',
     ];
 
     /**
