@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
@@ -61,6 +62,16 @@ class Document extends Model
     // -------------------------------------------------------------------------
     // Relationships
     // -------------------------------------------------------------------------
+
+    /**
+     * Get the AI extraction analysis record for this document, if any.
+     *
+     * @return HasOne<DocumentAnalysis, $this>
+     */
+    public function analysis(): HasOne
+    {
+        return $this->hasOne(DocumentAnalysis::class);
+    }
 
     /**
      * Get the registration this document belongs to.
@@ -185,5 +196,35 @@ class Document extends Model
     public function isEvaluated(): bool
     {
         return $this->evaluationStatus() !== 'pending';
+    }
+
+    /**
+     * Resolve the state of the AI extraction for the "IA" table column.
+     *
+     * Drives the analysis-column Blade view:
+     *   done       → extraction finished successfully (show "✓ Extraído").
+     *   failed     → extraction finished with an error (show "✗ Error").
+     *   processing → approved and the job is queued or running (show the animated brain).
+     *   none       → never sent to the AI (document not approved).
+     *
+     * Reads the eager-loaded `analysis` relation, so it adds no query per row.
+     *
+     * @return string 'done' | 'failed' | 'processing' | 'none'
+     */
+    public function aiAnalysisState(): string
+    {
+        $analysis = $this->analysis;
+
+        if ($analysis !== null) {
+            return match (true) {
+                $analysis->analyzed => 'done',
+                filled($analysis->error_message) => 'failed',
+                default => 'processing',
+            };
+        }
+
+        // No analysis record yet: only approved documents were dispatched to the AI,
+        // so the job is queued but has not created its record.
+        return $this->evaluationStatus() === 'approved' ? 'processing' : 'none';
     }
 }

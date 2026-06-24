@@ -30,6 +30,10 @@ Route::prefix('v3')->group(function () {
     // Singapur relay webhook — secured by shared secret header, not JWT
     Route::post('webhook/singapur', [WebhookController::class, 'singapur']);
 
+    // DocuSign Connect webhook — secured by HMAC-SHA256 (X-DocuSign-Signature-1 header)
+    // Configure in DocuSign Admin → Connect → Add Configuration → URL: /api/v3/webhook/docusign
+    Route::post('webhook/docusign', [WebhookController::class, 'docuSign']);
+
     // MUA availability check — public so the Singapur relay can query before client submits names
     Route::post('legal-name/check-availability', [LegalNameController::class, 'checkAvailability']);
 

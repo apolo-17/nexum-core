@@ -203,6 +203,7 @@ class ChineseCompaniesSeeder extends Seeder
         'data_received',
         'identity_validation',
         'legal_name',
+        'acta_preparation',
         'partner_signature',
         'incorporation',
         'tax_address',
@@ -242,6 +243,10 @@ class ChineseCompaniesSeeder extends Seeder
         'legal_name' => [
             ['title' => 'Enviar denominación social a la SE para dictamen', 'priority' => TaskPriorityEnum::HIGH],
             ['title' => 'Notificar resultado del dictamen al cliente', 'priority' => TaskPriorityEnum::MEDIUM],
+        ],
+        'acta_preparation' => [
+            ['title' => 'Revisar borrador del acta constitutiva generado automáticamente', 'priority' => TaskPriorityEnum::HIGH],
+            ['title' => 'Verificar RFC/CURP y datos fiscales de los socios', 'priority' => TaskPriorityEnum::MEDIUM],
         ],
         'incorporation' => [
             ['title' => 'Revisar borrador del acta constitutiva con el notario', 'priority' => TaskPriorityEnum::HIGH],
@@ -300,7 +305,7 @@ class ChineseCompaniesSeeder extends Seeder
     // -------------------------------------------------------------------------
 
     /**
-     * Seed 5 team users and 15 Chinese company registrations across all 8 stages.
+     * Seed 5 team users and 16 Chinese company registrations across all 10 stages.
      */
     public function run(): void
     {
@@ -308,11 +313,12 @@ class ChineseCompaniesSeeder extends Seeder
 
         // Distribution: list of [stage, count] pairs. Enum cases cannot be array keys
         // in PHP (they are objects), so we use indexed tuples instead.
-        // Total: 15 expedients — one or two per stage for a representative demo set.
+        // Total: 16 expedients — one or two per stage for a representative demo set.
         $distribution = [
             [RegistrationStageEnum::DATA_RECEIVED,        3],
             [RegistrationStageEnum::IDENTITY_VALIDATION,  2],
             [RegistrationStageEnum::LEGAL_NAME,           2],
+            [RegistrationStageEnum::ACTA_PREPARATION,     1],
             [RegistrationStageEnum::PARTNER_SIGNATURE,    1],
             [RegistrationStageEnum::INCORPORATION,        2],
             [RegistrationStageEnum::TAX_ADDRESS,          1],
@@ -618,11 +624,11 @@ class ChineseCompaniesSeeder extends Seeder
             'participation_percentage' => $split[0],
             'role' => ShareholderRoleEnum::LEGAL_REPRESENTATIVE,
             'email' => "user{$codeInt}a@qq.com",
-            'phone' => '138' . str_pad($codeInt * 7, 8, '0', STR_PAD_LEFT),
+            'phone' => '138'.str_pad($codeInt * 7, 8, '0', STR_PAD_LEFT),
             'phone_country_code' => '+86',
             'is_married' => $sh1Married,
             'gender' => $genders[$codeInt % 2],
-            'birthdate' => "{$birthYear1}-" . str_pad(($codeInt % 12) + 1, 2, '0', STR_PAD_LEFT) . '-15',
+            'birthdate' => "{$birthYear1}-".str_pad(($codeInt % 12) + 1, 2, '0', STR_PAD_LEFT).'-15',
             'birthplace' => 'Beijing, China',
             'civil_status' => $sh1Married ? 'casado' : 'soltero',
         ]);
@@ -635,11 +641,11 @@ class ChineseCompaniesSeeder extends Seeder
             'participation_percentage' => $split[1],
             'role' => ShareholderRoleEnum::SHAREHOLDER,
             'email' => "user{$codeInt}b@163.com",
-            'phone' => '139' . str_pad($codeInt * 13, 8, '0', STR_PAD_LEFT),
+            'phone' => '139'.str_pad($codeInt * 13, 8, '0', STR_PAD_LEFT),
             'phone_country_code' => '+86',
             'is_married' => $sh2Married,
             'gender' => $genders[($codeInt + 1) % 2],
-            'birthdate' => "{$birthYear2}-" . str_pad((($codeInt + 3) % 12) + 1, 2, '0', STR_PAD_LEFT) . '-20',
+            'birthdate' => "{$birthYear2}-".str_pad((($codeInt + 3) % 12) + 1, 2, '0', STR_PAD_LEFT).'-20',
             'birthplace' => 'Shanghai, China',
             'civil_status' => $sh2Married ? 'casado' : 'soltero',
         ]);
@@ -665,10 +671,11 @@ class ChineseCompaniesSeeder extends Seeder
      * seeds the ⚠️ missing-document warning for demo purposes.
      *
      * Documents added per stage milestone:
-     * - DATA_RECEIVED (always)  : 2 or 4 KYC docs per shareholder (see above).
-     * - INCORPORATION (4+)      : signed acta constitutiva.
-     * - SAT_REGISTRATION (6+)   : RFC constancia from SAT.
-     * - COMPLETED (8)           : e.firma certificate (.cer).
+     * - DATA_RECEIVED (always)    : 2 or 4 KYC docs per shareholder (see above).
+     * - ACTA_PREPARATION (index 3): compiled acta draft (template_data JSON).
+     * - INCORPORATION (index 5+)  : signed acta constitutiva.
+     * - SAT_REGISTRATION (index 7+): RFC constancia from SAT.
+     * - COMPLETED (index 9)       : e.firma certificate (.cer).
      *
      * @param  list<string>  $shareholderNames  Two Chinese names used in file labels.
      * @param  list<bool>  $isMarriedFlags  Married status for each shareholder by index.
@@ -684,6 +691,7 @@ class ChineseCompaniesSeeder extends Seeder
         User $uploader,
     ): void {
         $identityIdx = $this->stageIndex(RegistrationStageEnum::IDENTITY_VALIDATION);
+        $actaIdx = $this->stageIndex(RegistrationStageEnum::ACTA_PREPARATION);
         $incorporationIdx = $this->stageIndex(RegistrationStageEnum::INCORPORATION);
         $satIdx = $this->stageIndex(RegistrationStageEnum::SAT_REGISTRATION);
         $completedIdx = $this->stageIndex(RegistrationStageEnum::COMPLETED);
@@ -756,6 +764,7 @@ class ChineseCompaniesSeeder extends Seeder
                 'name' => $relayName,
                 'storage_path' => $path,
                 'stage' => RegistrationStageEnum::DATA_RECEIVED,
+                'shareholder_index' => $idx,
                 'uploaded_by' => null,
             ], $evalState($idx, DocumentTypeEnum::KYC_TAX_CERTIFICATE)));
 
@@ -770,6 +779,7 @@ class ChineseCompaniesSeeder extends Seeder
                 'name' => $relayName,
                 'storage_path' => $path,
                 'stage' => RegistrationStageEnum::DATA_RECEIVED,
+                'shareholder_index' => $idx,
                 'uploaded_by' => null,
             ], $evalState($idx, DocumentTypeEnum::KYC_PROOF_OF_ADDRESS)));
 
@@ -786,6 +796,7 @@ class ChineseCompaniesSeeder extends Seeder
                     'name' => $relayName,
                     'storage_path' => $path,
                     'stage' => RegistrationStageEnum::DATA_RECEIVED,
+                    'shareholder_index' => $idx,
                     'uploaded_by' => null,
                 ], $evalState($idx, DocumentTypeEnum::KYC_MARRIAGE_CERTIFICATE)));
 
@@ -800,9 +811,39 @@ class ChineseCompaniesSeeder extends Seeder
                     'name' => $relayName,
                     'storage_path' => $path,
                     'stage' => RegistrationStageEnum::DATA_RECEIVED,
+                    'shareholder_index' => $idx,
                     'uploaded_by' => null,
                 ], $evalState($idx, DocumentTypeEnum::KYC_SPOUSE_PASSPORT)));
             }
+        }
+
+        // ACTA_PREPARATION+: compiled acta draft (template_data JSON, no physical file).
+        if ($stageIndex >= $actaIdx) {
+            Document::create([
+                'registration_id' => $registration->id,
+                'type' => DocumentTypeEnum::ACTA_DRAFT,
+                'name' => "Borrador_Acta_{$clientCode}.json",
+                'storage_path' => null,
+                'stage' => RegistrationStageEnum::ACTA_PREPARATION,
+                'shareholder_index' => null,
+                'uploaded_by' => $uploader->id,
+                'verified_at' => null,
+                'template_data' => [
+                    'autorizacion_denominacion' => strtoupper($registration->legalNames()->where('priority', 1)->value('name') ?? 'PENDIENTE DENOMINACIÓN'),
+                    'company_type' => $registration->company_type ?? 'SA de CV',
+                    'capital_social' => (float) ($registration->capital_social ?? 50000.00),
+                    'domicilio_social' => 'la Ciudad de México',
+                    'comisario' => 'JACOB ZAZUETA FRAUSTO',
+                    'comisario_rfc' => 'ZAFJ890626DI0',
+                    'comisario_extranjero' => false,
+                    'numero_socios' => 2,
+                    'compiled_at' => now()->subDays(rand(1, 3))->toIso8601String(),
+                    'compiled_by_service' => 'App\\Services\\Registration\\ActaPreparationService',
+                    'registration_id' => $registration->id,
+                    'singapur_client_code' => $clientCode,
+                    '_seeder_placeholder' => true,
+                ],
+            ]);
         }
 
         // INCORPORATION+: signed acta constitutiva.
@@ -994,12 +1035,13 @@ class ChineseCompaniesSeeder extends Seeder
             RegistrationStageEnum::DATA_RECEIVED => rand(1, 10),
             RegistrationStageEnum::IDENTITY_VALIDATION => rand(10, 25),
             RegistrationStageEnum::LEGAL_NAME => rand(25, 45),
-            RegistrationStageEnum::PARTNER_SIGNATURE => rand(45, 60),
-            RegistrationStageEnum::INCORPORATION => rand(60, 85),
-            RegistrationStageEnum::TAX_ADDRESS => rand(85, 110),
-            RegistrationStageEnum::SAT_REGISTRATION => rand(110, 145),
-            RegistrationStageEnum::EFIRMA_APPOINTMENT => rand(145, 170),
-            RegistrationStageEnum::COMPLETED => rand(170, 210),
+            RegistrationStageEnum::ACTA_PREPARATION => rand(45, 60),
+            RegistrationStageEnum::PARTNER_SIGNATURE => rand(60, 75),
+            RegistrationStageEnum::INCORPORATION => rand(75, 100),
+            RegistrationStageEnum::TAX_ADDRESS => rand(100, 125),
+            RegistrationStageEnum::SAT_REGISTRATION => rand(125, 160),
+            RegistrationStageEnum::EFIRMA_APPOINTMENT => rand(160, 185),
+            RegistrationStageEnum::COMPLETED => rand(185, 225),
         };
     }
 

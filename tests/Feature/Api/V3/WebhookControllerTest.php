@@ -26,6 +26,9 @@ class WebhookControllerTest extends TestCase
 
     private const VALID_SECRET = 'nexum_test_secret';
 
+    // The controller derives the idempotency key from the `id` field of the payload.
+    private const EVENT_ID = '7dde1760-57d4-4f4e-b81b-3ae2b93025d0';
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -59,14 +62,14 @@ class WebhookControllerTest extends TestCase
     // -------------------------------------------------------------------------
 
     #[Test]
-    public function it_returns_422_when_event_id_is_missing(): void
+    public function it_returns_422_when_id_is_missing(): void
     {
         $payload = $this->validPayload();
-        unset($payload['event_id']);
+        unset($payload['id']);
 
         $this->postJson(self::WEBHOOK_URL, $payload, ['X-Nexum-Secret' => self::VALID_SECRET])
             ->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
-            ->assertJsonPath('error', 'Missing event_id');
+            ->assertJsonPath('error', 'Missing id');
     }
 
     // -------------------------------------------------------------------------
@@ -87,7 +90,7 @@ class WebhookControllerTest extends TestCase
         $this->postJson(self::WEBHOOK_URL, $this->validPayload(), ['X-Nexum-Secret' => self::VALID_SECRET]);
 
         $this->assertDatabaseHas('webhook_events', [
-            'event_id' => 'evt-test-001',
+            'event_id' => self::EVENT_ID,
             'source' => 'singapur_relay',
             'status' => 'pending',
         ]);
@@ -99,7 +102,7 @@ class WebhookControllerTest extends TestCase
         $this->postJson(self::WEBHOOK_URL, $this->validPayload(), ['X-Nexum-Secret' => self::VALID_SECRET]);
 
         Bus::assertDispatched(ProcessSingapurWebhook::class, function ($job) {
-            return $job->webhookEvent->event_id === 'evt-test-001';
+            return $job->webhookEvent->event_id === self::EVENT_ID;
         });
     }
 
@@ -141,7 +144,7 @@ class WebhookControllerTest extends TestCase
         $this->postJson(self::WEBHOOK_URL, $payload, $headers);
         $this->postJson(self::WEBHOOK_URL, $payload, $headers);
 
-        $this->assertSame(1, WebhookEvent::where('event_id', 'evt-test-001')->count());
+        $this->assertSame(1, WebhookEvent::where('event_id', self::EVENT_ID)->count());
     }
 
     // -------------------------------------------------------------------------

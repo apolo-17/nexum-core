@@ -52,4 +52,17 @@ return [
         'api_key' => env('ANTHROPIC_API_KEY'),
     ],
 
+    // DocuSign — electronic signature for the partner_signature stage (acta constitutiva).
+    // JWT auth: integration_key + user_id + RSA private key.
+    // See: https://developers.docusign.com/platform/auth/jwt/
+    'docusign' => [
+        'integration_key' => env('DOCUSIGN_INTEGRATION_KEY'),
+        'user_id' => env('DOCUSIGN_USER_ID'),
+        'account_id' => env('DOCUSIGN_ACCOUNT_ID'),
+        'rsa_private_key' => env('DOCUSIGN_PRIVATE_KEY'),
+        'secret_hmac' => env('DOCUSIGN_SECRET_HMAC'),
+        'base_url' => env('DOCUSIGN_AUTH_SERVER', 'account.docusign.com'),
+        'return_url' => env('DOCUSIGN_RETURN_URL', env('APP_URL').'/admin'),
+    ],
+
 ];
