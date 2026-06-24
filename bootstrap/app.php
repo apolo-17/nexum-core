@@ -1,6 +1,5 @@
 <?php
 
-use App\Console\Commands\PollMuaStatusCommand;
 use App\Console\Commands\SubmitDenominationsToMuaCommand;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
@@ -17,21 +16,14 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withSchedule(function (Schedule $schedule): void {
         // Submit WAIT denominations to the MUA portal every 5 minutes.
+        // Fast exits if outside SE business hours (Mon–Fri 09:00–16:00 CDMX) or no FIEL available.
         $schedule->command(SubmitDenominationsToMuaCommand::class)
             ->everyFiveMinutes()
             ->withoutOverlapping()
             ->runInBackground();
 
-        // Poll MUA for APPROVED / REJECTED updates 3 times a day (08:00, 14:00, 20:00 MX time).
-        // Polling more often is unnecessary — SE resolves denominations in batches during business hours.
-        $schedule->command(PollMuaStatusCommand::class)
-            ->twiceDaily(8, 14)
-            ->withoutOverlapping()
-            ->runInBackground();
-        $schedule->command(PollMuaStatusCommand::class)
-            ->dailyAt('20:00')
-            ->withoutOverlapping()
-            ->runInBackground();
+        // mua:poll is disabled — the MUA bot notifies us via webhook callback (POST /api/v3/webhook/mua-bot)
+        // when the SE resolves a denomination. Re-enable here if a polling fallback is ever needed.
     })
     ->withMiddleware(function (Middleware $middleware): void {
         //
