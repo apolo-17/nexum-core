@@ -27,6 +27,7 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
+            ->passwordReset()
             ->brandName('nexumcore')
             ->brandLogo(asset('brand/lockup-color.svg'))
             ->darkModeBrandLogo(asset('brand/lockup-white.svg'))
