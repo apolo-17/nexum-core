@@ -18,6 +18,7 @@ use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
 
 /**
@@ -149,12 +150,25 @@ class UserResource extends Resource
                     ->visible(fn (User $record): bool => $record->email_verified_at === null)
                     ->requiresConfirmation()
                     ->action(function (User $record): void {
-                        self::sendInvitation($record);
+                        try {
+                            self::sendInvitation($record);
 
-                        Notification::make()
-                            ->title('Invitación reenviada correctamente.')
-                            ->success()
-                            ->send();
+                            Notification::make()
+                                ->title('Invitación reenviada correctamente.')
+                                ->success()
+                                ->send();
+                        } catch (\Throwable $exception) {
+                            Log::error('Failed to resend invitation email.', [
+                                'user_id' => $record->id,
+                                'error' => $exception->getMessage(),
+                            ]);
+
+                            Notification::make()
+                                ->title('No se pudo reenviar la invitación.')
+                                ->body('Revisa la configuración de correo (Resend).')
+                                ->danger()
+                                ->send();
+                        }
                     }),
 
                 DeleteAction::make()

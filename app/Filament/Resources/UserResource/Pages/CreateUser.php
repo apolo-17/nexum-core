@@ -3,8 +3,10 @@
 namespace App\Filament\Resources\UserResource\Pages;
 
 use App\Filament\Resources\UserResource;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
@@ -45,7 +47,24 @@ class CreateUser extends CreateRecord
             $this->record->syncRoles([$role]);
         }
 
-        UserResource::sendInvitation($this->record->fresh());
+        // The record already exists at this point; never let an email failure
+        // break user creation — surface a warning so the admin can retry the
+        // invitation from the list instead.
+        try {
+            UserResource::sendInvitation($this->record->fresh());
+        } catch (\Throwable $exception) {
+            Log::error('Failed to send invitation email after creating user.', [
+                'user_id' => $this->record->id,
+                'error' => $exception->getMessage(),
+            ]);
+
+            Notification::make()
+                ->title('Usuario creado, pero no se pudo enviar la invitación.')
+                ->body('Revisa la configuración de correo y usa "Reenviar invitación" desde el listado.')
+                ->warning()
+                ->persistent()
+                ->send();
+        }
     }
 
     /**
