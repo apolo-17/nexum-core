@@ -30,6 +30,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 
 /**
  * Filament resource for managing company incorporation expedients.
@@ -367,7 +368,112 @@ class RegistrationResource extends Resource
                 ]),
 
             // ----------------------------------------------------------------
-            // Row 4 — E.firma context block.
+            // Row 4 — DocuSign / Firma electrónica status block.
+            // Visible from PARTNER_SIGNATURE stage onwards so the notary can
+            // monitor signing progress without leaving the page.
+            // ----------------------------------------------------------------
+            Section::make('Firma electrónica (DocuSign)')
+                ->columnSpan(3)
+                ->columns(3)
+                ->visible(fn (Registration $record): bool => in_array(
+                    $record->stage,
+                    [
+                        RegistrationStageEnum::PARTNER_SIGNATURE,
+                        RegistrationStageEnum::INCORPORATION,
+                        RegistrationStageEnum::TAX_ADDRESS,
+                        RegistrationStageEnum::SAT_REGISTRATION,
+                        RegistrationStageEnum::EFIRMA_APPOINTMENT,
+                        RegistrationStageEnum::COMPLETED,
+                    ],
+                    true,
+                ))
+                ->schema([
+                    TextEntry::make('docusign_envelope_status')
+                        ->label('Estado del envelope')
+                        ->columnSpan(1)
+                        ->state(function (Registration $record): string {
+                            $actaFinal = $record->documents()
+                                ->where('type', DocumentTypeEnum::ACTA_FINAL->value)
+                                ->latest()
+                                ->first();
+
+                            if ($actaFinal === null) {
+                                return '⚠️ Sin ACTA_FINAL — genera el .docx primero';
+                            }
+
+                            $signStatus = $actaFinal->template_data['sign_status'] ?? null;
+
+                            if ($signStatus === null) {
+                                return '⏳ No enviado — usa el botón "✍ Enviar a firma" en el header';
+                            }
+
+                            $status = $signStatus['status'] ?? '—';
+                            $envelopeId = $signStatus['envelope_id'] ?? '—';
+                            $sentAt = $signStatus['sent_at'] ?? null;
+                            $completedAt = $signStatus['completed_at'] ?? null;
+                            $voidedAt = $signStatus['voided_at'] ?? null;
+
+                            $icon = match ($status) {
+                                'sent' => '📤',
+                                'completed' => '✅',
+                                'voided' => '🚫',
+                                default => '⏳',
+                            };
+
+                            $line = "{$icon} {$status}";
+
+                            if ($sentAt !== null) {
+                                $line .= ' — enviado: '.Carbon::parse($sentAt)->format('d/m/Y H:i');
+                            }
+
+                            if ($completedAt !== null) {
+                                $line .= ' / firmado: '.Carbon::parse($completedAt)->format('d/m/Y H:i');
+                            }
+
+                            if ($voidedAt !== null) {
+                                $line .= ' / anulado: '.Carbon::parse($voidedAt)->format('d/m/Y H:i');
+                                $line .= ' — '.($signStatus['void_reason'] ?? '');
+                            }
+
+                            $line .= "\nEnvelope: {$envelopeId}";
+
+                            return $line;
+                        }),
+
+                    TextEntry::make('docusign_signer_status')
+                        ->label('Estado por accionista')
+                        ->columnSpan(2)
+                        ->state(function (Registration $record): string {
+                            $actaFinal = $record->documents()
+                                ->where('type', DocumentTypeEnum::ACTA_FINAL->value)
+                                ->latest()
+                                ->first();
+
+                            $signerStatus = $actaFinal?->template_data['sign_status']['signer_status'] ?? null;
+
+                            if ($signerStatus === null) {
+                                return '—';
+                            }
+
+                            $lines = [];
+
+                            foreach ($signerStatus as $key => $info) {
+                                $icon = $info['status'] === 'completed' ? '✅' : '⏳';
+                                $nombre = $info['nombre'] ?? $key;
+                                $email = $info['email'] ?? '';
+                                $signedAt = isset($info['signed_at'])
+                                    ? ' — firmado: '.Carbon::parse($info['signed_at'])->format('d/m/Y H:i')
+                                    : '';
+
+                                $lines[] = "{$icon} {$nombre} ({$email}){$signedAt}";
+                            }
+
+                            return implode("\n", $lines);
+                        }),
+                ]),
+
+            // ----------------------------------------------------------------
+            // Row 5 — E.firma context block.
             // Only visible when the expedient is at the EFIRMA_APPOINTMENT stage,
             // keeping the view clean for all other stages.
             // ----------------------------------------------------------------
@@ -556,6 +662,7 @@ class RegistrationResource extends Resource
             'index' => Pages\ListRegistrations::route('/'),
             'view' => Pages\ViewRegistration::route('/{record}'),
             'edit' => Pages\EditRegistration::route('/{record}/edit'),
+            'edit-acta-inline' => Pages\EditActaInlinePage::route('/{record}/edit-acta-inline'),
         ];
     }
 }

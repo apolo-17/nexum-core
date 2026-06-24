@@ -17,6 +17,11 @@ use PhpOffice\PhpWord\TemplateProcessor;
  * PhpWord TemplateProcessor placeholders in sa.docx, saves the rendered
  * file to R2 storage, and creates or updates an ACTA_FINAL Document record.
  *
+ * The generated .docx includes a signature page at the end with one block per
+ * socio. Each block contains a DocuSign anchor string in the format
+ * "-FIRMA{n}" (e.g., "-FIRMA1", "-FIRMA2") — an ASCII-safe identifier that
+ * DocuSign uses to position the SignHere tab without relying on Unicode names.
+ *
  * Usage: inject and call generate($registration) from GenerateActaDocxAction.
  */
 class GenerateActaDocxService
@@ -66,6 +71,10 @@ class GenerateActaDocxService
         $processor->cloneBlock('rfcPartners', 0, true, false, $dataPartners);
         $processor->cloneBlock('general', 0, true, false, $dataPartners);
 
+        // Signature page — one block per socio, with the DocuSign anchor string.
+        // Each block contains "${socio_anchor}" which resolves to "-FIRMA1", "-FIRMA2", etc.
+        $processor->cloneBlock('signaturePage', 0, true, false, $dataPartners);
+
         // Persist temp file locally, upload to R2, then clean up.
         $filename = 'acta_'.$registration->singapur_client_code.'_'.now()->format('Ymd_His').'.docx';
         $tempDir = storage_path('app/temp');
@@ -92,6 +101,10 @@ class GenerateActaDocxService
                 'name' => $filename,
                 'storage_path' => $storagePath,
                 'stage' => $registration->stage,
+                // Store the anchor map so DocuSignService can look up "-FIRMA1" → shareholder index.
+                'template_data' => [
+                    'anchor_map' => $this->buildAnchorMap($data),
+                ],
             ]
         );
 
@@ -142,8 +155,14 @@ class GenerateActaDocxService
     /**
      * Build the per-partner arrays for cloneBlock() calls.
      *
-     * Each element maps to one clone of a block (transitionalItems, rfcPartners, general).
-     * The shares for each partner are calculated from the total capital and participation %.
+     * Each element maps to one clone of a block (transitionalItems, rfcPartners,
+     * general, signaturePage). The shares for each partner are calculated from
+     * the total capital and participation %.
+     *
+     * The "socio_anchor" field contains an ASCII-safe DocuSign anchor string in
+     * the form "-FIRMA{n}" (e.g., "-FIRMA1"). This is what the signaturePage block
+     * places in the document for DocuSign to locate each signer's tab. Using an
+     * index-based identifier avoids issues with Unicode characters in Chinese names.
      *
      * @param  array<string, mixed>  $data  Compiled template_data from ACTA_DRAFT.
      * @return array<int, array<string, string>>
@@ -153,7 +172,8 @@ class GenerateActaDocxService
         $capitalSocial = (int) ($data['capital_social'] ?? 50000);
         $socios = array_values($data['socios'] ?? []);
 
-        return array_map(function (array $socio) use ($capitalSocial): array {
+        return array_map(function (array $socio, int $idx) use ($capitalSocial): array {
+            $n = $idx + 1;
             $participacion = (float) ($socio['socio_participacion'] ?? 0);
             $shares = (int) round($capitalSocial * $participacion / 100);
 
@@ -169,7 +189,7 @@ class GenerateActaDocxService
             $idFull = $idNumber !== '' ? "{$idType} número {$idNumber}" : $idType;
 
             return [
-                // Used in all three blocks.
+                // Used in all four blocks.
                 'socio_nombre' => strtoupper($socio['socio_nombre'] ?? ''),
 
                 // Used in transitionalItems and general.
@@ -198,8 +218,47 @@ class GenerateActaDocxService
                 'tax_type' => $socio['tax_type'] ?? '',
                 'tax_id' => $socio['tax_id'] ?? '',
                 'pais_residencia' => $socio['pais_residencia'] ?? '',
+
+                // Used in signaturePage — ASCII-safe DocuSign anchor string.
+                // The leading "-" matches DocuSign's setAnchorString("-FIRMA{n}") pattern.
+                'socio_anchor' => "-FIRMA{$n}",
             ];
-        }, $socios);
+        }, $socios, array_keys($socios));
+    }
+
+    /**
+     * Build a map from DocuSign anchor string to shareholder data.
+     *
+     * Stored in ACTA_FINAL template_data so DocuSignService can iterate over
+     * signers and look up each anchor string and email without re-deriving them.
+     *
+     * Example output:
+     *   [
+     *     'FIRMA1' => ['anchor' => '-FIRMA1', 'nombre' => 'JUAN PÉREZ', 'email' => 'juan@empresa.cn'],
+     *     'FIRMA2' => ['anchor' => '-FIRMA2', 'nombre' => '吴佳鑫',     'email' => 'jiaxin@empresa.cn'],
+     *   ]
+     *
+     * @param  array<string, mixed>  $data  Compiled template_data from ACTA_DRAFT.
+     * @return array<string, array<string, string>>
+     */
+    private function buildAnchorMap(array $data): array
+    {
+        $socios = array_values($data['socios'] ?? []);
+        $map = [];
+
+        foreach ($socios as $idx => $socio) {
+            $n = $idx + 1;
+            $key = "FIRMA{$n}";
+
+            $map[$key] = [
+                'anchor' => "-FIRMA{$n}",
+                'nombre' => strtoupper($socio['socio_nombre'] ?? ''),
+                'email' => $socio['email'] ?? '',
+                'rfc' => strtoupper($socio['socio_rfc'] ?? ''),
+            ];
+        }
+
+        return $map;
     }
 
     /**
