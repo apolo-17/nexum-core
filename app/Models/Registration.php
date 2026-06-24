@@ -4,12 +4,14 @@ namespace App\Models;
 
 use App\Enums\DocumentTypeEnum;
 use App\Enums\EfirmaAppointmentStatusEnum;
+use App\Enums\LegalAgentTypeEnum;
 use App\Enums\RegistrationStageEnum;
 use App\Enums\RegistrationStatusEnum;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -99,6 +101,42 @@ class Registration extends Model
     public function shareholders(): HasMany
     {
         return $this->hasMany(Shareholder::class);
+    }
+
+    /**
+     * Get all legal agents (representatives and commissaries) assigned to this acta.
+     *
+     * The pivot carries the share percentage each agent holds in this acta.
+     *
+     * @return BelongsToMany<LegalAgent, $this>
+     */
+    public function legalAgents(): BelongsToMany
+    {
+        return $this->belongsToMany(LegalAgent::class, 'legal_agent_registration')
+            ->withPivot('participation_percentage')
+            ->withTimestamps();
+    }
+
+    /**
+     * Get the legal representatives assigned to this acta.
+     *
+     * @return BelongsToMany<LegalAgent, $this>
+     */
+    public function legalRepresentatives(): BelongsToMany
+    {
+        return $this->legalAgents()
+            ->where('legal_agents.type', LegalAgentTypeEnum::LEGAL_REPRESENTATIVE);
+    }
+
+    /**
+     * Get the commissaries assigned to this acta.
+     *
+     * @return BelongsToMany<LegalAgent, $this>
+     */
+    public function commissaries(): BelongsToMany
+    {
+        return $this->legalAgents()
+            ->where('legal_agents.type', LegalAgentTypeEnum::COMMISSARY);
     }
 
     /**

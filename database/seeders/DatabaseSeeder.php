@@ -27,6 +27,10 @@ class DatabaseSeeder extends Seeder
         // explicitly if you ever need them in a non-production environment.
         if (! app()->environment('production')) {
             $this->call(ChineseCompaniesSeeder::class);
+
+            // Catalog of legal representatives / commissaries + sample assignments.
+            // Runs after the demo companies so it can attach agents to real actas.
+            $this->call(LegalAgentsSeeder::class);
         }
     }
 }
