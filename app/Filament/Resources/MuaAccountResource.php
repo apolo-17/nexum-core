@@ -94,7 +94,8 @@ class MuaAccountResource extends Resource
                         ->label('RFC')
                         ->required()
                         ->length(13)
-                        ->uppercase()
+                        ->extraInputAttributes(['style' => 'text-transform: uppercase'])
+                        ->dehydrateStateUsing(fn (?string $state): ?string => $state !== null ? strtoupper($state) : null)
                         ->unique(ignoreRecord: true),
 
                     Toggle::make('is_active')
