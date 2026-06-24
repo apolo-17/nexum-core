@@ -8,6 +8,7 @@
     "require": {
         "php": "^8.3",
         "dedoc/scramble": "^0.13.28",
+        "docusign/esign-client": "^6.19",
         "filament/filament": "^5.6",
         "laravel/framework": "^13.8",
         "laravel/horizon": "^5.47",
@@ -90,6 +91,12 @@
         "allow-plugins": {
             "pestphp/pest-plugin": true,
             "php-http/discovery": true
+        },
+        "audit": {
+            "ignore": [
+                "PKSA-y2cr-5h3j-g3ys",
+                "PKSA-2kqm-ps5x-s4f5"
+            ]
         }
     },
     "minimum-stability": "stable",

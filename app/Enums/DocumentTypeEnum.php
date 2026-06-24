@@ -48,6 +48,9 @@ enum DocumentTypeEnum: string
     /** Generated .docx acta constitutiva filled from template_data — ready for DocuSign. */
     case ACTA_FINAL = 'acta_final';
 
+    /** Signed PDF returned by DocuSign after all shareholders complete the signature. */
+    case ACTA_SIGNED = 'acta_signed';
+
     /** Signed acta constitutiva — generated at INCORPORATION stage. */
     case INCORPORATION_ACT = 'incorporation_act';
 
@@ -81,6 +84,7 @@ enum DocumentTypeEnum: string
             self::POWER_OF_ATTORNEY => 'Poder notarial',
             self::ACTA_DRAFT => 'Borrador del Acta Constitutiva',
             self::ACTA_FINAL => 'Acta Constitutiva (.docx)',
+            self::ACTA_SIGNED => 'Acta Constitutiva firmada (DocuSign)',
             self::INCORPORATION_ACT => 'Acta constitutiva',
             self::CSF => 'Constancia de Situación Fiscal (SAT)',
             self::BANK_PROOF => 'Comprobante bancario',
