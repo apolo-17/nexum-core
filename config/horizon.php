@@ -187,12 +187,12 @@ return [
          */
         'production' => [
             'supervisor-webhooks' => [
-                'maxProcesses'    => 5,
+                'maxProcesses'    => 2,
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
             'supervisor-default' => [
-                'maxProcesses'    => 10,
+                'maxProcesses'    => 2,
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],

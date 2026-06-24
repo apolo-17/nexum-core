@@ -48,17 +48,15 @@ class MuaSubmissionService
     private const BUSINESS_END_HOUR = 16;
 
     /**
-     * Mapping from internal company_type slug to the SE régimen ID.
+     * Canonical company_type slugs accepted by the MUA bot.
      *
-     * Values sourced from mua_catalogs_full.json under "Sociedades y asociaciones".
+     * The bot is the single source of truth for the slug → SE régimen translation
+     * (sa → 19, srl → 13, sapi → 89). Nexum only validates and forwards the slug;
+     * it intentionally keeps no copy of the numeric régimen catalog.
      *
-     * @var array<string, string>
+     * @var list<string>
      */
-    private const COMPANY_TYPE_MAP = [
-        'sa'   => '19',
-        'srl'  => '13',
-        'sapi' => '89',
-    ];
+    private const VALID_COMPANY_TYPES = ['sa', 'srl', 'sapi'];
 
     /**
      * Fixed SE entity code for Sinaloa — the state where Nexum's notary operates.
@@ -71,6 +69,36 @@ class MuaSubmissionService
     private const NEXUM_FEDATARIO_ID = '311697';
 
     /**
+     * Normalize a stored company type into the canonical slug the MUA bot expects.
+     *
+     * Registrations persist the display label ("SA de CV", "SRL de CV", "SAPI de CV")
+     * because the acta constitutiva renders it verbatim, but the bot keys its régimen
+     * catalog on the bare slug. This strips the "… de CV" suffix and lower-cases the
+     * value so both a label and an already-bare slug resolve to one of the supported
+     * types, and rejects anything else so a malformed value never reaches the bot.
+     *
+     * @param  string  $companyType  The stored company type (display label or slug).
+     *
+     * @return string The canonical slug: 'sa', 'srl', or 'sapi'.
+     *
+     * @throws \InvalidArgumentException  When the value is not one of the supported types.
+     */
+    public function resolveCompanyTypeSlug(string $companyType): string
+    {
+        $slug = strtolower(trim($companyType));
+        $slug = trim((string) preg_replace('/\s+de\s+cv$/', '', $slug));
+
+        if (! in_array($slug, self::VALID_COMPANY_TYPES, true)) {
+            throw new \InvalidArgumentException(
+                "Unsupported company_type [{$companyType}] — expected one of: "
+                .implode(', ', self::VALID_COMPANY_TYPES).'.'
+            );
+        }
+
+        return $slug;
+    }
+
+    /**
      * Attempt to submit a denomination to the MUA bot immediately.
      *
      * Returns true when the submission was dispatched, false when deferred
@@ -80,6 +108,7 @@ class MuaSubmissionService
      *
      * @return bool Whether the denomination was submitted (true) or deferred (false).
      *
+     * @throws \InvalidArgumentException  When the registration company_type is unsupported.
      * @throws \RuntimeException  When the assigned FIEL account is missing credentials.
      * @throws \Illuminate\Http\Client\RequestException  When the bot HTTP call fails.
      */
@@ -181,6 +210,7 @@ class MuaSubmissionService
      *
      * @return void
      *
+     * @throws \InvalidArgumentException  When the registration company_type is unsupported.
      * @throws \RuntimeException  When any of the three FIEL credentials are missing.
      * @throws \Illuminate\Http\Client\RequestException  When the bot returns a non-2xx response.
      */
@@ -197,8 +227,7 @@ class MuaSubmissionService
         }
 
         $legalName->load('registration');
-        $companyType = $legalName->registration->company_type ?? 'sa';
-        $regimenId   = self::COMPANY_TYPE_MAP[$companyType] ?? self::COMPANY_TYPE_MAP['sa'];
+        $companyType = $this->resolveCompanyTypeSlug((string) ($legalName->registration->company_type ?? ''));
 
         $botUrl = rtrim((string) config('services.mua_bot.url'), '/');
         $apiKey = (string) config('services.mua_bot.api_key');
@@ -228,7 +257,6 @@ class MuaSubmissionService
             'name'           => $legalName->name,
             'mua_account_id' => $account->id,
             'company_type'   => $companyType,
-            'regimen_id'     => $regimenId,
         ]);
     }
 }
