@@ -25,6 +25,7 @@ class MuaAccount extends Model
      */
     protected $fillable = [
         'name',
+        'email',
         'rfc',
         'is_active',
         'active_submissions',

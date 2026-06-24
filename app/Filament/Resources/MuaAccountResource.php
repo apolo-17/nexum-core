@@ -4,13 +4,10 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\MuaAccountResource\Pages;
 use App\Models\MuaAccount;
-use App\Models\MuaCredential;
-use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
-use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
@@ -22,9 +19,9 @@ use Illuminate\Support\Facades\Auth;
 /**
  * Filament resource for managing MUA accounts (soldados FIEL).
  *
- * Only accessible to super_admin. Allows uploading FIEL credentials
- * (certificate, private key, password) for each account so the bot
- * can authenticate with the SE's MUA portal to submit denominations.
+ * Only accessible to super_admin. The create/edit form includes FIEL credential
+ * fields (certificate, private key, password) that are extracted in the page's
+ * lifecycle hooks and persisted to mua_credentials — never to mua_accounts directly.
  */
 class MuaAccountResource extends Resource
 {
@@ -75,6 +72,11 @@ class MuaAccountResource extends Resource
     /**
      * Define the form for creating / editing a MuaAccount.
      *
+     * Credential fields (certificate_b64, private_key_b64, private_key_password) are
+     * virtual — they do not map to columns on mua_accounts. The page's lifecycle hooks
+     * (mutateFormDataBeforeCreate / mutateFormDataBeforeSave) strip them out before
+     * Eloquent touches the model and persist them to mua_credentials instead.
+     *
      * @param  Schema  $schema
      *
      * @return Schema
@@ -87,6 +89,12 @@ class MuaAccountResource extends Resource
                 ->schema([
                     TextInput::make('name')
                         ->label('Nombre completo')
+                        ->required()
+                        ->maxLength(255),
+
+                    TextInput::make('email')
+                        ->label('Correo electrónico')
+                        ->email()
                         ->required()
                         ->maxLength(255),
 
@@ -103,6 +111,31 @@ class MuaAccountResource extends Resource
                         ->default(true)
                         ->helperText('Desactivar para excluir esta cuenta del bot sin eliminarla.'),
                 ])->columns(2),
+
+            Section::make('Credenciales FIEL (e.firma)')
+                ->description('Archivos de la e.firma en formato base64. Al editar, dejar en blanco conserva las credenciales actuales sin cambios.')
+                ->schema([
+                    TextInput::make('certificate_b64')
+                        ->label('Certificado .cer (base64)')
+                        ->required(fn (string $operation): bool => $operation === 'create')
+                        ->password()
+                        ->revealable()
+                        ->helperText('Pega el contenido base64 del archivo .cer de la FIEL.'),
+
+                    TextInput::make('private_key_b64')
+                        ->label('Llave privada .key (base64)')
+                        ->required(fn (string $operation): bool => $operation === 'create')
+                        ->password()
+                        ->revealable()
+                        ->helperText('Pega el contenido base64 del archivo .key de la FIEL.'),
+
+                    TextInput::make('private_key_password')
+                        ->label('Contraseña de la llave privada')
+                        ->required(fn (string $operation): bool => $operation === 'create')
+                        ->password()
+                        ->revealable()
+                        ->helperText('La contraseña que protege el archivo .key.'),
+                ])->columns(1),
         ]);
     }
 
@@ -121,6 +154,10 @@ class MuaAccountResource extends Resource
                     ->label('Soldado')
                     ->searchable()
                     ->sortable(),
+
+                TextColumn::make('email')
+                    ->label('Email')
+                    ->searchable(),
 
                 TextColumn::make('rfc')
                     ->label('RFC')
@@ -148,66 +185,6 @@ class MuaAccountResource extends Resource
             ])
             ->actions([
                 EditAction::make(),
-
-                Action::make('upload_certificate')
-                    ->label('Subir certificado (.cer)')
-                    ->icon('heroicon-o-document-arrow-up')
-                    ->color('info')
-                    ->form([
-                        TextInput::make('certificate_b64')
-                            ->label('Contenido .cer (base64)')
-                            ->required()
-                            ->helperText('Pega el contenido base64 del archivo .cer de la FIEL.')
-                            ->password()
-                            ->revealable(),
-                    ])
-                    ->action(function (MuaAccount $record, array $data): void {
-                        MuaCredential::updateOrCreate(
-                            ['mua_account_id' => $record->id, 'type' => 'certificate'],
-                            []
-                        )->setEncryptedValue($data['certificate_b64'])->save();
-
-                        Notification::make()
-                            ->title('Certificado guardado correctamente.')
-                            ->success()
-                            ->send();
-                    }),
-
-                Action::make('upload_private_key')
-                    ->label('Subir llave privada (.key)')
-                    ->icon('heroicon-o-lock-closed')
-                    ->color('warning')
-                    ->form([
-                        TextInput::make('private_key_b64')
-                            ->label('Contenido .key (base64)')
-                            ->required()
-                            ->helperText('Pega el contenido base64 del archivo .key de la FIEL.')
-                            ->password()
-                            ->revealable(),
-
-                        TextInput::make('password')
-                            ->label('Contraseña de la llave privada')
-                            ->required()
-                            ->password()
-                            ->revealable(),
-                    ])
-                    ->action(function (MuaAccount $record, array $data): void {
-                        MuaCredential::updateOrCreate(
-                            ['mua_account_id' => $record->id, 'type' => 'private_key'],
-                            []
-                        )->setEncryptedValue($data['private_key_b64'])->save();
-
-                        MuaCredential::updateOrCreate(
-                            ['mua_account_id' => $record->id, 'type' => 'password'],
-                            []
-                        )->setEncryptedValue($data['password'])->save();
-
-                        Notification::make()
-                            ->title('Llave privada y contraseña guardadas correctamente.')
-                            ->success()
-                            ->send();
-                    }),
-
                 DeleteAction::make(),
             ]);
     }
