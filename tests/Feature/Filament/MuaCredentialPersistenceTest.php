@@ -45,6 +45,23 @@ class MuaCredentialPersistenceTest extends TestCase
     }
 
     #[Test]
+    public function it_stores_a_large_credential_value(): void
+    {
+        $account = MuaAccount::create([
+            'name' => 'Soldado Grande',
+            'rfc' => 'CCCC000101CCC',
+            'is_active' => true,
+        ]);
+
+        // Simulates a real .cer/.key base64 — well beyond the old varchar(4000) cap.
+        $large = str_repeat('A', 6000);
+
+        MuaAccountResource::persistCredentials($account, ['certificate' => $large]);
+
+        $this->assertSame($large, $account->fresh()->getCredential('certificate'));
+    }
+
+    #[Test]
     public function it_updates_an_existing_credential_without_duplicating(): void
     {
         $account = MuaAccount::create([
