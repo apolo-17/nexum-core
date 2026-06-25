@@ -207,7 +207,17 @@ class DenominationResource extends Resource
         return $schema->components([
             Section::make('Denominación')
                 ->columns(2)
+                ->poll('15s')
                 ->schema([
+                    InfoTextEntry::make('checking_indicator')
+                        ->hiddenLabel()
+                        ->badge()
+                        ->color('info')
+                        ->icon('heroicon-o-arrow-path')
+                        ->columnSpanFull()
+                        ->visible(fn (LegalName $record): bool => $record->isAwaitingCheckResult())
+                        ->state(fn (): string => 'Consultando estado en la SE…'),
+
                     InfoTextEntry::make('name')->label('Denominación'),
                     InfoTextEntry::make('company_type')
                         ->label('Tipo')
@@ -231,6 +241,7 @@ class DenominationResource extends Resource
 
             Section::make('Tiempos')
                 ->columns(3)
+                ->poll('15s')
                 ->schema([
                     InfoTextEntry::make('created_at')->label('Creada')->dateTime('d/m/Y H:i'),
                     InfoTextEntry::make('submitted_at')->label('Enviada')->dateTime('d/m/Y H:i')->placeholder('—'),
@@ -242,7 +253,20 @@ class DenominationResource extends Resource
                     InfoTextEntry::make('ruling_duration')
                         ->label('Tiempo de dictamen')
                         ->placeholder('—')
-                        ->state(fn (LegalName $record): ?string => self::humanDuration($record->submitted_at, $record->authorization_timestamp)),
+                        ->state(function (LegalName $record): ?string {
+                            // Once resolved, measure up to the authorization; while still
+                            // in dictamen, show the running time elapsed since submission.
+                            $end = $record->authorization_timestamp
+                                ?? ($record->isInProcess() ? now() : null);
+
+                            $duration = self::humanDuration($record->submitted_at, $end);
+
+                            if ($duration !== null && $record->authorization_timestamp === null) {
+                                return "{$duration} (en curso)";
+                            }
+
+                            return $duration;
+                        }),
                     InfoTextEntry::make('total_duration')
                         ->label('Tiempo total')
                         ->placeholder('—')
@@ -250,6 +274,7 @@ class DenominationResource extends Resource
                 ]),
 
             Section::make('Historial')
+                ->poll('15s')
                 ->schema([
                     ViewEntry::make('events')
                         ->hiddenLabel()

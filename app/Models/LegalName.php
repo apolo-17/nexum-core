@@ -36,6 +36,7 @@ class LegalName extends Model
         'clave_unica_denominacion',
         'authorization_timestamp',
         'submitted_at',
+        'last_status_check_at',
         'mua_account_id',
         'rejection_reason',
         'mua_available',
@@ -53,6 +54,7 @@ class LegalName extends Model
             'status' => LegalNameStatusEnum::class,
             'authorization_timestamp' => 'datetime',
             'submitted_at' => 'datetime',
+            'last_status_check_at' => 'datetime',
             'mua_available' => 'boolean',
         ];
     }
@@ -158,5 +160,30 @@ class LegalName extends Model
             LegalNameStatusEnum::PENDING,
             LegalNameStatusEnum::PROCESS,
         ], true);
+    }
+
+    /**
+     * Determine whether a manual status check can be requested for this denomination.
+     *
+     * Only makes sense once the name has been submitted to the SE (PENDING/PROCESS)
+     * with a FIEL assigned — there is nothing to consult before that.
+     */
+    public function canRequestStatusCheck(): bool
+    {
+        return $this->isInProcess() && $this->mua_account_id !== null;
+    }
+
+    /**
+     * Determine whether a manual status check is in flight (loading indicator).
+     *
+     * True while a check was requested recently (within the grace window) and the
+     * denomination has not yet reached a terminal status. Once the bot callback
+     * resolves it to APPROVED/REJECTED — or the window elapses — this returns false.
+     */
+    public function isAwaitingCheckResult(): bool
+    {
+        return $this->last_status_check_at !== null
+            && $this->isInProcess()
+            && $this->last_status_check_at->gt(now()->subMinutes(5));
     }
 }

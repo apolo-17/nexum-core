@@ -63,12 +63,12 @@ class MuaSubmissionService
     /**
      * Fixed SE entity code for Sinaloa — the state where Nexum's notary operates.
      */
-    private const NEXUM_ENTIDAD = '25';
+    public const NEXUM_ENTIDAD = '25';
 
     /**
      * Fixed fedatario ID for Nexum's notary — Notaría 248 in Sinaloa.
      */
-    private const NEXUM_FEDATARIO_ID = '311697';
+    public const NEXUM_FEDATARIO_ID = '311697';
 
     /**
      * Normalize a stored company type into the canonical slug the MUA bot expects.

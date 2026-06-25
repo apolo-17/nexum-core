@@ -31,6 +31,12 @@ enum LegalNameEventTypeEnum: string
     /** Successfully submitted to the MUA bot with a FIEL assigned. */
     case SUBMITTED = 'submitted';
 
+    /** A manual SE status check was requested to the bot. */
+    case CHECK_REQUESTED = 'check_requested';
+
+    /** A manual SE status check could not be dispatched to the bot. */
+    case CHECK_FAILED = 'check_failed';
+
     /** SE took the denomination into review (PENDING → PROCESS). */
     case IN_PROCESS = 'in_process';
 
@@ -58,6 +64,8 @@ enum LegalNameEventTypeEnum: string
             self::DEFERRED => 'Envío diferido',
             self::SUBMISSION_FAILED => 'Error al enviar',
             self::SUBMITTED => 'Enviada a la SE',
+            self::CHECK_REQUESTED => 'Consulta de estado solicitada',
+            self::CHECK_FAILED => 'Error al solicitar consulta',
             self::IN_PROCESS => 'En dictamen',
             self::APPROVED => 'Aprobada por la SE',
             self::REJECTED => 'Rechazada por la SE',
@@ -78,6 +86,8 @@ enum LegalNameEventTypeEnum: string
             self::DEFERRED => 'heroicon-o-clock',
             self::SUBMISSION_FAILED => 'heroicon-o-exclamation-triangle',
             self::SUBMITTED => 'heroicon-o-paper-airplane',
+            self::CHECK_REQUESTED => 'heroicon-o-magnifying-glass-circle',
+            self::CHECK_FAILED => 'heroicon-o-exclamation-triangle',
             self::IN_PROCESS => 'heroicon-o-arrow-path',
             self::APPROVED => 'heroicon-o-check-badge',
             self::REJECTED => 'heroicon-o-x-circle',
@@ -93,9 +103,9 @@ enum LegalNameEventTypeEnum: string
     {
         return match ($this) {
             self::CREATED, self::AVAILABILITY_CHECKED => 'gray',
-            self::QUEUED, self::IN_PROCESS => 'info',
+            self::QUEUED, self::IN_PROCESS, self::CHECK_REQUESTED => 'info',
             self::DEFERRED => 'warning',
-            self::SUBMISSION_FAILED, self::REJECTED => 'danger',
+            self::SUBMISSION_FAILED, self::CHECK_FAILED, self::REJECTED => 'danger',
             self::SUBMITTED => 'primary',
             self::APPROVED, self::CONSTANCIA_RECEIVED, self::CLAIMED => 'success',
         };
