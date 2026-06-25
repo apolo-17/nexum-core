@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Enums\LegalNameStatusEnum;
 use App\Filament\Resources\DenominationResource\Pages;
 use App\Models\LegalName;
+use App\Services\Mua\MuaSubmissionService;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\PageRegistration;
@@ -116,18 +117,64 @@ class DenominationResource extends Resource
                     ->label('Enviar a la SE')
                     ->icon('heroicon-o-paper-airplane')
                     ->color('info')
-                    ->visible(fn (LegalName $record): bool => $record->status === LegalNameStatusEnum::DRAFT)
+                    ->visible(fn (LegalName $record): bool => in_array(
+                        $record->status,
+                        [LegalNameStatusEnum::DRAFT, LegalNameStatusEnum::WAIT],
+                        true,
+                    ))
                     ->requiresConfirmation()
-                    ->modalDescription('La denominación pasará a la cola de envío al portal MUA en la próxima ventana hábil.')
+                    ->modalDescription('Se enviará la denominación al portal MUA de inmediato (si es horario hábil y hay FIEL disponible).')
                     ->action(function (LegalName $record): void {
-                        $record->update(['status' => LegalNameStatusEnum::WAIT]);
-
-                        Notification::make()
-                            ->title('Denominación enviada a la cola de la SE.')
-                            ->success()
-                            ->send();
+                        self::attemptSubmit($record)->send();
                     }),
             ]);
+    }
+
+    /**
+     * Push a single pool denomination to the MUA bot right now and build the
+     * resulting user notification.
+     *
+     * Triggered manually (the mua:submit cron is disabled), so the team controls
+     * exactly when denominations are sent. If the submission is deferred — outside
+     * SE business hours or no FIEL with daily capacity — the name is left in WAIT
+     * and the notification explains why so the operator can retry later.
+     *
+     * @param  LegalName  $record  The pool denomination to submit.
+     * @return Notification The notification describing the outcome (caller sends it).
+     */
+    public static function attemptSubmit(LegalName $record): Notification
+    {
+        $service = app(MuaSubmissionService::class);
+
+        try {
+            $submitted = $service->trySubmit($record);
+        } catch (\Throwable $exception) {
+            return Notification::make()
+                ->title("«{$record->name}»: error al enviar al portal MUA.")
+                ->body($exception->getMessage())
+                ->danger();
+        }
+
+        if ($submitted) {
+            return Notification::make()
+                ->title("«{$record->name}» enviada al portal MUA.")
+                ->success();
+        }
+
+        // Deferred — keep it queued as WAIT and explain the reason.
+        if ($record->status !== LegalNameStatusEnum::WAIT) {
+            $record->update(['status' => LegalNameStatusEnum::WAIT]);
+        }
+
+        $reason = ! $service->isBusinessHours()
+            ? 'Fuera del horario hábil de la SE (Lun–Vie 09:00–16:00 CDMX).'
+            : 'No hay FIEL con capacidad disponible hoy (límite 5/día por FIEL).';
+
+        return Notification::make()
+            ->title("«{$record->name}»: envío diferido — quedó en espera.")
+            ->body($reason.' Vuelve a intentar cuando aplique.')
+            ->warning()
+            ->persistent();
     }
 
     /**

@@ -15,12 +15,14 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withSchedule(function (Schedule $schedule): void {
-        // Submit WAIT denominations to the MUA portal every 5 minutes.
-        // Fast exits if outside SE business hours (Mon–Fri 09:00–16:00 CDMX) or no FIEL available.
-        $schedule->command(SubmitDenominationsToMuaCommand::class)
-            ->everyFiveMinutes()
-            ->withoutOverlapping()
-            ->runInBackground();
+        // mua:submit is disabled — denomination submission is now triggered manually
+        // from the "Denominaciones (Pool)" dashboard (DenominationResource), since the
+        // team generates and sends the names itself. The command still exists and can
+        // be run on demand (`php artisan mua:submit`) as a fallback.
+        // $schedule->command(SubmitDenominationsToMuaCommand::class)
+        //     ->everyFiveMinutes()
+        //     ->withoutOverlapping()
+        //     ->runInBackground();
 
         // mua:poll is disabled — the MUA bot notifies us via webhook callback (POST /api/v3/webhook/mua-bot)
         // when the SE resolves a denomination. Re-enable here if a polling fallback is ever needed.
