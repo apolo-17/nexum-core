@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V3;
 
+use App\Enums\LegalNameEventTypeEnum;
 use App\Enums\LegalNameStatusEnum;
 use App\Http\Controllers\Controller;
 use App\Models\Document;
@@ -91,8 +92,35 @@ class MuaBotCallbackController extends Controller
         try {
             if ($status === LegalNameStatusEnum::APPROVED) {
                 $this->processApproval($request, $legalName);
+
+                $legalName->refresh();
+                $legalName->recordEvent(
+                    LegalNameEventTypeEnum::APPROVED,
+                    'La SE autorizó la denominación.',
+                    [
+                        'clave_unica' => $legalName->clave_unica_denominacion,
+                        'portal_status' => $legalName->portal_status,
+                    ],
+                    actorType: 'bot',
+                );
+                $legalName->recordEvent(
+                    LegalNameEventTypeEnum::CONSTANCIA_RECEIVED,
+                    'Constancia de autorización recibida.',
+                    actorType: 'bot',
+                );
             } else {
                 $this->processRejection($request, $legalName);
+
+                $legalName->refresh();
+                $legalName->recordEvent(
+                    LegalNameEventTypeEnum::REJECTED,
+                    'La SE rechazó la denominación.',
+                    [
+                        'reason' => $legalName->rejection_reason,
+                        'portal_status' => $legalName->portal_status,
+                    ],
+                    actorType: 'bot',
+                );
             }
         } catch (\Throwable $th) {
             Log::error('MUA bot callback: failed to process denomination result.', [

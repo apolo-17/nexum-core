@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Mua;
 
+use App\Enums\LegalNameEventTypeEnum;
 use App\Enums\LegalNameStatusEnum;
 use App\Models\LegalName;
 use App\Models\MuaAccount;
@@ -250,6 +251,16 @@ class MuaSubmissionService
             'mua_account_id' => $account->id,
             'submitted_at' => now(),
         ]);
+
+        $legalName->recordEvent(
+            LegalNameEventTypeEnum::SUBMITTED,
+            "Enviada al portal MUA con la FIEL «{$account->name}».",
+            [
+                'mua_account_id' => $account->id,
+                'mua_account_name' => $account->name,
+                'company_type' => $companyType,
+            ],
+        );
 
         Log::info('MuaSubmissionService: denomination submitted to MUA bot.', [
             'legal_name_id' => $legalName->id,

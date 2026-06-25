@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\DenominationResource\Pages;
 
+use App\Enums\LegalNameEventTypeEnum;
 use App\Enums\LegalNameStatusEnum;
 use App\Filament\Resources\DenominationResource;
 use App\Models\LegalName;
@@ -91,13 +92,19 @@ class ListDenominations extends ListRecords
                         continue;
                     }
 
-                    LegalName::create([
+                    $legalName = LegalName::create([
                         'registration_id' => null,
                         'name' => $name,
                         'company_type' => $data['company_type'],
                         'priority' => 1,
                         'status' => LegalNameStatusEnum::DRAFT,
                     ]);
+
+                    $legalName->recordEvent(
+                        LegalNameEventTypeEnum::CREATED,
+                        'Generada por IA (borrador).',
+                        ['company_type' => $data['company_type'], 'origin' => 'ai_pool'],
+                    );
 
                     $created++;
                 }
@@ -163,6 +170,13 @@ class ListDenominations extends ListRecords
                             'legal_name_id' => $name->id,
                             'error' => $exception->getMessage(),
                         ]);
+
+                        $name->recordEvent(
+                            LegalNameEventTypeEnum::SUBMISSION_FAILED,
+                            'Error al enviar al portal MUA.',
+                            ['error' => $exception->getMessage()],
+                        );
+
                         $errors++;
 
                         continue;
@@ -172,9 +186,16 @@ class ListDenominations extends ListRecords
                         $name->update(['status' => LegalNameStatusEnum::WAIT]);
                     }
                     $deferred++;
-                    $reason ??= ! $service->isBusinessHours()
+                    $deferReason = ! $service->isBusinessHours()
                         ? 'Fuera del horario hábil de la SE (Lun–Vie 09:00–16:00 CDMX).'
                         : 'No hay FIEL con capacidad disponible hoy (límite 5/día por FIEL).';
+                    $reason ??= $deferReason;
+
+                    $name->recordEvent(
+                        LegalNameEventTypeEnum::DEFERRED,
+                        'Envío diferido — quedó en espera.',
+                        ['reason' => $deferReason],
+                    );
                 }
 
                 $body = "Enviadas: {$sent} · Diferidas: {$deferred} · Errores: {$errors}.";

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V3;
 
+use App\Enums\LegalNameEventTypeEnum;
 use App\Enums\LegalNameStatusEnum;
 use App\Http\Controllers\Controller;
 use App\Models\LegalName;
@@ -92,6 +93,15 @@ class DenominationPoolController extends Controller
                 Response::HTTP_CONFLICT,
             );
         }
+
+        $legalName->recordEvent(
+            LegalNameEventTypeEnum::CLAIMED,
+            "Asignada al expediente {$registration->singapur_client_code}.",
+            [
+                'registration_id' => $registration->id,
+                'registration_code' => $registration->singapur_client_code,
+            ],
+        );
 
         return response()->json([
             'data' => [

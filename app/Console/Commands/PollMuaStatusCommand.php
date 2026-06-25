@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Enums\LegalNameEventTypeEnum;
 use App\Enums\LegalNameStatusEnum;
 use App\Models\LegalName;
 use App\Models\Registration;
@@ -55,7 +56,7 @@ class PollMuaStatusCommand extends Command
      * whether the name now appears in the "authorized" registry (approved) or has been
      * removed/rejected. Transitions status accordingly and notifies when resolved.
      *
-     * @return int  Command::SUCCESS or Command::FAILURE
+     * @return int Command::SUCCESS or Command::FAILURE
      */
     public function handle(): int
     {
@@ -99,9 +100,7 @@ class PollMuaStatusCommand extends Command
      * completed once the exact MUA response format is confirmed.
      *
      * @param  LegalName  $legalName  Denomination to poll.
-     * @param  bool       $isDryRun   When true, skip persistence.
-     *
-     * @return void
+     * @param  bool  $isDryRun  When true, skip persistence.
      */
     private function pollDenomination(LegalName $legalName, bool $isDryRun): void
     {
@@ -123,9 +122,9 @@ class PollMuaStatusCommand extends Command
 
                 if (! $isDryRun) {
                     $legalName->update([
-                        'status'                  => LegalNameStatusEnum::APPROVED->value,
+                        'status' => LegalNameStatusEnum::APPROVED->value,
                         'clave_unica_denominacion' => $clave,
-                        'authorization_timestamp'  => now(),
+                        'authorization_timestamp' => now(),
                     ]);
 
                     // Decrement active submissions counter on the assigned account.
@@ -137,8 +136,8 @@ class PollMuaStatusCommand extends Command
 
                     Log::info('Denomination approved by SE.', [
                         'legal_name_id' => $legalName->id,
-                        'name'          => $legalName->name,
-                        'clave'         => $clave,
+                        'name' => $legalName->name,
+                        'clave' => $clave,
                     ]);
                 }
             } elseif ($approved === false && $legalName->status === LegalNameStatusEnum::PROCESS) {
@@ -147,7 +146,7 @@ class PollMuaStatusCommand extends Command
 
                 if (! $isDryRun) {
                     $legalName->update([
-                        'status'           => LegalNameStatusEnum::REJECTED->value,
+                        'status' => LegalNameStatusEnum::REJECTED->value,
                         'rejection_reason' => 'Rechazada por la Secretaría de Economía',
                     ]);
 
@@ -159,7 +158,7 @@ class PollMuaStatusCommand extends Command
 
                     Log::info('Denomination rejected by SE.', [
                         'legal_name_id' => $legalName->id,
-                        'name'          => $legalName->name,
+                        'name' => $legalName->name,
                     ]);
                 }
             } else {
@@ -168,13 +167,17 @@ class PollMuaStatusCommand extends Command
                 // Move from PENDING to PROCESS if it now appears in the SE queue.
                 if ($legalName->status === LegalNameStatusEnum::PENDING && ! $isDryRun) {
                     $legalName->update(['status' => LegalNameStatusEnum::PROCESS->value]);
+                    $legalName->recordEvent(
+                        LegalNameEventTypeEnum::IN_PROCESS,
+                        'La SE tomó la denominación a dictamen.',
+                    );
                 }
             }
         } catch (\Throwable $th) {
             Log::error('Error polling MUA for denomination.', [
                 'legal_name_id' => $legalName->id,
-                'name'          => $legalName->name,
-                'exception'     => $th->getMessage(),
+                'name' => $legalName->name,
+                'exception' => $th->getMessage(),
             ]);
 
             $this->error("  ✗ Exception: {$th->getMessage()}");
@@ -195,7 +198,6 @@ class PollMuaStatusCommand extends Command
      * Extend this method when that endpoint is mapped.
      *
      * @param  string  $name  Denomination name to query.
-     *
      * @return array{approved: bool, clave: string|null}|null
      */
     private function queryMuaStatus(string $name): ?array
@@ -213,10 +215,8 @@ class PollMuaStatusCommand extends Command
      * Send a database notification to the assigned notario about the denomination result.
      *
      * @param  Registration  $registration  The registration linked to the denomination.
-     * @param  string        $name          The denomination name.
-     * @param  bool          $approved      True if approved, false if rejected.
-     *
-     * @return void
+     * @param  string  $name  The denomination name.
+     * @param  bool  $approved  True if approved, false if rejected.
      */
     private function notifyNotario(Registration $registration, string $name, bool $approved): void
     {
@@ -230,9 +230,9 @@ class PollMuaStatusCommand extends Command
 
         Log::info('Denomination resolution notification sent to notario.', [
             'registration_id' => $registration->id,
-            'notario_id'      => $notario->id,
-            'name'            => $name,
-            'approved'        => $approved,
+            'notario_id' => $notario->id,
+            'name' => $name,
+            'approved' => $approved,
         ]);
     }
 }

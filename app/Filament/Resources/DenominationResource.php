@@ -2,14 +2,21 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\LegalNameEventTypeEnum;
 use App\Enums\LegalNameStatusEnum;
 use App\Filament\Resources\DenominationResource\Pages;
 use App\Models\LegalName;
 use App\Services\Mua\MuaSubmissionService;
+use Carbon\CarbonInterface;
 use Filament\Actions\Action;
+use Filament\Actions\ViewAction;
+use Filament\Infolists\Components\TextEntry as InfoTextEntry;
+use Filament\Infolists\Components\ViewEntry;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Section;
+use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -113,6 +120,8 @@ class DenominationResource extends Resource
             ])
             ->defaultSort('created_at', 'desc')
             ->actions([
+                ViewAction::make(),
+
                 Action::make('send_to_se')
                     ->label('Enviar a la SE')
                     ->icon('heroicon-o-paper-airplane')
@@ -149,6 +158,12 @@ class DenominationResource extends Resource
         try {
             $submitted = $service->trySubmit($record);
         } catch (\Throwable $exception) {
+            $record->recordEvent(
+                LegalNameEventTypeEnum::SUBMISSION_FAILED,
+                'Error al enviar al portal MUA.',
+                ['error' => $exception->getMessage()],
+            );
+
             return Notification::make()
                 ->title("«{$record->name}»: error al enviar al portal MUA.")
                 ->body($exception->getMessage())
@@ -170,11 +185,96 @@ class DenominationResource extends Resource
             ? 'Fuera del horario hábil de la SE (Lun–Vie 09:00–16:00 CDMX).'
             : 'No hay FIEL con capacidad disponible hoy (límite 5/día por FIEL).';
 
+        $record->recordEvent(
+            LegalNameEventTypeEnum::DEFERRED,
+            'Envío diferido — quedó en espera.',
+            ['reason' => $reason],
+        );
+
         return Notification::make()
             ->title("«{$record->name}»: envío diferido — quedó en espera.")
             ->body($reason.' Vuelve a intentar cuando aplique.')
             ->warning()
             ->persistent();
+    }
+
+    /**
+     * Define the detail (show) view: denomination data, derived timings and the
+     * full lifecycle timeline (events).
+     */
+    public static function infolist(Schema $schema): Schema
+    {
+        return $schema->components([
+            Section::make('Denominación')
+                ->columns(2)
+                ->schema([
+                    InfoTextEntry::make('name')->label('Denominación'),
+                    InfoTextEntry::make('company_type')
+                        ->label('Tipo')
+                        ->badge()
+                        ->formatStateUsing(fn (?string $state): string => strtoupper((string) $state)),
+                    InfoTextEntry::make('status')
+                        ->label('Estado')
+                        ->badge()
+                        ->formatStateUsing(fn (LegalNameStatusEnum $state): string => $state->label())
+                        ->color(fn (LegalNameStatusEnum $state): string => match ($state) {
+                            LegalNameStatusEnum::DRAFT => 'gray',
+                            LegalNameStatusEnum::APPROVED => 'success',
+                            LegalNameStatusEnum::REJECTED => 'danger',
+                            default => 'warning',
+                        }),
+                    InfoTextEntry::make('muaAccount.name')->label('FIEL')->placeholder('Se asigna al enviar'),
+                    InfoTextEntry::make('clave_unica_denominacion')->label('Folio SE')->placeholder('—'),
+                    InfoTextEntry::make('portal_status')->label('Estatus en portal SE')->placeholder('—'),
+                    InfoTextEntry::make('rejection_reason')->label('Motivo de rechazo')->placeholder('—'),
+                ]),
+
+            Section::make('Tiempos')
+                ->columns(3)
+                ->schema([
+                    InfoTextEntry::make('created_at')->label('Creada')->dateTime('d/m/Y H:i'),
+                    InfoTextEntry::make('submitted_at')->label('Enviada')->dateTime('d/m/Y H:i')->placeholder('—'),
+                    InfoTextEntry::make('authorization_timestamp')->label('Resuelta')->dateTime('d/m/Y H:i')->placeholder('—'),
+                    InfoTextEntry::make('queue_duration')
+                        ->label('Tiempo en cola')
+                        ->placeholder('—')
+                        ->state(fn (LegalName $record): ?string => self::humanDuration($record->created_at, $record->submitted_at)),
+                    InfoTextEntry::make('ruling_duration')
+                        ->label('Tiempo de dictamen')
+                        ->placeholder('—')
+                        ->state(fn (LegalName $record): ?string => self::humanDuration($record->submitted_at, $record->authorization_timestamp)),
+                    InfoTextEntry::make('total_duration')
+                        ->label('Tiempo total')
+                        ->placeholder('—')
+                        ->state(fn (LegalName $record): ?string => self::humanDuration($record->created_at, $record->authorization_timestamp)),
+                ]),
+
+            Section::make('Historial')
+                ->schema([
+                    ViewEntry::make('events')
+                        ->hiddenLabel()
+                        ->view('filament.infolists.legal-name-timeline'),
+                ]),
+        ]);
+    }
+
+    /**
+     * Build a human-readable duration between two moments.
+     *
+     * Returns null when either endpoint is missing so the infolist falls back to
+     * its placeholder. Uses an absolute, two-part interval (e.g. "2 horas 5 minutos").
+     *
+     * @param  CarbonInterface|null  $start  Interval start.
+     * @param  CarbonInterface|null  $end  Interval end.
+     * @return string|null The formatted duration, or null when incomputable.
+     */
+    private static function humanDuration(?CarbonInterface $start, ?CarbonInterface $end): ?string
+    {
+        if ($start === null || $end === null) {
+            return null;
+        }
+
+        return $start->diffAsCarbonInterval($end)->forHumans(['parts' => 2, 'short' => false]);
     }
 
     /**
@@ -186,6 +286,7 @@ class DenominationResource extends Resource
     {
         return [
             'index' => Pages\ListDenominations::route('/'),
+            'view' => Pages\ViewDenomination::route('/{record}'),
         ];
     }
 }
