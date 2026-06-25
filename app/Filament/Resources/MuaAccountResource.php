@@ -109,7 +109,7 @@ class MuaAccountResource extends Resource
                         ->required(fn (string $operation): bool => $operation === 'create')
                         ->storeFiles(false)
                         ->maxSize(2048)
-                        ->rules([self::extensionRule('cer')])
+                        ->rules([fn (): Closure => self::extensionRule('cer')])
                         ->helperText('Sube el archivo .cer de la FIEL.'),
 
                     FileUpload::make('private_key_file')
@@ -117,7 +117,7 @@ class MuaAccountResource extends Resource
                         ->required(fn (string $operation): bool => $operation === 'create')
                         ->storeFiles(false)
                         ->maxSize(2048)
-                        ->rules([self::extensionRule('key')])
+                        ->rules([fn (): Closure => self::extensionRule('key')])
                         ->helperText('Sube el archivo .key de la FIEL.'),
 
                     TextInput::make('private_key_password')
