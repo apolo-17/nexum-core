@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\MuaAccountResource\Pages;
 use App\Models\MuaAccount;
 use App\Models\MuaCredential;
+use Closure;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\FileUpload;
@@ -108,6 +109,7 @@ class MuaAccountResource extends Resource
                         ->required(fn (string $operation): bool => $operation === 'create')
                         ->storeFiles(false)
                         ->maxSize(2048)
+                        ->rules([self::extensionRule('cer')])
                         ->helperText('Sube el archivo .cer de la FIEL.'),
 
                     FileUpload::make('private_key_file')
@@ -115,6 +117,7 @@ class MuaAccountResource extends Resource
                         ->required(fn (string $operation): bool => $operation === 'create')
                         ->storeFiles(false)
                         ->maxSize(2048)
+                        ->rules([self::extensionRule('key')])
                         ->helperText('Sube el archivo .key de la FIEL.'),
 
                     TextInput::make('private_key_password')
@@ -151,6 +154,44 @@ class MuaAccountResource extends Resource
             : @file_get_contents($file->getRealPath());
 
         return $content === false || $content === null ? null : base64_encode($content);
+    }
+
+    /**
+     * Determine whether an uploaded file has the given extension (case-insensitive).
+     *
+     * MIME types for .cer / .key are unreliable (often application/octet-stream),
+     * so we enforce by the original file extension instead.
+     *
+     * @param  mixed  $value  The FileUpload field state (file, array of files, or null).
+     * @param  string  $extension  Expected extension without the dot (e.g. 'cer').
+     * @return bool True when a file is present and its extension matches.
+     */
+    public static function uploadedHasExtension(mixed $value, string $extension): bool
+    {
+        $file = is_array($value) ? reset($value) : $value;
+
+        return $file instanceof UploadedFile
+            && strtolower($file->getClientOriginalExtension()) === strtolower($extension);
+    }
+
+    /**
+     * Build a validation rule that rejects uploads whose extension is not the given one.
+     *
+     * Only validates when a file is actually present, so leaving the field blank on
+     * edit (to keep the existing credential) is allowed; the required() rule handles
+     * the must-upload-on-create case.
+     *
+     * @param  string  $extension  Required extension without the dot (e.g. 'cer').
+     */
+    private static function extensionRule(string $extension): Closure
+    {
+        return static function (string $attribute, mixed $value, Closure $fail) use ($extension): void {
+            $file = is_array($value) ? reset($value) : $value;
+
+            if ($file instanceof UploadedFile && ! self::uploadedHasExtension($value, $extension)) {
+                $fail("El archivo debe tener extensión .{$extension}.");
+            }
+        };
     }
 
     /**
