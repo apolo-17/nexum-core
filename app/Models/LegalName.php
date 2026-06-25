@@ -27,6 +27,7 @@ class LegalName extends Model
     protected $fillable = [
         'registration_id',
         'name',
+        'company_type',
         'priority',
         'status',
         'clave_unica_denominacion',
@@ -46,10 +47,10 @@ class LegalName extends Model
     protected function casts(): array
     {
         return [
-            'status'                  => LegalNameStatusEnum::class,
+            'status' => LegalNameStatusEnum::class,
             'authorization_timestamp' => 'datetime',
-            'submitted_at'            => 'datetime',
-            'mua_available'           => 'boolean',
+            'submitted_at' => 'datetime',
+            'mua_available' => 'boolean',
         ];
     }
 
@@ -85,8 +86,6 @@ class LegalName extends Model
      * Determine whether this denomination can still be edited or deleted.
      *
      * Delegates to the enum to keep business rules in one place.
-     *
-     * @return bool
      */
     public function isEditable(): bool
     {
@@ -95,8 +94,6 @@ class LegalName extends Model
 
     /**
      * Determine whether this denomination is waiting to be submitted to MUA.
-     *
-     * @return bool
      */
     public function isWaitingForSubmission(): bool
     {
@@ -105,8 +102,6 @@ class LegalName extends Model
 
     /**
      * Determine whether this denomination has been submitted and is awaiting SE response.
-     *
-     * @return bool
      */
     public function isInProcess(): bool
     {
