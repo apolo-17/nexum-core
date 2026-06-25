@@ -8,9 +8,12 @@ use App\Models\MuaCredential;
 use Closure;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
+use Filament\Actions\ViewAction;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Infolists\Components\IconEntry;
+use Filament\Infolists\Components\TextEntry as InfoTextEntry;
 use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
@@ -258,9 +261,52 @@ class MuaAccountResource extends Resource
                     ->sortable(),
             ])
             ->actions([
+                ViewAction::make(),
                 EditAction::make(),
                 DeleteAction::make(),
             ]);
+    }
+
+    /**
+     * Define the detail (show) view of a MUA account.
+     *
+     * Shows the soldado's data and which FIEL credentials are loaded — never the
+     * secret values themselves, only a present/missing indicator per component.
+     */
+    public static function infolist(Schema $schema): Schema
+    {
+        return $schema->components([
+            Section::make('Datos del soldado')
+                ->columns(2)
+                ->schema([
+                    InfoTextEntry::make('name')->label('Nombre completo'),
+                    InfoTextEntry::make('email')->label('Correo electrónico')->placeholder('—'),
+                    InfoTextEntry::make('rfc')->label('RFC'),
+                    IconEntry::make('is_active')->label('Activo')->boolean(),
+                    InfoTextEntry::make('active_submissions')->label('En proceso')->numeric(),
+                    InfoTextEntry::make('created_at')->label('Registrado')->dateTime('d/m/Y H:i'),
+                ]),
+
+            Section::make('Credenciales FIEL (e.firma)')
+                ->description('Por seguridad no se muestran los valores; solo si están cargados.')
+                ->columns(3)
+                ->schema([
+                    IconEntry::make('cred_certificate')
+                        ->label('Certificado (.cer)')
+                        ->boolean()
+                        ->state(fn (MuaAccount $record): bool => $record->credentials->contains('type', 'certificate')),
+
+                    IconEntry::make('cred_private_key')
+                        ->label('Llave privada (.key)')
+                        ->boolean()
+                        ->state(fn (MuaAccount $record): bool => $record->credentials->contains('type', 'private_key')),
+
+                    IconEntry::make('cred_password')
+                        ->label('Contraseña')
+                        ->boolean()
+                        ->state(fn (MuaAccount $record): bool => $record->credentials->contains('type', 'password')),
+                ]),
+        ]);
     }
 
     /**
@@ -273,6 +319,7 @@ class MuaAccountResource extends Resource
         return [
             'index' => Pages\ListMuaAccounts::route('/'),
             'create' => Pages\CreateMuaAccount::route('/create'),
+            'view' => Pages\ViewMuaAccount::route('/{record}'),
             'edit' => Pages\EditMuaAccount::route('/{record}/edit'),
         ];
     }

@@ -107,4 +107,12 @@ class EditMuaAccount extends EditRecord
             throw new Halt;
         }
     }
+
+    /**
+     * Redirect to the detail (view) page after saving changes.
+     */
+    protected function getRedirectUrl(): string
+    {
+        return $this->getResource()::getUrl('view', ['record' => $this->record]);
+    }
 }

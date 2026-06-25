@@ -90,4 +90,12 @@ class CreateMuaAccount extends CreateRecord
             throw new Halt;
         }
     }
+
+    /**
+     * Redirect to the detail (view) page after creating the account.
+     */
+    protected function getRedirectUrl(): string
+    {
+        return $this->getResource()::getUrl('view', ['record' => $this->record]);
+    }
 }
