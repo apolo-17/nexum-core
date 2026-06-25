@@ -10,6 +10,7 @@ use App\Jobs\ProcessSingapurWebhook;
 use App\Jobs\SubmitLegalNameToMuaJob;
 use App\Models\Registration;
 use App\Models\WebhookEvent;
+use App\Services\Notifications\EventNotifier;
 use App\Services\Registration\RegistrationUpsertService;
 use App\Services\Singapur\SingapurSubmissionParser;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -55,7 +56,7 @@ class IncorporationDeedIngestionTest extends TestCase
         // The deed is stored as its own document type.
         $this->assertDatabaseHas('documents', [
             'registration_id' => $registration->id,
-            'type'            => DocumentTypeEnum::INCORPORATION_DEED->value,
+            'type' => DocumentTypeEnum::INCORPORATION_DEED->value,
         ]);
 
         // Every document is marked verified (China already did identity + extraction).
@@ -95,12 +96,13 @@ class IncorporationDeedIngestionTest extends TestCase
     {
         $event = WebhookEvent::factory()->create([
             'payload' => $payload,
-            'status'  => WebhookEventStatusEnum::PENDING,
+            'status' => WebhookEventStatusEnum::PENDING,
         ]);
 
         (new ProcessSingapurWebhook($event))->handle(
             app(SingapurSubmissionParser::class),
             app(RegistrationUpsertService::class),
+            app(EventNotifier::class),
         );
     }
 
@@ -112,29 +114,29 @@ class IncorporationDeedIngestionTest extends TestCase
     private function payloadWithDeed(): array
     {
         return [
-            'id'                  => '7dde1760-57d4-4f4e-b81b-3ae2b93025d0',
+            'id' => '7dde1760-57d4-4f4e-b81b-3ae2b93025d0',
             'registration_number' => '000001',
             'company_folder_name' => '000001_NOVA CONSULTORA EMPRESARIAL',
             'fields' => [
-                'companyName'              => 'NOVA CONSULTORÍA EMPRESARIAL',
-                'companyType'              => 'sa',
-                'shareholderCount'         => '1',
-                'shareholderType1'         => 'natural',
-                'naturalShareholderName1'  => 'Jiaxin Wu',
+                'companyName' => 'NOVA CONSULTORÍA EMPRESARIAL',
+                'companyType' => 'sa',
+                'shareholderCount' => '1',
+                'shareholderType1' => 'natural',
+                'naturalShareholderName1' => 'Jiaxin Wu',
                 'naturalShareholderEmail1' => 'jiaxin@example.com',
-                'naturalSharePercentage1'  => '100',
-                'naturalNationality1'      => 'china',
-                'naturalMarried1'          => 'no',
-                '_language'                => 'zh',
+                'naturalSharePercentage1' => '100',
+                'naturalNationality1' => 'china',
+                'naturalMarried1' => 'no',
+                '_language' => 'zh',
             ],
             'files' => [
                 [
-                    'field'         => 'naturalTaxCertificate1',
+                    'field' => 'naturalTaxCertificate1',
                     'original_name' => 'JIAXIN_WU_TAX_ID.pdf',
-                    'relay_name'    => '000001__naturalTaxCertificate1__JIAXIN_WU_TAX_ID.pdf',
-                    'size'          => 16,
-                    'content_type'  => 'application/pdf',
-                    'content'       => base64_encode('fake-pdf-content'),
+                    'relay_name' => '000001__naturalTaxCertificate1__JIAXIN_WU_TAX_ID.pdf',
+                    'size' => 16,
+                    'content_type' => 'application/pdf',
+                    'content' => base64_encode('fake-pdf-content'),
                 ],
             ],
             'incorporation_deed' => base64_encode('fake-acta-render'),

@@ -3,14 +3,16 @@
 namespace App\Jobs;
 
 use App\Enums\LegalNameStatusEnum;
+use App\Enums\NotificationEventEnum;
 use App\Enums\RegistrationStageEnum;
 use App\Enums\WebhookEventStatusEnum;
 use App\Models\Document;
 use App\Models\LegalName;
 use App\Models\Registration;
-use App\Models\User;
 use App\Models\WebhookEvent;
+use App\Notifications\ExpedienteReceptionFailed;
 use App\Notifications\NewExpedienteReceived;
+use App\Services\Notifications\EventNotifier;
 use App\Services\Registration\RegistrationUpsertService;
 use App\Services\Singapur\SingapurSubmissionParser;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -68,12 +70,14 @@ class ProcessSingapurWebhook implements ShouldQueue
      *
      * @param  SingapurSubmissionParser  $parser  Parses the raw payload into a DTO.
      * @param  RegistrationUpsertService  $upsertService  Creates or updates the registration.
+     * @param  EventNotifier  $notifier  Dispatches the configurable reception notification.
      *
      * @throws \RuntimeException When the payload is missing required submission fields.
      */
     public function handle(
         SingapurSubmissionParser $parser,
         RegistrationUpsertService $upsertService,
+        EventNotifier $notifier,
     ): void {
         $submission = $parser->parse($this->webhookEvent->payload);
         $registration = $upsertService->upsert($submission);
@@ -85,9 +89,11 @@ class ProcessSingapurWebhook implements ShouldQueue
             $this->handlePreVerifiedSubmission($registration);
         }
 
-        // Notify every super_admin so they can review the new expedient immediately.
-        User::role('super_admin')->each(
-            fn (User $admin) => $admin->notify(new NewExpedienteReceived($registration))
+        // Notify the recipients configured for the "Recepción de expedientes"
+        // event (super_admin only); a no-op when the event is disabled.
+        $notifier->notify(
+            NotificationEventEnum::EXPEDIENTE_RECEIVED,
+            new NewExpedienteReceived($registration),
         );
 
         // Attempt immediate MUA submission for every denomination in WAIT status.
@@ -146,5 +152,13 @@ class ProcessSingapurWebhook implements ShouldQueue
             'status' => WebhookEventStatusEnum::FAILED,
             'error_message' => $exception->getMessage(),
         ]);
+
+        // Alert the same recipients configured for "Recepción de expedientes" so a
+        // failed delivery does not go unnoticed. Resolved at call time (not
+        // injected) because failed() runs outside the container's method injection.
+        app(EventNotifier::class)->notify(
+            NotificationEventEnum::EXPEDIENTE_RECEIVED,
+            new ExpedienteReceptionFailed($this->webhookEvent, $exception->getMessage()),
+        );
     }
 }

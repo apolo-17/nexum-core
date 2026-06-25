@@ -115,4 +115,23 @@ return [
         'name' => env('MAIL_FROM_NAME', env('APP_NAME', 'Laravel')),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Markdown Mail Settings
+    |--------------------------------------------------------------------------
+    |
+    | Markdown mailables and notifications render with the published Nexum
+    | components and brand theme (resources/views/vendor/mail). The "nexum"
+    | theme applies the brand blue and lockup styling to every email.
+    |
+    */
+
+    'markdown' => [
+        'theme' => 'nexum',
+
+        'paths' => [
+            resource_path('views/vendor/mail'),
+        ],
+    ],
+
 ];
