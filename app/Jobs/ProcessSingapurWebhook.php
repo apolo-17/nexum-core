@@ -3,8 +3,11 @@
 namespace App\Jobs;
 
 use App\Enums\LegalNameStatusEnum;
+use App\Enums\RegistrationStageEnum;
 use App\Enums\WebhookEventStatusEnum;
+use App\Models\Document;
 use App\Models\LegalName;
+use App\Models\Registration;
 use App\Models\User;
 use App\Models\WebhookEvent;
 use App\Notifications\NewExpedienteReceived;
@@ -63,19 +66,24 @@ class ProcessSingapurWebhook implements ShouldQueue
      * business hours and FIEL availability conditions are met. If not, the cron
      * (mua:submit) will pick the denominations up on the next eligible window.
      *
-     * @param  SingapurSubmissionParser   $parser         Parses the raw payload into a DTO.
+     * @param  SingapurSubmissionParser  $parser  Parses the raw payload into a DTO.
      * @param  RegistrationUpsertService  $upsertService  Creates or updates the registration.
      *
-     * @return void
-     *
-     * @throws \RuntimeException  When the payload is missing required submission fields.
+     * @throws \RuntimeException When the payload is missing required submission fields.
      */
     public function handle(
         SingapurSubmissionParser $parser,
         RegistrationUpsertService $upsertService,
     ): void {
-        $submission   = $parser->parse($this->webhookEvent->payload);
+        $submission = $parser->parse($this->webhookEvent->payload);
         $registration = $upsertService->upsert($submission);
+
+        // When China sends the pre-rendered acta (incorporation_deed), identity is
+        // already verified and data already extracted on their side: mark every
+        // document verified, kick off our own extraction, and skip identity.
+        if ($submission->incorporationDeed !== null) {
+            $this->handlePreVerifiedSubmission($registration);
+        }
 
         // Notify every super_admin so they can review the new expedient immediately.
         User::role('super_admin')->each(
@@ -93,21 +101,49 @@ class ProcessSingapurWebhook implements ShouldQueue
             });
 
         $this->webhookEvent->update([
-            'status'       => WebhookEventStatusEnum::PROCESSED,
+            'status' => WebhookEventStatusEnum::PROCESSED,
             'processed_at' => now(),
         ]);
+    }
+
+    /**
+     * Apply the "pre-verified" flow used when China sends the rendered acta.
+     *
+     * Marks every still-pending document as verified (verified_by stays null to
+     * denote a system/relay verification), dispatches Claude extraction for each
+     * verified document (non-analysable types are skipped by the service), and
+     * advances the registration past identity validation straight to the
+     * denomination stage — the only thing left on Nexum's side.
+     *
+     * @param  Registration  $registration  The freshly upserted registration.
+     */
+    private function handlePreVerifiedSubmission(Registration $registration): void
+    {
+        $registration->documents()
+            ->whereNull('verified_at')
+            ->update(['verified_at' => now(), 'verified_by' => null]);
+
+        $registration->documents()
+            ->whereNotNull('verified_at')
+            ->get()
+            ->each(fn (Document $document) => AnalyzeDocumentJob::dispatch($document));
+
+        // Identity validation happens on China's side; jump to the denomination
+        // stage. Guarded so a redelivery never regresses an advanced expedient.
+        if ($registration->stage === RegistrationStageEnum::DATA_RECEIVED) {
+            $registration->update(['stage' => RegistrationStageEnum::LEGAL_NAME]);
+        }
     }
 
     /**
      * Handle a job failure — record the error message for inspection and retry tracking.
      *
      * @param  Throwable  $exception  The exception that caused the failure.
-     * @return void
      */
     public function failed(Throwable $exception): void
     {
         $this->webhookEvent->update([
-            'status'        => WebhookEventStatusEnum::FAILED,
+            'status' => WebhookEventStatusEnum::FAILED,
             'error_message' => $exception->getMessage(),
         ]);
     }

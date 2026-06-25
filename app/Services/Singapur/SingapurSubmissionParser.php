@@ -40,6 +40,46 @@ class SingapurSubmissionParser
             capitalSocial: isset($fields['capitalSocial']) ? (float) $fields['capitalSocial'] : null,
             shareholders: $this->parseShareholders($fields, $shareholderCount),
             files: $this->parseFiles($data['files'] ?? []),
+            incorporationDeed: $this->parseIncorporationDeed($data),
+        );
+    }
+
+    /**
+     * Build a file DTO for the top-level `incorporation_deed` field, when present.
+     *
+     * China sends the pre-rendered acta as a base64 string (or an object carrying
+     * `content` plus optional `content_type` / `original_name`). Returns null when
+     * the field is absent or empty so the rest of the pipeline is unaffected.
+     *
+     * @param  array<string, mixed>  $data  Decoded submission.json array.
+     */
+    private function parseIncorporationDeed(array $data): ?SingapurFileDTO
+    {
+        $deed = $data['incorporation_deed'] ?? null;
+
+        if (blank($deed)) {
+            return null;
+        }
+
+        // Accept both a bare base64 string and a richer object form.
+        $content = is_array($deed) ? ($deed['content'] ?? null) : (string) $deed;
+        $contentType = is_array($deed) ? ($deed['content_type'] ?? 'application/pdf') : 'application/pdf';
+        $originalName = is_array($deed) ? ($deed['original_name'] ?? 'acta_constitutiva') : 'acta_constitutiva';
+
+        if (blank($content)) {
+            return null;
+        }
+
+        $registrationNumber = $data['registration_number'] ?? '';
+        $decoded = base64_decode((string) $content, strict: true);
+
+        return new SingapurFileDTO(
+            field: 'incorporationDeed',
+            originalName: $originalName,
+            relayName: "{$registrationNumber}__incorporationDeed__{$originalName}",
+            contentType: $contentType,
+            size: $decoded === false ? 0 : strlen($decoded),
+            content: (string) $content,
         );
     }
 

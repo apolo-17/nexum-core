@@ -42,6 +42,9 @@ class RegistrationUpsertService
         'image/jpeg',
         'image/png',
         'image/webp',
+        // DOCX — the pre-rendered acta (incorporation_deed) may arrive as a Word
+        // template so Nexum can inject the legal representative + denomination.
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     ];
 
     /**
@@ -61,6 +64,11 @@ class RegistrationUpsertService
             $this->upsertInitialLegalName($registration, $dto->companyName);
             $this->syncShareholders($registration, $dto->shareholders);
             $this->createDocumentMetadata($registration, $dto->files);
+
+            // Persist the pre-rendered acta sent by China, when present.
+            if ($dto->incorporationDeed !== null) {
+                $this->createDocumentIfNotExists($registration, $dto->incorporationDeed);
+            }
 
             return $registration;
         });

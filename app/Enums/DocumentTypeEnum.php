@@ -42,6 +42,9 @@ enum DocumentTypeEnum: string
     /** Power of attorney from the shareholder. */
     case POWER_OF_ATTORNEY = 'power_of_attorney';
 
+    /** Pre-rendered acta sent by China in the webhook (identity verified, data extracted on their side). Awaits Nexum injecting the legal representative + approved denomination. */
+    case INCORPORATION_DEED = 'incorporation_deed';
+
     /** Draft of the acta constitutiva — compiled at ACTA_PREPARATION stage, sent to DocuSign later. */
     case ACTA_DRAFT = 'acta_draft';
 
@@ -82,6 +85,7 @@ enum DocumentTypeEnum: string
             self::PASSPORT => 'Pasaporte del accionista',
             self::VISA => 'Visa',
             self::POWER_OF_ATTORNEY => 'Poder notarial',
+            self::INCORPORATION_DEED => 'Acta constitutiva (render de China)',
             self::ACTA_DRAFT => 'Borrador del Acta Constitutiva',
             self::ACTA_FINAL => 'Acta Constitutiva (.docx)',
             self::ACTA_SIGNED => 'Acta Constitutiva firmada (DocuSign)',
@@ -127,6 +131,7 @@ enum DocumentTypeEnum: string
             'naturalPassport' => self::PASSPORT,
             'naturalMarriageCertificate' => self::KYC_MARRIAGE_CERTIFICATE,
             'naturalSpousePassport' => self::KYC_SPOUSE_PASSPORT,
+            'incorporationDeed' => self::INCORPORATION_DEED,
             default => self::OTHER,
         };
     }

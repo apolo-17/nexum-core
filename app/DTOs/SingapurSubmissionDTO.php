@@ -22,6 +22,7 @@ readonly class SingapurSubmissionDTO
      * @param  float|null  $capitalSocial  Total share capital in MXN. Defaults to the minimum legal amount if null.
      * @param  list<SingapurShareholderDTO>  $shareholders  Parsed shareholders ordered by their relay index.
      * @param  list<SingapurFileDTO>  $files  File metadata entries from the submission package.
+     * @param  SingapurFileDTO|null  $incorporationDeed  Pre-rendered acta sent by China (top-level `incorporation_deed`), already identity-verified and data-extracted on their side. Null when not provided.
      */
     public function __construct(
         public string $id,
@@ -34,6 +35,7 @@ readonly class SingapurSubmissionDTO
         public ?float $capitalSocial,
         public array $shareholders,
         public array $files,
+        public ?SingapurFileDTO $incorporationDeed = null,
     ) {}
 
     /**
