@@ -3,14 +3,17 @@
 namespace App\Filament\Resources\MuaAccountResource\Pages;
 
 use App\Filament\Resources\MuaAccountResource;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Create page for a new MUA account (soldado FIEL).
  *
  * Credential fields in the form are virtual — not columns on mua_accounts.
- * mutateFormDataBeforeCreate() extracts them before model creation and stores
- * them temporarily; afterCreate() persists them to mua_credentials.
+ * mutateFormDataBeforeCreate() extracts them; the account row and its credentials
+ * are then written together inside a single transaction (all-or-nothing).
  */
 class CreateMuaAccount extends CreateRecord
 {
@@ -49,13 +52,34 @@ class CreateMuaAccount extends CreateRecord
     }
 
     /**
-     * Persist FIEL credentials to mua_credentials after the account row is created.
+     * Create the account and its FIEL credentials atomically.
      *
-     * Only non-empty values are written; all three are expected on create since
-     * the form marks them as required for the 'create' operation.
+     * Wraps both writes in a single transaction so a credential failure rolls back
+     * the account too — never leaving a half-saved record. On error the exact
+     * reason is surfaced and the save is halted.
+     *
+     * @param  array<string, mixed>  $data  Account attributes (credentials already stripped).
+     * @return Model The created MuaAccount.
      */
-    protected function afterCreate(): void
+    protected function handleRecordCreation(array $data): Model
     {
-        MuaAccountResource::persistCredentials($this->record, $this->pendingCredentials);
+        try {
+            return DB::transaction(function () use ($data): Model {
+                $record = parent::handleRecordCreation($data);
+
+                MuaAccountResource::persistCredentials($record, $this->pendingCredentials);
+
+                return $record;
+            });
+        } catch (\Throwable $exception) {
+            Notification::make()
+                ->title('No se pudo guardar la cuenta FIEL — no se creó nada.')
+                ->body($exception->getMessage())
+                ->danger()
+                ->persistent()
+                ->send();
+
+            $this->halt();
+        }
     }
 }
