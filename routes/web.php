@@ -1,11 +1,20 @@
 <?php
 
 use App\Http\Controllers\Admin\DocumentRelayDownloadController;
+use App\Http\Middleware\EnsureCanViewApiDocs;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
     return view('welcome');
 });
+
+// Bilingual API docs UI (ES default, real-time toggle to EN). The JSON specs
+// themselves are served by Scramble at docs/api/{es,en}.json — see AppServiceProvider.
+// Access is restricted by EnsureCanViewApiDocs: local-only, or HTTP Basic + the
+// `viewApiDocs` ability (super_admin or the read-only `developer` role) in prod.
+Route::middleware(EnsureCanViewApiDocs::class)
+    ->get('docs/api', fn () => view('docs.api'))
+    ->name('scramble.docs.ui');
 
 // Admin panel routes — protected by Filament's standard session auth.
 Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () {
