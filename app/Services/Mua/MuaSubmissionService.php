@@ -8,6 +8,7 @@ use App\Enums\LegalNameStatusEnum;
 use App\Models\LegalName;
 use App\Models\MuaAccount;
 use Carbon\Carbon;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -78,10 +79,9 @@ class MuaSubmissionService
      * types, and rejects anything else so a malformed value never reaches the bot.
      *
      * @param  string  $companyType  The stored company type (display label or slug).
-     *
      * @return string The canonical slug: 'sa', 'srl', or 'sapi'.
      *
-     * @throws \InvalidArgumentException  When the value is not one of the supported types.
+     * @throws \InvalidArgumentException When the value is not one of the supported types.
      */
     public function resolveCompanyTypeSlug(string $companyType): string
     {
@@ -105,20 +105,19 @@ class MuaSubmissionService
      * because the business-hours gate or FIEL availability check failed.
      *
      * @param  LegalName  $legalName  The denomination to submit.
-     *
      * @return bool Whether the denomination was submitted (true) or deferred (false).
      *
-     * @throws \InvalidArgumentException  When the registration company_type is unsupported.
-     * @throws \RuntimeException  When the assigned FIEL account is missing credentials.
-     * @throws \Illuminate\Http\Client\RequestException  When the bot HTTP call fails.
+     * @throws \InvalidArgumentException When the registration company_type is unsupported.
+     * @throws \RuntimeException When the assigned FIEL account is missing credentials.
+     * @throws RequestException When the bot HTTP call fails.
      */
     public function trySubmit(LegalName $legalName): bool
     {
         if (! $this->isBusinessHours()) {
             Log::info('MuaSubmissionService: outside business hours — denomination deferred.', [
                 'legal_name_id' => $legalName->id,
-                'name'          => $legalName->name,
-                'local_time'    => Carbon::now(self::TIMEZONE)->toDateTimeString(),
+                'name' => $legalName->name,
+                'local_time' => Carbon::now(self::TIMEZONE)->toDateTimeString(),
             ]);
 
             return false;
@@ -129,7 +128,7 @@ class MuaSubmissionService
         if ($account === null) {
             Log::warning('MuaSubmissionService: no FIEL with available daily capacity — denomination deferred.', [
                 'legal_name_id' => $legalName->id,
-                'name'          => $legalName->name,
+                'name' => $legalName->name,
             ]);
 
             return false;
@@ -185,13 +184,12 @@ class MuaSubmissionService
      * Count how many denominations this FIEL account has submitted today (CDMX time).
      *
      * @param  MuaAccount  $account  The FIEL account to check.
-     *
      * @return int Number of submissions made since midnight CDMX today.
      */
     public function dailySubmissionsCount(MuaAccount $account): int
     {
         $todayStart = Carbon::now(self::TIMEZONE)->startOfDay()->utc();
-        $todayEnd   = Carbon::now(self::TIMEZONE)->endOfDay()->utc();
+        $todayEnd = Carbon::now(self::TIMEZONE)->endOfDay()->utc();
 
         return LegalName::where('mua_account_id', $account->id)
             ->whereBetween('submitted_at', [$todayStart, $todayEnd])
@@ -205,19 +203,17 @@ class MuaSubmissionService
      * and records submitted_at. The bot will call the webhook callback when the
      * SE resolves the denomination.
      *
-     * @param  LegalName   $legalName  The denomination to submit.
-     * @param  MuaAccount  $account    The FIEL account whose credentials will be used.
+     * @param  LegalName  $legalName  The denomination to submit.
+     * @param  MuaAccount  $account  The FIEL account whose credentials will be used.
      *
-     * @return void
-     *
-     * @throws \InvalidArgumentException  When the registration company_type is unsupported.
-     * @throws \RuntimeException  When any of the three FIEL credentials are missing.
-     * @throws \Illuminate\Http\Client\RequestException  When the bot returns a non-2xx response.
+     * @throws \InvalidArgumentException When the registration company_type is unsupported.
+     * @throws \RuntimeException When any of the three FIEL credentials are missing.
+     * @throws RequestException When the bot returns a non-2xx response.
      */
     private function submitToBot(LegalName $legalName, MuaAccount $account): void
     {
-        $cert     = $account->getCredential('certificate');
-        $keyPem   = $account->getCredential('private_key');
+        $cert = $account->getCredential('certificate');
+        $keyPem = $account->getCredential('private_key');
         $password = $account->getCredential('password');
 
         if (! $cert || ! $keyPem || ! $password) {
@@ -227,7 +223,10 @@ class MuaSubmissionService
         }
 
         $legalName->load('registration');
-        $companyType = $this->resolveCompanyTypeSlug((string) ($legalName->registration->company_type ?? ''));
+        // Registration-bound names take their type from the expedient; standalone
+        // pool names carry their own company_type column.
+        $rawCompanyType = $legalName->registration->company_type ?? $legalName->company_type ?? '';
+        $companyType = $this->resolveCompanyTypeSlug((string) $rawCompanyType);
 
         $botUrl = rtrim((string) config('services.mua_bot.url'), '/');
         $apiKey = (string) config('services.mua_bot.api_key');
@@ -236,27 +235,27 @@ class MuaSubmissionService
             ->withHeader('X-Bot-Api-Key', $apiKey)
             ->post("{$botUrl}/submit", [
                 'legal_name_id' => $legalName->id,
-                'denomination'  => $legalName->name,
-                'company_type'  => $companyType,
-                'entidad'       => self::NEXUM_ENTIDAD,
-                'fedatario_id'  => self::NEXUM_FEDATARIO_ID,
-                'cert_base64'   => $cert,
-                'key_base64'    => $keyPem,
-                'password'      => $password,
+                'denomination' => $legalName->name,
+                'company_type' => $companyType,
+                'entidad' => self::NEXUM_ENTIDAD,
+                'fedatario_id' => self::NEXUM_FEDATARIO_ID,
+                'cert_base64' => $cert,
+                'key_base64' => $keyPem,
+                'password' => $password,
             ])
             ->throw();
 
         $legalName->update([
-            'status'         => LegalNameStatusEnum::PENDING,
+            'status' => LegalNameStatusEnum::PENDING,
             'mua_account_id' => $account->id,
-            'submitted_at'   => now(),
+            'submitted_at' => now(),
         ]);
 
         Log::info('MuaSubmissionService: denomination submitted to MUA bot.', [
-            'legal_name_id'  => $legalName->id,
-            'name'           => $legalName->name,
+            'legal_name_id' => $legalName->id,
+            'name' => $legalName->name,
             'mua_account_id' => $account->id,
-            'company_type'   => $companyType,
+            'company_type' => $companyType,
         ]);
     }
 }

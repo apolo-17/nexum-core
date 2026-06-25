@@ -9,23 +9,25 @@ namespace App\Enums;
  */
 enum LegalNameStatusEnum: string
 {
-    case WAIT     = 'wait';
-    case PENDING  = 'pending';
-    case PROCESS  = 'process';
+    /** Pool name generated (e.g. by AI) but not yet sent to the SE — awaits review. */
+    case DRAFT = 'draft';
+
+    case WAIT = 'wait';
+    case PENDING = 'pending';
+    case PROCESS = 'process';
     case APPROVED = 'approved';
     case REJECTED = 'rejected';
 
     /**
      * Return a human-readable Spanish label for display in the dashboard.
-     *
-     * @return string
      */
     public function label(): string
     {
-        return match($this) {
-            self::WAIT     => 'En espera',
-            self::PENDING  => 'Pendiente de envío',
-            self::PROCESS  => 'En dictamen',
+        return match ($this) {
+            self::DRAFT => 'Borrador (sin enviar)',
+            self::WAIT => 'En espera',
+            self::PENDING => 'Pendiente de envío',
+            self::PROCESS => 'En dictamen',
             self::APPROVED => 'Aprobado',
             self::REJECTED => 'Rechazado',
         };
@@ -35,14 +37,12 @@ enum LegalNameStatusEnum: string
      * Determine whether this status allows the denomination to be modified.
      *
      * Denominations in PROCESS or APPROVED state cannot be edited.
-     *
-     * @return bool
      */
     public function isEditable(): bool
     {
-        return match($this) {
+        return match ($this) {
             self::PROCESS, self::APPROVED => false,
-            default                        => true,
+            default => true,
         };
     }
 }
