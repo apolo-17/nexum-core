@@ -34,18 +34,17 @@ class CreateMuaAccount extends CreateRecord
      * them to the mua_credentials table once the parent row exists.
      *
      * @param  array<string, mixed>  $data  Form state from the Filament schema.
-     *
-     * @return array<string, mixed>  Data safe to pass directly to Model::create().
+     * @return array<string, mixed> Data safe to pass directly to Model::create().
      */
     protected function mutateFormDataBeforeCreate(array $data): array
     {
         $this->pendingCredentials = [
-            'certificate' => $data['certificate_b64'] ?? null,
-            'private_key' => $data['private_key_b64'] ?? null,
-            'password'    => $data['private_key_password'] ?? null,
+            'certificate' => MuaAccountResource::uploadedFileToBase64($data['certificate_file'] ?? null),
+            'private_key' => MuaAccountResource::uploadedFileToBase64($data['private_key_file'] ?? null),
+            'password' => $data['private_key_password'] ?? null,
         ];
 
-        unset($data['certificate_b64'], $data['private_key_b64'], $data['private_key_password']);
+        unset($data['certificate_file'], $data['private_key_file'], $data['private_key_password']);
 
         return $data;
     }
@@ -55,8 +54,6 @@ class CreateMuaAccount extends CreateRecord
      *
      * Only non-empty values are written; all three are expected on create since
      * the form marks them as required for the 'create' operation.
-     *
-     * @return void
      */
     protected function afterCreate(): void
     {

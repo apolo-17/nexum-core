@@ -6,14 +6,17 @@ use App\Filament\Resources\MuaAccountResource\Pages;
 use App\Models\MuaAccount;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 
 /**
@@ -30,17 +33,12 @@ class MuaAccountResource extends Resource
      */
     protected static ?string $model = MuaAccount::class;
 
-    /**
-     * @var string|null
-     */
     protected static ?string $navigationLabel = 'Cuentas MUA (FIEL)';
 
     /**
      * Return the icon for this resource in the sidebar.
      *
      * Overrides the property to avoid PHP type-incompatibility with BackedEnum.
-     *
-     * @return string
      */
     public static function getNavigationIcon(): string
     {
@@ -49,20 +47,13 @@ class MuaAccountResource extends Resource
 
     /**
      * Navigation group — must match parent type exactly: string | UnitEnum | null.
-     *
-     * @var string|\UnitEnum|null
      */
     protected static string|\UnitEnum|null $navigationGroup = 'Configuración';
 
-    /**
-     * @var int|null
-     */
     protected static ?int $navigationSort = 10;
 
     /**
      * Restrict access to super_admin only.
-     *
-     * @return bool
      */
     public static function canAccess(): bool
     {
@@ -72,14 +63,10 @@ class MuaAccountResource extends Resource
     /**
      * Define the form for creating / editing a MuaAccount.
      *
-     * Credential fields (certificate_b64, private_key_b64, private_key_password) are
-     * virtual — they do not map to columns on mua_accounts. The page's lifecycle hooks
-     * (mutateFormDataBeforeCreate / mutateFormDataBeforeSave) strip them out before
-     * Eloquent touches the model and persist them to mua_credentials instead.
-     *
-     * @param  Schema  $schema
-     *
-     * @return Schema
+     * Credential fields (certificate_file, private_key_file, private_key_password) are
+     * virtual — they do not map to columns on mua_accounts. The user uploads the raw
+     * .cer / .key files; the page's lifecycle hooks base64-encode them, strip them out
+     * before Eloquent touches the model, and persist them to mua_credentials instead.
      */
     public static function form(Schema $schema): Schema
     {
@@ -113,21 +100,21 @@ class MuaAccountResource extends Resource
                 ])->columns(2),
 
             Section::make('Credenciales FIEL (e.firma)')
-                ->description('Archivos de la e.firma en formato base64. Al editar, dejar en blanco conserva las credenciales actuales sin cambios.')
+                ->description('Sube los archivos de la e.firma tal cual (.cer y .key). Nosotros los procesamos y guardamos cifrados. Al editar, deja los archivos vacíos para conservar las credenciales actuales sin cambios.')
                 ->schema([
-                    TextInput::make('certificate_b64')
-                        ->label('Certificado .cer (base64)')
+                    FileUpload::make('certificate_file')
+                        ->label('Certificado (.cer)')
                         ->required(fn (string $operation): bool => $operation === 'create')
-                        ->password()
-                        ->revealable()
-                        ->helperText('Pega el contenido base64 del archivo .cer de la FIEL.'),
+                        ->storeFiles(false)
+                        ->maxSize(2048)
+                        ->helperText('Sube el archivo .cer de la FIEL.'),
 
-                    TextInput::make('private_key_b64')
-                        ->label('Llave privada .key (base64)')
+                    FileUpload::make('private_key_file')
+                        ->label('Llave privada (.key)')
                         ->required(fn (string $operation): bool => $operation === 'create')
-                        ->password()
-                        ->revealable()
-                        ->helperText('Pega el contenido base64 del archivo .key de la FIEL.'),
+                        ->storeFiles(false)
+                        ->maxSize(2048)
+                        ->helperText('Sube el archivo .key de la FIEL.'),
 
                     TextInput::make('private_key_password')
                         ->label('Contraseña de la llave privada')
@@ -140,11 +127,33 @@ class MuaAccountResource extends Resource
     }
 
     /**
+     * Read an uploaded FIEL file from the form state and return its base64 content.
+     *
+     * FileUpload fields use storeFiles(false), so the form state carries the raw
+     * uploaded file (a Livewire TemporaryUploadedFile) instead of a stored path.
+     * The .cer / .key bytes are base64-encoded here — exactly what the MUA bot
+     * expects — so the user only ever uploads the file as-is, never base64 text.
+     *
+     * @param  mixed  $value  The FileUpload field state (file, array of files, or null).
+     * @return string|null Base64-encoded file content, or null when no file was provided.
+     */
+    public static function uploadedFileToBase64(mixed $value): ?string
+    {
+        $file = is_array($value) ? reset($value) : $value;
+
+        if (! $file instanceof UploadedFile) {
+            return null;
+        }
+
+        $content = method_exists($file, 'get')
+            ? $file->get()
+            : @file_get_contents($file->getRealPath());
+
+        return $content === false || $content === null ? null : base64_encode($content);
+    }
+
+    /**
      * Define the table listing MuaAccounts.
-     *
-     * @param  Table  $table
-     *
-     * @return Table
      */
     public static function table(Table $table): Table
     {
@@ -192,14 +201,14 @@ class MuaAccountResource extends Resource
     /**
      * Define the resource pages.
      *
-     * @return array<string, \Filament\Resources\Pages\PageRegistration>
+     * @return array<string, PageRegistration>
      */
     public static function getPages(): array
     {
         return [
-            'index'  => Pages\ListMuaAccounts::route('/'),
+            'index' => Pages\ListMuaAccounts::route('/'),
             'create' => Pages\CreateMuaAccount::route('/create'),
-            'edit'   => Pages\EditMuaAccount::route('/{record}/edit'),
+            'edit' => Pages\EditMuaAccount::route('/{record}/edit'),
         ];
     }
 }

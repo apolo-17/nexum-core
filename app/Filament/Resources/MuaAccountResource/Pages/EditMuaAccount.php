@@ -4,6 +4,7 @@ namespace App\Filament\Resources\MuaAccountResource\Pages;
 
 use App\Filament\Resources\MuaAccountResource;
 use App\Models\MuaCredential;
+use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\EditRecord;
 
@@ -32,7 +33,7 @@ class EditMuaAccount extends EditRecord
     /**
      * Return the header actions for this page.
      *
-     * @return list<\Filament\Actions\Action>
+     * @return list<Action>
      */
     protected function getHeaderActions(): array
     {
@@ -48,18 +49,17 @@ class EditMuaAccount extends EditRecord
      * overwrite credentials that were actually provided by the user.
      *
      * @param  array<string, mixed>  $data  Form state from the Filament schema.
-     *
-     * @return array<string, mixed>  Data safe to pass directly to Model::fill() + save().
+     * @return array<string, mixed> Data safe to pass directly to Model::fill() + save().
      */
     protected function mutateFormDataBeforeSave(array $data): array
     {
         $this->pendingCredentials = [
-            'certificate' => $data['certificate_b64'] ?? null,
-            'private_key' => $data['private_key_b64'] ?? null,
-            'password'    => $data['private_key_password'] ?? null,
+            'certificate' => MuaAccountResource::uploadedFileToBase64($data['certificate_file'] ?? null),
+            'private_key' => MuaAccountResource::uploadedFileToBase64($data['private_key_file'] ?? null),
+            'password' => $data['private_key_password'] ?? null,
         ];
 
-        unset($data['certificate_b64'], $data['private_key_b64'], $data['private_key_password']);
+        unset($data['certificate_file'], $data['private_key_file'], $data['private_key_password']);
 
         return $data;
     }
@@ -69,8 +69,6 @@ class EditMuaAccount extends EditRecord
      *
      * Only credentials with a non-empty value are written; blank fields leave
      * the existing stored credential unchanged (idempotent on untouched fields).
-     *
-     * @return void
      */
     protected function afterSave(): void
     {

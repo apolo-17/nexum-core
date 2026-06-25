@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\MuaAccountResource\Pages;
 
 use App\Filament\Resources\MuaAccountResource;
+use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
 use Filament\Resources\Pages\ListRecords;
 
@@ -19,7 +20,7 @@ class ListMuaAccounts extends ListRecords
     /**
      * Return the header actions for this page.
      *
-     * @return list<\Filament\Actions\Action>
+     * @return list<Action>
      */
     protected function getHeaderActions(): array
     {
