@@ -7,8 +7,10 @@ use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
+use Filament\Support\Exceptions\Halt;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Edit page for a MUA account (soldado FIEL).
@@ -87,7 +89,14 @@ class EditMuaAccount extends EditRecord
 
                 return $record;
             });
+        } catch (Halt $halt) {
+            throw $halt;
         } catch (\Throwable $exception) {
+            Log::error('MuaAccount update failed — rolled back.', [
+                'mua_account_id' => $record->getKey(),
+                'error' => $exception->getMessage(),
+            ]);
+
             Notification::make()
                 ->title('No se pudieron guardar los cambios.')
                 ->body($exception->getMessage())
@@ -95,7 +104,7 @@ class EditMuaAccount extends EditRecord
                 ->persistent()
                 ->send();
 
-            $this->halt();
+            throw new Halt;
         }
     }
 }

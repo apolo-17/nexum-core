@@ -5,8 +5,10 @@ namespace App\Filament\Resources\MuaAccountResource\Pages;
 use App\Filament\Resources\MuaAccountResource;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
+use Filament\Support\Exceptions\Halt;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Create page for a new MUA account (soldado FIEL).
@@ -71,7 +73,13 @@ class CreateMuaAccount extends CreateRecord
 
                 return $record;
             });
+        } catch (Halt $halt) {
+            throw $halt;
         } catch (\Throwable $exception) {
+            Log::error('MuaAccount creation failed — rolled back.', [
+                'error' => $exception->getMessage(),
+            ]);
+
             Notification::make()
                 ->title('No se pudo guardar la cuenta FIEL — no se creó nada.')
                 ->body($exception->getMessage())
@@ -79,7 +87,7 @@ class CreateMuaAccount extends CreateRecord
                 ->persistent()
                 ->send();
 
-            $this->halt();
+            throw new Halt;
         }
     }
 }
