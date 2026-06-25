@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V3\AuthController;
+use App\Http\Controllers\Api\V3\DenominationPoolController;
 use App\Http\Controllers\Api\V3\LegalNameController;
 use App\Http\Controllers\Api\V3\MuaBotCallbackController;
 use App\Http\Controllers\Api\V3\MuaPendingController;
@@ -65,5 +66,9 @@ Route::prefix('v3')->group(function () {
         // Legal names (denominations)
         Route::post('registrations/{registration}/legal-names', [LegalNameController::class, 'store']);
         Route::delete('registrations/{registration}/legal-names/{legalName}', [LegalNameController::class, 'destroy']);
+
+        // Denomination pool — the China/Singapur front lists approved names and claims one
+        Route::get('denominations/available', [DenominationPoolController::class, 'available']);
+        Route::post('denominations/{legalName}/claim', [DenominationPoolController::class, 'claim']);
     });
 });

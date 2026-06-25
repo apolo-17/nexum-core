@@ -33,7 +33,7 @@ class ListDenominations extends ListRecords
     {
         return [
             $this->generateAction(),
-            $this->sendAllDraftsAction(),
+            $this->submitPendingAction(),
         ];
     }
 
@@ -113,24 +113,80 @@ class ListDenominations extends ListRecords
     }
 
     /**
-     * Send every reviewed draft to the SE submission queue at once.
+     * Push every not-yet-submitted pool denomination (DRAFT or WAIT) to the bot.
+     *
+     * Submits each one immediately via the resource helper and reports a summary
+     * (sent / deferred / errors). Deferred names stay in WAIT so they can be
+     * retried once business hours / FIEL capacity allow.
      */
-    private function sendAllDraftsAction(): Action
+    private function submitPendingAction(): Action
     {
-        return Action::make('send_all_drafts')
-            ->label('Enviar todos los borradores')
+        return Action::make('submit_pending')
+            ->label('Enviar pendientes a la SE')
             ->icon('heroicon-o-paper-airplane')
             ->color('info')
             ->requiresConfirmation()
-            ->modalDescription('Todas las denominaciones en borrador pasarán a la cola de envío al portal MUA.')
+            ->modalDescription('Se enviarán al portal MUA todas las denominaciones en borrador o en espera (si es horario hábil y hay FIEL disponible).')
             ->action(function (): void {
-                $count = LegalName::whereNull('registration_id')
-                    ->where('status', LegalNameStatusEnum::DRAFT->value)
-                    ->update(['status' => LegalNameStatusEnum::WAIT->value]);
+                $pending = LegalName::whereNull('registration_id')
+                    ->whereIn('status', [
+                        LegalNameStatusEnum::DRAFT->value,
+                        LegalNameStatusEnum::WAIT->value,
+                    ])
+                    ->get();
+
+                if ($pending->isEmpty()) {
+                    Notification::make()
+                        ->title('No hay denominaciones pendientes de envío.')
+                        ->info()
+                        ->send();
+
+                    return;
+                }
+
+                $sent = 0;
+                $deferred = 0;
+                $errors = 0;
+                $reason = null;
+
+                foreach ($pending as $name) {
+                    $service = app(MuaSubmissionService::class);
+
+                    try {
+                        if ($service->trySubmit($name)) {
+                            $sent++;
+
+                            continue;
+                        }
+                    } catch (\Throwable $exception) {
+                        Log::error('Pool denomination submission failed.', [
+                            'legal_name_id' => $name->id,
+                            'error' => $exception->getMessage(),
+                        ]);
+                        $errors++;
+
+                        continue;
+                    }
+
+                    if ($name->status !== LegalNameStatusEnum::WAIT) {
+                        $name->update(['status' => LegalNameStatusEnum::WAIT]);
+                    }
+                    $deferred++;
+                    $reason ??= ! $service->isBusinessHours()
+                        ? 'Fuera del horario hábil de la SE (Lun–Vie 09:00–16:00 CDMX).'
+                        : 'No hay FIEL con capacidad disponible hoy (límite 5/día por FIEL).';
+                }
+
+                $body = "Enviadas: {$sent} · Diferidas: {$deferred} · Errores: {$errors}.";
+
+                if ($deferred > 0 && $reason !== null) {
+                    $body .= " {$reason}";
+                }
 
                 Notification::make()
-                    ->title("{$count} denominaciones enviadas a la cola de la SE.")
-                    ->success()
+                    ->title('Envío de denominaciones procesado.')
+                    ->body($body)
+                    ->status($errors > 0 || $deferred > 0 ? 'warning' : 'success')
                     ->send();
             });
     }
