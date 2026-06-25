@@ -48,10 +48,6 @@ class MuaBotCallbackController extends Controller
      *   - constancia_pdf_base64  string   Base64-encoded constancia PDF (required when approved).
      *   - rejection_reason       string   SE rejection category (required when rejected).
      *   - timestamp              int      Unix timestamp of the request (for replay protection).
-     *
-     * @param  Request  $request
-     *
-     * @return JsonResponse
      */
     public function handle(Request $request): JsonResponse
     {
@@ -64,8 +60,8 @@ class MuaBotCallbackController extends Controller
 
         $payload = [
             'legal_name_id' => (string) $request->input('legal_name_id'),
-            'status'        => (string) $request->input('status'),
-            'timestamp'     => (int)    $request->input('timestamp'),
+            'status' => (string) $request->input('status'),
+            'timestamp' => (int) $request->input('timestamp'),
         ];
 
         if (! $this->isValidSignature($payload, $signature)) {
@@ -101,8 +97,8 @@ class MuaBotCallbackController extends Controller
         } catch (\Throwable $th) {
             Log::error('MUA bot callback: failed to process denomination result.', [
                 'legal_name_id' => $legalName->id,
-                'status'        => $status->value,
-                'exception'     => $th->getMessage(),
+                'status' => $status->value,
+                'exception' => $th->getMessage(),
             ]);
 
             return response()->json(['error' => 'Processing failed'], Response::HTTP_INTERNAL_SERVER_ERROR);
@@ -115,19 +111,17 @@ class MuaBotCallbackController extends Controller
      * Handle an approved denomination: save the constancia PDF to S3,
      * create the authorization Document record, and mark the LegalName APPROVED.
      *
-     * @param  Request    $request    Validated request with PDF data.
+     * @param  Request  $request  Validated request with PDF data.
      * @param  LegalName  $legalName  The denomination being resolved.
-     *
-     * @return void
      *
      * @throws \RuntimeException When the constancia PDF cannot be decoded or stored.
      */
     private function processApproval(Request $request, LegalName $legalName): void
     {
-        $claveUnica      = (string) $request->input('clave_unica');
+        $claveUnica = (string) $request->input('clave_unica');
         $authorizationAt = (string) $request->input('authorization_at');
-        $pdfBase64       = (string) $request->input('constancia_pdf_base64');
-        $portalStatus    = (string) $request->input('portal_status', 'Autorizada');
+        $pdfBase64 = (string) $request->input('constancia_pdf_base64');
+        $portalStatus = (string) $request->input('portal_status', 'Autorizada');
 
         if (! $claveUnica || ! $authorizationAt || ! $pdfBase64) {
             throw new \RuntimeException('Missing required fields for approval: clave_unica, authorization_at, constancia_pdf_base64.');
@@ -140,7 +134,16 @@ class MuaBotCallbackController extends Controller
         }
 
         $registration = $legalName->registration;
-        $s3Path       = "registrations/{$registration->id}/constancia_denominacion_{$legalName->id}.pdf";
+
+        // Pool denominations have no expedient: approve standalone (no Document, no
+        // "reject the others") so the name becomes available for China to claim.
+        if ($registration === null) {
+            $this->approvePoolDenomination($legalName, $claveUnica, $authorizationAt, $portalStatus, $pdfContent);
+
+            return;
+        }
+
+        $s3Path = "registrations/{$registration->id}/constancia_denominacion_{$legalName->id}.pdf";
 
         DB::transaction(function () use ($legalName, $registration, $claveUnica, $authorizationAt, $portalStatus, $pdfContent, $s3Path): void {
             // Persist constancia PDF to S3.
@@ -150,10 +153,10 @@ class MuaBotCallbackController extends Controller
             Document::updateOrCreate(
                 [
                     'registration_id' => $registration->id,
-                    'document_type'   => 'legal_name_authorization',
+                    'document_type' => 'legal_name_authorization',
                 ],
                 [
-                    'file_path'  => $s3Path,
+                    'file_path' => $s3Path,
                     'is_approved' => true,
                 ]
             );
@@ -162,16 +165,16 @@ class MuaBotCallbackController extends Controller
             LegalName::where('registration_id', $registration->id)
                 ->where('id', '!=', $legalName->id)
                 ->update([
-                    'status'           => LegalNameStatusEnum::REJECTED->value,
+                    'status' => LegalNameStatusEnum::REJECTED->value,
                     'rejection_reason' => 'Rechazada automáticamente al aprobarse otra denominación.',
                 ]);
 
             // Approve this denomination.
             $legalName->update([
-                'status'                   => LegalNameStatusEnum::APPROVED->value,
+                'status' => LegalNameStatusEnum::APPROVED->value,
                 'clave_unica_denominacion' => $claveUnica,
-                'authorization_timestamp'  => $authorizationAt,
-                'portal_status'            => $portalStatus,
+                'authorization_timestamp' => $authorizationAt,
+                'portal_status' => $portalStatus,
             ]);
 
             // Decrement the soldado's active submission counter.
@@ -182,29 +185,73 @@ class MuaBotCallbackController extends Controller
 
         Log::info('MUA bot callback: denomination APPROVED and constancia saved.', [
             'legal_name_id' => $legalName->id,
-            'name'          => $legalName->name,
-            'clave_unica'   => $claveUnica,
-            's3_path'       => $s3Path,
+            'name' => $legalName->name,
+            'clave_unica' => $claveUnica,
+            's3_path' => $s3Path,
+        ]);
+    }
+
+    /**
+     * Approve a standalone pool denomination (one with no registration).
+     *
+     * Stores the constancia under a pool path and marks the LegalName APPROVED so
+     * it shows up in the available-pool API for the China front to claim. No
+     * Document record is created (it requires a registration) and no sibling
+     * denominations are rejected (there is no expedient).
+     *
+     * @param  LegalName  $legalName  The approved pool denomination.
+     * @param  string  $claveUnica  SE authorization key.
+     * @param  string  $authorizationAt  ISO-8601 SE authorization datetime.
+     * @param  string  $portalStatus  Raw SE portal status label.
+     * @param  string  $pdfContent  Decoded constancia PDF bytes.
+     */
+    private function approvePoolDenomination(
+        LegalName $legalName,
+        string $claveUnica,
+        string $authorizationAt,
+        string $portalStatus,
+        string $pdfContent,
+    ): void {
+        $s3Path = "denominations/pool/constancia_denominacion_{$legalName->id}.pdf";
+
+        DB::transaction(function () use ($legalName, $claveUnica, $authorizationAt, $portalStatus, $pdfContent, $s3Path): void {
+            Storage::disk('s3')->put($s3Path, $pdfContent);
+
+            $legalName->update([
+                'status' => LegalNameStatusEnum::APPROVED->value,
+                'clave_unica_denominacion' => $claveUnica,
+                'authorization_timestamp' => $authorizationAt,
+                'portal_status' => $portalStatus,
+            ]);
+
+            if ($legalName->muaAccount) {
+                $legalName->muaAccount->decrement('active_submissions');
+            }
+        });
+
+        Log::info('MUA bot callback: POOL denomination APPROVED and constancia saved.', [
+            'legal_name_id' => $legalName->id,
+            'name' => $legalName->name,
+            'clave_unica' => $claveUnica,
+            's3_path' => $s3Path,
         ]);
     }
 
     /**
      * Handle a rejected denomination: mark it REJECTED and record the SE's reason.
      *
-     * @param  Request    $request    Request containing the rejection reason.
+     * @param  Request  $request  Request containing the rejection reason.
      * @param  LegalName  $legalName  The denomination being resolved.
-     *
-     * @return void
      */
     private function processRejection(Request $request, LegalName $legalName): void
     {
-        $reason       = (string) $request->input('rejection_reason', 'Rechazada por la Secretaría de Economía.');
+        $reason = (string) $request->input('rejection_reason', 'Rechazada por la Secretaría de Economía.');
         $portalStatus = (string) $request->input('portal_status', 'Rechazada por dictamen');
 
         $legalName->update([
-            'status'           => LegalNameStatusEnum::REJECTED->value,
+            'status' => LegalNameStatusEnum::REJECTED->value,
             'rejection_reason' => $reason,
-            'portal_status'    => $portalStatus,
+            'portal_status' => $portalStatus,
         ]);
 
         if ($legalName->muaAccount) {
@@ -213,8 +260,8 @@ class MuaBotCallbackController extends Controller
 
         Log::info('MUA bot callback: denomination REJECTED.', [
             'legal_name_id' => $legalName->id,
-            'name'          => $legalName->name,
-            'reason'        => $reason,
+            'name' => $legalName->name,
+            'reason' => $reason,
         ]);
     }
 
@@ -224,15 +271,13 @@ class MuaBotCallbackController extends Controller
      * Keys are sorted alphabetically before encoding to ensure a canonical payload —
      * both the bot and this controller must apply the same sorting.
      *
-     * @param  array<string, mixed>  $payload    Extracted fields to sign.
-     * @param  string                $signature  HMAC hex digest from the X-Signature header.
-     *
-     * @return bool
+     * @param  array<string, mixed>  $payload  Extracted fields to sign.
+     * @param  string  $signature  HMAC hex digest from the X-Signature header.
      */
     private function isValidSignature(array $payload, string $signature): bool
     {
         ksort($payload);
-        $canonical        = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $canonical = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         $expectedSignature = hash_hmac('sha256', $canonical, config('services.mua_bot.secret_key'));
 
         return hash_equals($expectedSignature, $signature);
