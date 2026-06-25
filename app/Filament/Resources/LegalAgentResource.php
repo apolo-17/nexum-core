@@ -107,12 +107,14 @@ class LegalAgentResource extends Resource
                     TextInput::make('rfc')
                         ->label('RFC')
                         ->maxLength(13)
-                        ->uppercase(),
+                        ->extraInputAttributes(['style' => 'text-transform: uppercase'])
+                        ->dehydrateStateUsing(fn (?string $state): ?string => $state !== null ? strtoupper($state) : null),
 
                     TextInput::make('curp')
                         ->label('CURP')
                         ->maxLength(18)
-                        ->uppercase(),
+                        ->extraInputAttributes(['style' => 'text-transform: uppercase'])
+                        ->dehydrateStateUsing(fn (?string $state): ?string => $state !== null ? strtoupper($state) : null),
 
                     TextInput::make('birthplace')
                         ->label('Lugar de nacimiento')
