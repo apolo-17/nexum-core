@@ -123,6 +123,42 @@ Security: shared API key in the `X-Bot-Api-Key` header.
 MD,
         ],
 
+        // -- Approved denomination pool --------------------------------------
+        'get v3/denominations/available' => [
+            'tag' => 'MUA / Denominations',
+            'summary' => 'List available approved denominations (pool)',
+            'description' => <<<'MD'
+Returns the **pool** of denominations Nexum pre-approved with the Secretaría de
+Economía that are still **available** (no registration assigned, status
+`APPROVED`), ordered by authorization date.
+
+The China front queries this endpoint so the client can pick an already-approved
+name instead of waiting for a per-case ruling.
+
+Each item includes `id` (to claim it), `name`, `company_type`, `folio` (the SE
+authorization key) and `authorized_at` (ISO-8601).
+
+**Responses:** `200` with the list (`data: []` when none available).
+MD,
+        ],
+
+        'post v3/denominations/{legalName}/claim' => [
+            'tag' => 'MUA / Denominations',
+            'summary' => 'Claim a denomination from the pool',
+            'description' => <<<'MD'
+Assigns an approved pool denomination to the registration identified by its
+Singapur client code (`registration_code` in the body), removing it from the
+available pool.
+
+Guarded against double-claim: it uses a row lock and re-checks inside the
+transaction that the denomination is still approved and unassigned.
+
+**Body:** `{ "registration_code": string }`.
+
+**Responses:** `200` claimed · `404` registration not found · `409` denomination no longer available · `422` validation.
+MD,
+        ],
+
         // -- Authentication ---------------------------------------------------
         'post v3/auth/login' => [
             'tag' => 'Authentication',

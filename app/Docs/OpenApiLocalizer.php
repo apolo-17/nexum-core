@@ -34,6 +34,8 @@ final class OpenApiLocalizer
         'post v3/webhook/docusign' => ['docusignSignature'],
         'post v3/webhook/mua-bot' => ['muaBotSignature'],
         'get v3/mua-bot/pending' => ['muaBotApiKey'],
+        'get v3/denominations/available' => ['bearerAuth'],
+        'post v3/denominations/{legalName}/claim' => ['bearerAuth'],
         'get v3/auth/me' => ['bearerAuth'],
         'post v3/auth/logout' => ['bearerAuth'],
         'post v3/auth/refresh' => ['bearerAuth'],

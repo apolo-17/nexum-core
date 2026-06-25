@@ -124,6 +124,42 @@ Seguridad: llave de API compartida en el header `X-Bot-Api-Key`.
 MD,
         ],
 
+        // -- Pool de denominaciones aprobadas --------------------------------
+        'get v3/denominations/available' => [
+            'tag' => 'MUA / Denominaciones',
+            'summary' => 'Listar denominaciones aprobadas disponibles (pool)',
+            'description' => <<<'MD'
+Devuelve el **pool** de denominaciones que Nexum pre-aprobó con la Secretaría de
+Economía y que siguen **disponibles** (sin expediente asignado y en estado
+`APPROVED`), ordenadas por fecha de autorización.
+
+El front de China consulta este endpoint para que el cliente elija un nombre ya
+aprobado, en lugar de esperar un dictamen por expediente.
+
+Cada elemento incluye `id` (para reclamarla), `name`, `company_type`, `folio`
+(la clave única de autorización que emite la SE) y `authorized_at` (ISO-8601).
+
+**Respuestas:** `200` con la lista (`data: []` si no hay disponibles).
+MD,
+        ],
+
+        'post v3/denominations/{legalName}/claim' => [
+            'tag' => 'MUA / Denominaciones',
+            'summary' => 'Reclamar una denominación del pool',
+            'description' => <<<'MD'
+Asigna una denominación aprobada del pool al expediente indicado por su código de
+cliente Singapur (`registration_code` en el cuerpo), retirándola del pool de
+disponibles.
+
+Protegido contra doble-claim: usa un bloqueo de fila y revalida dentro de la
+transacción que la denominación siga aprobada y sin asignar.
+
+**Cuerpo:** `{ "registration_code": string }`.
+
+**Respuestas:** `200` reclamada · `404` expediente no encontrado · `409` la denominación ya no está disponible · `422` validación.
+MD,
+        ],
+
         // -- Autenticación ----------------------------------------------------
         'post v3/auth/login' => [
             'tag' => 'Autenticación',
