@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\MuaAccountResource\Pages;
 use App\Models\MuaAccount;
+use App\Models\MuaCredential;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\FileUpload;
@@ -150,6 +151,29 @@ class MuaAccountResource extends Resource
             : @file_get_contents($file->getRealPath());
 
         return $content === false || $content === null ? null : base64_encode($content);
+    }
+
+    /**
+     * Persist FIEL credentials (encrypted) for a MUA account.
+     *
+     * Uses firstOrNew + setEncryptedValue so the encrypted value is set BEFORE the
+     * insert — using updateOrCreate([...], []) would save the row with a null
+     * credential first and violate the NOT NULL constraint. Null/blank values are
+     * skipped, so on edit an untouched field leaves its stored credential intact.
+     *
+     * @param  MuaAccount  $account  The owning account.
+     * @param  array<string, string|null>  $credentials  Map of credential type => raw value.
+     */
+    public static function persistCredentials(MuaAccount $account, array $credentials): void
+    {
+        foreach ($credentials as $type => $value) {
+            if (filled($value)) {
+                MuaCredential::firstOrNew([
+                    'mua_account_id' => $account->id,
+                    'type' => $type,
+                ])->setEncryptedValue($value)->save();
+            }
+        }
     }
 
     /**

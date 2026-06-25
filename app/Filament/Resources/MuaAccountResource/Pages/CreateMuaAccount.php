@@ -3,7 +3,6 @@
 namespace App\Filament\Resources\MuaAccountResource\Pages;
 
 use App\Filament\Resources\MuaAccountResource;
-use App\Models\MuaCredential;
 use Filament\Resources\Pages\CreateRecord;
 
 /**
@@ -57,13 +56,6 @@ class CreateMuaAccount extends CreateRecord
      */
     protected function afterCreate(): void
     {
-        foreach ($this->pendingCredentials as $type => $value) {
-            if (filled($value)) {
-                MuaCredential::updateOrCreate(
-                    ['mua_account_id' => $this->record->id, 'type' => $type],
-                    []
-                )->setEncryptedValue($value)->save();
-            }
-        }
+        MuaAccountResource::persistCredentials($this->record, $this->pendingCredentials);
     }
 }

@@ -3,7 +3,6 @@
 namespace App\Filament\Resources\MuaAccountResource\Pages;
 
 use App\Filament\Resources\MuaAccountResource;
-use App\Models\MuaCredential;
 use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\EditRecord;
@@ -72,13 +71,6 @@ class EditMuaAccount extends EditRecord
      */
     protected function afterSave(): void
     {
-        foreach ($this->pendingCredentials as $type => $value) {
-            if (filled($value)) {
-                MuaCredential::updateOrCreate(
-                    ['mua_account_id' => $this->record->id, 'type' => $type],
-                    []
-                )->setEncryptedValue($value)->save();
-            }
-        }
+        MuaAccountResource::persistCredentials($this->record, $this->pendingCredentials);
     }
 }
