@@ -20,6 +20,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             RolesAndPermissionsSeeder::class,
             AdminUserSeeder::class,
+            NotificationSettingsSeeder::class,
         ]);
 
         // Demo expedientes are for local/staging only — never seed 60 fake companies

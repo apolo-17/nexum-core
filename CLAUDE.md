@@ -29,7 +29,7 @@ El flujo completo es:
 | Roles y permisos | Spatie laravel-permission ^8.0 |
 | Cola de trabajos | Laravel Horizon (Redis) |
 | Almacenamiento de docs | Cloudflare R2 (S3-compatible) |
-| Email | Resend (resend/laravel ^0.15) |
+| Email | Resend (resend/resend-php ^1.3, transporte `resend` nativo de Laravel) |
 | API Docs | Scramble (dedoc/scramble) |
 | CI local | Laravel Sail (Docker) |
 
@@ -53,6 +53,7 @@ app/
 │   ├── EfirmaAppointmentStatusEnum.php
 │   ├── LegalNameStatusEnum.php               # WAIT|PROCESS|APPROVED|REJECTED
 │   ├── ShareholderRoleEnum.php
+│   ├── NotificationEventEnum.php             # Catálogo de eventos notificables (extensible)
 │   └── TaskPriorityEnum.php
 ├── Filament/
 │   ├── Resources/
@@ -62,7 +63,8 @@ app/
 │   │   │   ├── Actions/RequestEfirmaAppointmentAction.php
 │   │   │   ├── Actions/ConfirmEfirmaOutcomeAction.php
 │   │   │   └── RelationManagers/             # Shareholders, LegalNames, Documents, etc.
-│   │   └── MuaAccountResource.php            # Gestión de cuentas FIEL para MUA
+│   │   ├── MuaAccountResource.php            # Gestión de cuentas FIEL para MUA
+│   │   └── NotificationSettingResource.php   # ★ Módulo "Notificaciones" (toggle + destinatarios, solo super_admin)
 │   └── Widgets/
 │       ├── AdminStatsOverview.php            # KPIs para super_admin
 │       ├── NotarioStatsOverview.php          # KPIs para notario
@@ -87,11 +89,16 @@ app/
 │   ├── MuaCredential.php                     # Credenciales cifradas de MuaAccount
 │   ├── Note.php                              # Nota del expediente
 │   ├── StageTransition.php                   # Auditoría de cambios de etapa
+│   ├── NotificationSetting.php               # Config por evento: toggle + destinatarios (solo super_admin)
 │   └── Task.php                              # Tarea asignada al expediente
 ├── Notifications/
-│   ├── NewExpedienteReceivedNotification.php # Se notifica al recibir un expediente
+│   ├── NewExpedienteReceived.php             # Expediente recibido OK (campana + email branded)
+│   ├── ExpedienteReceptionFailed.php         # Falló el procesamiento del webhook (campana + email)
+│   ├── AccountInvitationNotification.php     # Invitación de usuario (email)
 │   └── DenominationResolvedNotification.php  # Resultado de dictamen MUA (aprobado/rechazado)
 └── Services/
+    ├── Notifications/
+    │   └── EventNotifier.php                 # ★ Envía notificaciones según NotificationSetting (toggle + destinatarios)
     ├── Registration/
     │   ├── RegistrationUpsertService.php     # ★ Crea/actualiza expediente desde DTO
     │   └── StageTransitionService.php        # ★ Máquina de estados del pipeline
@@ -135,8 +142,12 @@ China/Singapur → POST /api/v3/webhook/singapur
       → crea LegalName inicial (priority 1)
       → sincroniza Shareholders
       → por cada archivo: decodifica base64 → Storage::put() en R2 → crea Document
-    → Notification::sendNow($admins, NewExpedienteReceivedNotification)
+    → EventNotifier->notify(EXPEDIENTE_RECEIVED, new NewExpedienteReceived(...))
+       (campana + email branded; sólo a los destinatarios configurados y si el evento está activo)
+  → si el job falla (failed()): EventNotifier->notify(EXPEDIENTE_RECEIVED, new ExpedienteReceptionFailed(...))
 ```
+
+**Notificaciones (módulo configurable):** el envío ya no es "a todos los super_admin". `EventNotifier` consulta `NotificationSetting` para el evento `EXPEDIENTE_RECEIVED`: respeta el toggle on/off y la lista de destinatarios (siempre filtrada a super_admin). Se configura en el dashboard → **Configuración → Notificaciones** (`NotificationSettingResource`, sólo super_admin). Las notificaciones son `ShouldQueue` → corren como su propio job en la cola `default` de Horizon. El email usa el tema branded `nexum` (`resources/views/vendor/mail/`). Eventos nuevos se agregan en `NotificationEventEnum` (las filas se auto-crean). Seeder: `NotificationSettingsSeeder` (incluido en `DatabaseSeeder`).
 
 **IMPORTANTE:** Los archivos llegan como base64 en el JSON (`content` field). No hay descarga server-to-server desde China. `SINGAPUR_API_URL` y `SINGAPUR_BEARER_TOKEN` son opcionales y sólo se usan en `SingapurRelayService` para descargas bulk.
 
@@ -283,6 +294,8 @@ SINGAPUR_BEARER_TOKEN=  # Token del relay de China
 | `mua_accounts` | Cuentas FIEL para el portal SE |
 | `mua_credentials` | Credenciales cifradas (cert, key, password) |
 | `notifications` | Notificaciones DB de Filament (campana) |
+| `notification_settings` | Config por evento: toggle on/off (NotificationEventEnum) |
+| `notification_setting_user` | Destinatarios por evento (pivote, sólo super_admin) |
 | `roles`, `permissions` | Spatie permission |
 
 ### Columna `stage` en registrations
@@ -403,8 +416,8 @@ vendor/bin/sail bin pint --dirty
 | Configurar R2 bucket y credenciales en producción | Alta |
 | Verificar propagación DNS y primer deploy en Laravel Cloud | Alta |
 | Tests para AdvanceStageAction y StageTransitionService | Media |
-| Notificación email al recibir nuevo expediente (Resend) | Media |
 | Vista pública de estado del expediente para el cliente chino | Baja |
+| ~~Notificación email al recibir nuevo expediente (Resend)~~ ✅ Hecho — módulo configurable (ver §5) | — |
 
 ---
 
