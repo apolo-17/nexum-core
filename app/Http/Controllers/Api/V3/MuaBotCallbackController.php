@@ -84,7 +84,14 @@ class MuaBotCallbackController extends Controller
 
         $status = LegalNameStatusEnum::tryFrom($payload['status']);
 
-        if (! in_array($status, [LegalNameStatusEnum::APPROVED, LegalNameStatusEnum::REJECTED], true)) {
+        // PROCESS is a non-terminal outcome: the SE still has the denomination in
+        // review. It is delivered by on-demand status checks so the dashboard can
+        // confirm "sigue en dictamen" instead of waiting in silence.
+        if (! in_array($status, [
+            LegalNameStatusEnum::APPROVED,
+            LegalNameStatusEnum::REJECTED,
+            LegalNameStatusEnum::PROCESS,
+        ], true)) {
             return response()->json(['error' => 'Invalid status value'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
@@ -108,7 +115,8 @@ class MuaBotCallbackController extends Controller
                     'Constancia de autorización recibida.',
                     actorType: 'bot',
                 );
-            } else {
+                $this->clearPendingCheck($legalName);
+            } elseif ($status === LegalNameStatusEnum::REJECTED) {
                 $this->processRejection($request, $legalName);
 
                 $legalName->refresh();
@@ -121,6 +129,9 @@ class MuaBotCallbackController extends Controller
                     ],
                     actorType: 'bot',
                 );
+                $this->clearPendingCheck($legalName);
+            } else {
+                $this->processStillInReview($request, $legalName);
             }
         } catch (\Throwable $th) {
             Log::error('MUA bot callback: failed to process denomination result.', [
@@ -291,6 +302,64 @@ class MuaBotCallbackController extends Controller
             'name' => $legalName->name,
             'reason' => $reason,
         ]);
+    }
+
+    /**
+     * Handle a non-terminal PROCESS callback: the SE still has the denomination
+     * in review. Delivered by on-demand status checks so the dashboard can show
+     * "sigue en dictamen" rather than waiting in silence.
+     *
+     * Advances PENDING → PROCESS, refreshes the raw SE portal label and clears the
+     * pending-check flag so the "Consultando…" indicator stops. Stale callbacks for
+     * an already-resolved denomination only clear the flag — a terminal status is
+     * never downgraded.
+     *
+     * @param  Request  $request  Request carrying the optional portal_status label.
+     * @param  LegalName  $legalName  The denomination being polled.
+     */
+    private function processStillInReview(Request $request, LegalName $legalName): void
+    {
+        if (! $legalName->isInProcess()) {
+            $this->clearPendingCheck($legalName);
+
+            return;
+        }
+
+        $portalStatus = (string) $request->input('portal_status', '');
+
+        $legalName->update([
+            'status' => LegalNameStatusEnum::PROCESS->value,
+            'portal_status' => $portalStatus !== '' ? $portalStatus : $legalName->portal_status,
+            'last_status_check_at' => null,
+        ]);
+
+        $legalName->recordEvent(
+            LegalNameEventTypeEnum::IN_PROCESS,
+            'La SE confirma que la denominación sigue en dictamen.',
+            ['portal_status' => $portalStatus ?: null],
+            actorType: 'bot',
+        );
+
+        Log::info('MUA bot callback: denomination still in review (manual check).', [
+            'legal_name_id' => $legalName->id,
+            'name' => $legalName->name,
+            'portal_status' => $portalStatus,
+        ]);
+    }
+
+    /**
+     * Clear the pending manual-check flag so the "Consultando…" indicator stops.
+     *
+     * Called once a result arrives (approved, rejected or still in review) so the
+     * loading badge clears immediately instead of waiting out the grace window.
+     *
+     * @param  LegalName  $legalName  The denomination whose check has resolved.
+     */
+    private function clearPendingCheck(LegalName $legalName): void
+    {
+        if ($legalName->last_status_check_at !== null) {
+            $legalName->update(['last_status_check_at' => null]);
+        }
     }
 
     /**
