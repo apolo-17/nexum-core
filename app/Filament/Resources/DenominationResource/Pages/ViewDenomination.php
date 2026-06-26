@@ -5,6 +5,7 @@ namespace App\Filament\Resources\DenominationResource\Pages;
 use App\Filament\Resources\DenominationResource;
 use App\Models\LegalName;
 use App\Services\Mua\MuaStatusCheckService;
+use App\Services\Mua\MuaSubmissionService;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
@@ -49,7 +50,11 @@ class ViewDenomination extends ViewRecord
             ->icon('heroicon-o-magnifying-glass-circle')
             ->color('info')
             ->visible(fn (): bool => $this->record instanceof LegalName && $this->record->canRequestStatusCheck())
-            ->disabled(fn (): bool => $this->record instanceof LegalName && $this->record->isAwaitingCheckResult())
+            ->disabled(fn (): bool => $this->record instanceof LegalName
+                && ($this->record->isAwaitingCheckResult() || ! app(MuaSubmissionService::class)->isBusinessHours()))
+            ->tooltip(fn (): ?string => app(MuaSubmissionService::class)->isBusinessHours()
+                ? null
+                : 'Disponible solo en horario hábil de la SE (Lun–Vie 09:00–16:00 CDMX).')
             ->requiresConfirmation()
             ->modalDescription('Se pedirá al bot que consulte el estado de esta denominación en el portal de la SE. El resultado aparecerá en el historial cuando responda.')
             ->action(function (): void {

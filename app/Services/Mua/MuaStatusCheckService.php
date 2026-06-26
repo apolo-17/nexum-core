@@ -64,6 +64,14 @@ class MuaStatusCheckService
             );
         }
 
+        // The SE portal blocks its login outside business hours, so a check fired
+        // off-hours would only fail at the bot. Gate it here, same window as submit.
+        if (! $this->muaSubmissionService->isBusinessHours()) {
+            throw new \RuntimeException(
+                'Fuera del horario hábil de la SE (Lun–Vie 09:00–16:00 CDMX): el portal no permite iniciar sesión todavía.'
+            );
+        }
+
         $account = $legalName->muaAccount;
 
         $cert = $account?->getCredential('certificate');

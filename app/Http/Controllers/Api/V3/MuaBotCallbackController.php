@@ -327,23 +327,35 @@ class MuaBotCallbackController extends Controller
 
         $portalStatus = (string) $request->input('portal_status', '');
 
+        // Detect a meaningful change BEFORE mutating: first entry into dictamen
+        // (PENDING → PROCESS) or a new SE portal label. The scheduled /poll touches
+        // a denomination every cycle; logging each one would flood the timeline, so
+        // we only record an event when something actually changed.
+        $enteredReview = $legalName->status === LegalNameStatusEnum::PENDING;
+        $portalChanged = $portalStatus !== '' && $portalStatus !== $legalName->portal_status;
+
         $legalName->update([
             'status' => LegalNameStatusEnum::PROCESS->value,
             'portal_status' => $portalStatus !== '' ? $portalStatus : $legalName->portal_status,
             'last_status_check_at' => null,
         ]);
 
-        $legalName->recordEvent(
-            LegalNameEventTypeEnum::IN_PROCESS,
-            'La SE confirma que la denominación sigue en dictamen.',
-            ['portal_status' => $portalStatus ?: null],
-            actorType: 'bot',
-        );
+        if ($enteredReview || $portalChanged) {
+            $legalName->recordEvent(
+                LegalNameEventTypeEnum::IN_PROCESS,
+                $enteredReview
+                    ? 'La SE tomó la denominación a dictamen.'
+                    : 'La SE actualizó el estatus en dictamen.',
+                ['portal_status' => $portalStatus ?: null],
+                actorType: 'bot',
+            );
+        }
 
-        Log::info('MUA bot callback: denomination still in review (manual check).', [
+        Log::info('MUA bot callback: denomination still in review.', [
             'legal_name_id' => $legalName->id,
             'name' => $legalName->name,
             'portal_status' => $portalStatus,
+            'event_logged' => $enteredReview || $portalChanged,
         ]);
     }
 
