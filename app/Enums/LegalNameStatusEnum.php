@@ -25,11 +25,28 @@ enum LegalNameStatusEnum: string
     {
         return match ($this) {
             self::DRAFT => 'Borrador (sin enviar)',
-            self::WAIT => 'En espera',
-            self::PENDING => 'Pendiente de envío',
+            self::WAIT => 'En cola de envío',
+            self::PENDING => 'Enviada a la SE',
             self::PROCESS => 'En dictamen',
-            self::APPROVED => 'Aprobado',
-            self::REJECTED => 'Rechazado',
+            self::APPROVED => 'Aprobada',
+            self::REJECTED => 'Rechazada',
+        };
+    }
+
+    /**
+     * Return the Filament color token for the status badge.
+     *
+     * Groups the lifecycle visually: pre-send (gray), enviada a la SE (info/blue),
+     * en dictamen (warning/amber) and the terminal outcomes (green/red).
+     */
+    public function color(): string
+    {
+        return match ($this) {
+            self::DRAFT, self::WAIT => 'gray',
+            self::PENDING => 'info',
+            self::PROCESS => 'warning',
+            self::APPROVED => 'success',
+            self::REJECTED => 'danger',
         };
     }
 

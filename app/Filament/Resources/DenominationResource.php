@@ -91,12 +91,7 @@ class DenominationResource extends Resource
                     ->label('Estado')
                     ->badge()
                     ->formatStateUsing(fn (LegalNameStatusEnum $state): string => $state->label())
-                    ->color(fn (LegalNameStatusEnum $state): string => match ($state) {
-                        LegalNameStatusEnum::DRAFT => 'gray',
-                        LegalNameStatusEnum::APPROVED => 'success',
-                        LegalNameStatusEnum::REJECTED => 'danger',
-                        default => 'warning',
-                    }),
+                    ->color(fn (LegalNameStatusEnum $state): string => $state->color()),
 
                 TextColumn::make('muaAccount.name')
                     ->label('FIEL')
@@ -227,12 +222,7 @@ class DenominationResource extends Resource
                         ->label('Estado')
                         ->badge()
                         ->formatStateUsing(fn (LegalNameStatusEnum $state): string => $state->label())
-                        ->color(fn (LegalNameStatusEnum $state): string => match ($state) {
-                            LegalNameStatusEnum::DRAFT => 'gray',
-                            LegalNameStatusEnum::APPROVED => 'success',
-                            LegalNameStatusEnum::REJECTED => 'danger',
-                            default => 'warning',
-                        }),
+                        ->color(fn (LegalNameStatusEnum $state): string => $state->color()),
                     InfoTextEntry::make('muaAccount.name')->label('FIEL')->placeholder('Se asigna al enviar'),
                     InfoTextEntry::make('clave_unica_denominacion')->label('Folio SE')->placeholder('—'),
                     InfoTextEntry::make('portal_status')->label('Estatus en portal SE')->placeholder('—'),

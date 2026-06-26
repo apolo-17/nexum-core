@@ -74,13 +74,7 @@ class LegalNamesRelationManager extends RelationManager
                 BadgeColumn::make('status')
                     ->label('Estatus')
                     ->formatStateUsing(fn (LegalNameStatusEnum $state) => $state->label())
-                    ->colors([
-                        'gray' => LegalNameStatusEnum::WAIT->value,
-                        'warning' => LegalNameStatusEnum::PENDING->value,
-                        'info' => LegalNameStatusEnum::PROCESS->value,
-                        'success' => LegalNameStatusEnum::APPROVED->value,
-                        'danger' => LegalNameStatusEnum::REJECTED->value,
-                    ]),
+                    ->color(fn (LegalNameStatusEnum $state): string => $state->color()),
                 TextColumn::make('clave_unica_denominacion')->label('Clave SE')->placeholder('—'),
             ])
             ->defaultSort('priority')
