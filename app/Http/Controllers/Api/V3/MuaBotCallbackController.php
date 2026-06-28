@@ -217,8 +217,8 @@ class MuaBotCallbackController extends Controller
             ]);
 
             // Decrement the soldado's active submission counter.
-            if ($legalName->muaAccount) {
-                $legalName->muaAccount->decrement('active_submissions');
+            if ($legalName->soldado) {
+                $legalName->soldado->decrement('active_submissions');
             }
         });
 
@@ -263,8 +263,8 @@ class MuaBotCallbackController extends Controller
                 'portal_status' => $portalStatus,
             ]);
 
-            if ($legalName->muaAccount) {
-                $legalName->muaAccount->decrement('active_submissions');
+            if ($legalName->soldado) {
+                $legalName->soldado->decrement('active_submissions');
             }
         });
 

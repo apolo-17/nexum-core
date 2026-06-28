@@ -93,7 +93,7 @@ class DenominationResource extends Resource
                     ->formatStateUsing(fn (LegalNameStatusEnum $state): string => $state->label())
                     ->color(fn (LegalNameStatusEnum $state): string => $state->color()),
 
-                TextColumn::make('muaAccount.name')
+                TextColumn::make('soldado.name')
                     ->label('FIEL')
                     ->placeholder('Se asigna al enviar'),
 
@@ -223,7 +223,7 @@ class DenominationResource extends Resource
                         ->badge()
                         ->formatStateUsing(fn (LegalNameStatusEnum $state): string => $state->label())
                         ->color(fn (LegalNameStatusEnum $state): string => $state->color()),
-                    InfoTextEntry::make('muaAccount.name')->label('FIEL')->placeholder('Se asigna al enviar'),
+                    InfoTextEntry::make('soldado.name')->label('FIEL')->placeholder('Se asigna al enviar'),
                     InfoTextEntry::make('clave_unica_denominacion')->label('Folio SE')->placeholder('—'),
                     InfoTextEntry::make('portal_status')->label('Estatus en portal SE')->placeholder('—'),
                     InfoTextEntry::make('rejection_reason')->label('Motivo de rechazo')->placeholder('—'),

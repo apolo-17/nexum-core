@@ -69,6 +69,17 @@ class LegalAgentResource extends Resource
     }
 
     /**
+     * Hide from navigation — deprecated in favor of SoldadoResource.
+     *
+     * Legal representatives and commissaries are now soldados with capability flags.
+     * This resource and the legal_agents table are kept one release for safety.
+     */
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
+    /**
      * Define the create/edit form for a legal agent profile.
      */
     public static function form(Schema $schema): Schema

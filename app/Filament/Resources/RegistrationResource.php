@@ -691,7 +691,7 @@ class RegistrationResource extends Resource
         return [
             RelationManagers\DocumentsRelationManager::class,
             RelationManagers\ShareholdersRelationManager::class,
-            RelationManagers\LegalAgentsRelationManager::class,
+            RelationManagers\SoldadosRelationManager::class,
             RelationManagers\LegalNamesRelationManager::class,
             RelationManagers\TasksRelationManager::class,
             RelationManagers\NotesRelationManager::class,

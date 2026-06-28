@@ -7,7 +7,7 @@ namespace App\Services\Mua;
 use App\Enums\LegalNameEventTypeEnum;
 use App\Enums\LegalNameStatusEnum;
 use App\Models\LegalName;
-use App\Models\MuaAccount;
+use App\Models\Soldado;
 use Carbon\Carbon;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
@@ -124,9 +124,9 @@ class MuaSubmissionService
             return false;
         }
 
-        $account = $this->findAvailableFiel();
+        $soldado = $this->findAvailableFiel();
 
-        if ($account === null) {
+        if ($soldado === null) {
             Log::warning('MuaSubmissionService: no FIEL with available daily capacity — denomination deferred.', [
                 'legal_name_id' => $legalName->id,
                 'name' => $legalName->name,
@@ -135,7 +135,7 @@ class MuaSubmissionService
             return false;
         }
 
-        $this->submitToBot($legalName, $account);
+        $this->submitToBot($legalName, $soldado);
 
         return true;
     }
@@ -161,38 +161,39 @@ class MuaSubmissionService
     }
 
     /**
-     * Find the FIEL account with the lowest daily usage that still has capacity.
+     * Find the soldado FIEL with the lowest daily usage that still has capacity.
      *
-     * Filters accounts by: active flag, all three credentials present, and fewer
-     * than DAILY_LIMIT submissions today (CDMX calendar day). Returns the one with
-     * the fewest submissions so load is distributed evenly across accounts.
+     * Filters soldados by: MUA capability, active flag, all three credentials present,
+     * and fewer than DAILY_LIMIT submissions today (CDMX calendar day). Returns the one
+     * with the fewest submissions so load is distributed evenly across accounts.
      *
-     * @return MuaAccount|null The best available account, or null if none qualify.
+     * @return Soldado|null The best available soldado, or null if none qualify.
      */
-    public function findAvailableFiel(): ?MuaAccount
+    public function findAvailableFiel(): ?Soldado
     {
-        return MuaAccount::where('is_active', true)
+        return Soldado::where('available_for_mua', true)
+            ->where('is_active', true)
             ->get()
-            ->filter(function (MuaAccount $account): bool {
-                return $account->isReady()
-                    && $this->dailySubmissionsCount($account) < self::DAILY_LIMIT;
+            ->filter(function (Soldado $soldado): bool {
+                return $soldado->isReadyForMua()
+                    && $this->dailySubmissionsCount($soldado) < self::DAILY_LIMIT;
             })
-            ->sortBy(fn (MuaAccount $account): int => $this->dailySubmissionsCount($account))
+            ->sortBy(fn (Soldado $soldado): int => $this->dailySubmissionsCount($soldado))
             ->first();
     }
 
     /**
-     * Count how many denominations this FIEL account has submitted today (CDMX time).
+     * Count how many denominations this soldado has submitted today (CDMX time).
      *
-     * @param  MuaAccount  $account  The FIEL account to check.
+     * @param  Soldado  $soldado  The soldado FIEL to check.
      * @return int Number of submissions made since midnight CDMX today.
      */
-    public function dailySubmissionsCount(MuaAccount $account): int
+    public function dailySubmissionsCount(Soldado $soldado): int
     {
         $todayStart = Carbon::now(self::TIMEZONE)->startOfDay()->utc();
         $todayEnd = Carbon::now(self::TIMEZONE)->endOfDay()->utc();
 
-        return LegalName::where('mua_account_id', $account->id)
+        return LegalName::where('soldado_id', $soldado->id)
             ->whereBetween('submitted_at', [$todayStart, $todayEnd])
             ->count();
     }
@@ -205,21 +206,21 @@ class MuaSubmissionService
      * SE resolves the denomination.
      *
      * @param  LegalName  $legalName  The denomination to submit.
-     * @param  MuaAccount  $account  The FIEL account whose credentials will be used.
+     * @param  Soldado  $soldado  The soldado whose FIEL credentials will be used.
      *
      * @throws \InvalidArgumentException When the registration company_type is unsupported.
      * @throws \RuntimeException When any of the three FIEL credentials are missing.
      * @throws RequestException When the bot returns a non-2xx response.
      */
-    private function submitToBot(LegalName $legalName, MuaAccount $account): void
+    private function submitToBot(LegalName $legalName, Soldado $soldado): void
     {
-        $cert = $account->getCredential('certificate');
-        $keyPem = $account->getCredential('private_key');
-        $password = $account->getCredential('password');
+        $cert = $soldado->getCredential('certificate');
+        $keyPem = $soldado->getCredential('private_key');
+        $password = $soldado->getCredential('password');
 
         if (! $cert || ! $keyPem || ! $password) {
             throw new \RuntimeException(
-                "MuaAccount [{$account->id}] is missing one or more FIEL credentials."
+                "Soldado [{$soldado->id}] is missing one or more FIEL credentials."
             );
         }
 
@@ -248,16 +249,16 @@ class MuaSubmissionService
 
         $legalName->update([
             'status' => LegalNameStatusEnum::PENDING,
-            'mua_account_id' => $account->id,
+            'soldado_id' => $soldado->id,
             'submitted_at' => now(),
         ]);
 
         $legalName->recordEvent(
             LegalNameEventTypeEnum::SUBMITTED,
-            "Enviada al portal MUA con la FIEL «{$account->name}».",
+            "Enviada al portal MUA con la FIEL «{$soldado->name}».",
             [
-                'mua_account_id' => $account->id,
-                'mua_account_name' => $account->name,
+                'soldado_id' => $soldado->id,
+                'soldado_name' => $soldado->name,
                 'company_type' => $companyType,
             ],
         );
@@ -265,7 +266,7 @@ class MuaSubmissionService
         Log::info('MuaSubmissionService: denomination submitted to MUA bot.', [
             'legal_name_id' => $legalName->id,
             'name' => $legalName->name,
-            'mua_account_id' => $account->id,
+            'soldado_id' => $soldado->id,
             'company_type' => $companyType,
         ]);
     }

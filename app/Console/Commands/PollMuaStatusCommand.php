@@ -66,7 +66,7 @@ class PollMuaStatusCommand extends Command
             LegalNameStatusEnum::PENDING->value,
             LegalNameStatusEnum::PROCESS->value,
         ])
-            ->with(['registration.assignedNotario', 'muaAccount'])
+            ->with(['registration.assignedNotario', 'soldado'])
             ->get();
 
         if ($inFlight->isEmpty()) {
@@ -128,8 +128,8 @@ class PollMuaStatusCommand extends Command
                     ]);
 
                     // Decrement active submissions counter on the assigned account.
-                    if ($legalName->muaAccount) {
-                        $legalName->muaAccount->decrement('active_submissions');
+                    if ($legalName->soldado) {
+                        $legalName->soldado->decrement('active_submissions');
                     }
 
                     $this->notifyNotario($legalName->registration, $legalName->name, true);
@@ -150,8 +150,8 @@ class PollMuaStatusCommand extends Command
                         'rejection_reason' => 'Rechazada por la Secretaría de Economía',
                     ]);
 
-                    if ($legalName->muaAccount) {
-                        $legalName->muaAccount->decrement('active_submissions');
+                    if ($legalName->soldado) {
+                        $legalName->soldado->decrement('active_submissions');
                     }
 
                     $this->notifyNotario($legalName->registration, $legalName->name, false);

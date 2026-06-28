@@ -30,12 +30,14 @@ return new class extends Migration
         Schema::create('soldados', function (Blueprint $table): void {
             $table->ulid('id')->primary();
 
-            // Identity
+            // Identity. email/rfc are unique but nullable: a soldado migrated from a
+            // legacy legal_agent may lack an email, and foreign reps may have no RFC.
+            // (Postgres and SQLite both allow multiple NULLs under a UNIQUE index.)
             $table->string('name');
-            $table->string('email')->unique();
+            $table->string('email')->nullable()->unique();
             $table->string('phone')->nullable();
             $table->string('phone_country_code')->nullable();
-            $table->string('rfc', 13)->unique();
+            $table->string('rfc', 13)->nullable()->unique();
             $table->string('curp', 18)->nullable();
             $table->date('birthdate')->nullable();
             $table->string('birthplace')->nullable();

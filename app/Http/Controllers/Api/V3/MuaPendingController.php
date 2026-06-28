@@ -29,7 +29,6 @@ class MuaPendingController extends Controller
      * and check the current status of each denomination.
      *
      * @param  Request  $request  Incoming request with X-Bot-Api-Key header.
-     *
      * @return JsonResponse List of pending denominations or 401 if unauthorized.
      */
     public function index(Request $request): JsonResponse
@@ -44,16 +43,16 @@ class MuaPendingController extends Controller
             LegalNameStatusEnum::PENDING->value,
             LegalNameStatusEnum::PROCESS->value,
         ])
-            ->whereNotNull('mua_account_id')
-            ->with('muaAccount')
+            ->whereNotNull('soldado_id')
+            ->with('soldado')
             ->get()
             ->map(fn (LegalName $legalName): array => [
                 'legal_name_id' => $legalName->id,
-                'denomination'  => $legalName->name,
-                'soldier_id'    => $legalName->mua_account_id,
-                'cert_base64'   => $legalName->muaAccount?->getCredential('certificate'),
-                'key_base64'    => $legalName->muaAccount?->getCredential('private_key'),
-                'password'      => $legalName->muaAccount?->getCredential('password'),
+                'denomination' => $legalName->name,
+                'soldier_id' => $legalName->soldado_id,
+                'cert_base64' => $legalName->soldado?->getCredential('certificate'),
+                'key_base64' => $legalName->soldado?->getCredential('private_key'),
+                'password' => $legalName->soldado?->getCredential('password'),
             ]);
 
         return response()->json(['data' => $pending], Response::HTTP_OK);

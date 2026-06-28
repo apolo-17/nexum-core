@@ -52,7 +52,6 @@ class SubmitDenominationsToMuaCommand extends Command
      * possible (out of hours or no FIEL available).
      *
      * @param  MuaSubmissionService  $muaSubmissionService  Injected MUA submission service.
-     *
      * @return int Command::SUCCESS or Command::FAILURE
      */
     public function handle(MuaSubmissionService $muaSubmissionService): int
@@ -75,7 +74,7 @@ class SubmitDenominationsToMuaCommand extends Command
         }
 
         $pendingNames = LegalName::where('status', LegalNameStatusEnum::WAIT->value)
-            ->whereNull('mua_account_id')
+            ->whereNull('soldado_id')
             ->with('registration')
             ->get();
 
@@ -107,8 +106,8 @@ class SubmitDenominationsToMuaCommand extends Command
             } catch (\Throwable $th) {
                 Log::error('mua:submit — failed to submit denomination.', [
                     'legal_name_id' => $legalName->id,
-                    'name'          => $legalName->name,
-                    'exception'     => $th->getMessage(),
+                    'name' => $legalName->name,
+                    'exception' => $th->getMessage(),
                 ]);
 
                 $this->error("  Failed: {$th->getMessage()}");

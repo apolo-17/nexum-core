@@ -66,6 +66,17 @@ class MuaAccountResource extends Resource
     }
 
     /**
+     * Hide from navigation — deprecated in favor of SoldadoResource.
+     *
+     * The MUA pipeline now reads soldados; this resource and the mua_accounts table
+     * are kept one release for safety. Soldados manage their FIEL from SoldadoResource.
+     */
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
+    /**
      * Define the form for creating / editing a MuaAccount.
      *
      * Credential fields (certificate_file, private_key_file, private_key_password) are

@@ -29,9 +29,9 @@ class DatabaseSeeder extends Seeder
         if (! app()->environment('production')) {
             $this->call(ChineseCompaniesSeeder::class);
 
-            // Catalog of legal representatives / commissaries + sample assignments.
-            // Runs after the demo companies so it can attach agents to real actas.
-            $this->call(LegalAgentsSeeder::class);
+            // Catalog of soldados (legal representatives / commissaries) + sample
+            // assignments. Runs after the demo companies so it can attach to real actas.
+            $this->call(SoldadosSeeder::class);
         }
     }
 }

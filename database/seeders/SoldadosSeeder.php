@@ -3,18 +3,18 @@
 namespace Database\Seeders;
 
 use App\Enums\LegalAgentTypeEnum;
-use App\Models\LegalAgent;
 use App\Models\Registration;
+use App\Models\Soldado;
 use Illuminate\Database\Seeder;
 
 /**
- * Seeds the catalog of legal representatives and commissaries with sample data,
- * and assigns a few of them to existing demo actas with share percentages.
+ * Seeds sample soldados available as legal representatives / commissaries and
+ * assigns a few of them to demo actas with a role and share percentage.
  *
  * Demo data only — run from local/staging. Production starts with an empty catalog
- * that the notary team fills with real profiles.
+ * that the team fills with real soldados (and their FIEL when used for MUA).
  */
-class LegalAgentsSeeder extends Seeder
+class SoldadosSeeder extends Seeder
 {
     /**
      * Sample legal representatives.
@@ -43,35 +43,35 @@ class LegalAgentsSeeder extends Seeder
     public function run(): void
     {
         $representatives = collect(self::REPRESENTATIVES)->map(
-            fn (array $data): LegalAgent => $this->createAgent($data, LegalAgentTypeEnum::LEGAL_REPRESENTATIVE),
+            fn (array $data): Soldado => $this->createSoldado($data, LegalAgentTypeEnum::LEGAL_REPRESENTATIVE),
         );
 
         $commissaries = collect(self::COMMISSARIES)->map(
-            fn (array $data): LegalAgent => $this->createAgent($data, LegalAgentTypeEnum::COMMISSARY),
+            fn (array $data): Soldado => $this->createSoldado($data, LegalAgentTypeEnum::COMMISSARY),
         );
 
         $this->assignToDemoActas($representatives->all(), $commissaries->all());
     }
 
     /**
-     * Create or update a single catalog entry, idempotently keyed by RFC.
+     * Create or update a single soldado, idempotently keyed by RFC.
      *
      * @param  array<string, string>  $data  Name, RFC and CURP for the profile.
-     * @param  LegalAgentTypeEnum  $type  Whether it is a representative or commissary.
+     * @param  LegalAgentTypeEnum  $role  Whether it is a representative or commissary.
      */
-    private function createAgent(array $data, LegalAgentTypeEnum $type): LegalAgent
+    private function createSoldado(array $data, LegalAgentTypeEnum $role): Soldado
     {
-        return LegalAgent::firstOrCreate(
+        return Soldado::firstOrCreate(
             ['rfc' => $data['rfc']],
             [
-                'type' => $type,
                 'name' => $data['name'],
-                'nationality' => 'mexicana',
                 'curp' => $data['curp'],
                 'email' => str($data['name'])->ascii()->slug('.')->append('@notaria.mx')->value(),
                 'phone' => '55'.fake()->numerify('########'),
                 'birthplace' => 'Ciudad de México, México',
                 'address' => fake()->streetAddress().', Ciudad de México',
+                'available_as_legal_representative' => $role === LegalAgentTypeEnum::LEGAL_REPRESENTATIVE,
+                'available_as_commissary' => $role === LegalAgentTypeEnum::COMMISSARY,
                 'is_active' => true,
             ],
         );
@@ -80,11 +80,10 @@ class LegalAgentsSeeder extends Seeder
     /**
      * Assign one representative and one commissary to a handful of demo actas.
      *
-     * Skips silently when there are no registrations (e.g. ChineseCompaniesSeeder
-     * was not run). Percentages are illustrative only.
+     * Skips silently when there are no registrations. Percentages are illustrative only.
      *
-     * @param  list<LegalAgent>  $representatives
-     * @param  list<LegalAgent>  $commissaries
+     * @param  list<Soldado>  $representatives
+     * @param  list<Soldado>  $commissaries
      */
     private function assignToDemoActas(array $representatives, array $commissaries): void
     {
@@ -98,9 +97,15 @@ class LegalAgentsSeeder extends Seeder
             $representative = $representatives[$index % count($representatives)];
             $commissary = $commissaries[$index % count($commissaries)];
 
-            $registration->legalAgents()->syncWithoutDetaching([
-                $representative->id => ['participation_percentage' => 60.00],
-                $commissary->id => ['participation_percentage' => 0.00],
+            $registration->soldados()->syncWithoutDetaching([
+                $representative->id => [
+                    'role' => LegalAgentTypeEnum::LEGAL_REPRESENTATIVE->value,
+                    'participation_percentage' => 60.00,
+                ],
+                $commissary->id => [
+                    'role' => LegalAgentTypeEnum::COMMISSARY->value,
+                    'participation_percentage' => 0.00,
+                ],
             ]);
         }
     }

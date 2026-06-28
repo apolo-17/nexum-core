@@ -17,8 +17,8 @@ use Illuminate\Support\Facades\Auth;
  * A registration may have up to 4 proposals ordered by priority.
  * Validation rules mirror the Tally system: minimum 3 to allow deletion,
  * maximum 4 total, and names in PROCESS or APPROVED status cannot be modified.
- * Each denomination is linked to a MuaAccount (soldado) whose FIEL is used
- * to submit the reservation to the MUA portal.
+ * Each denomination is linked to a Soldado whose FIEL is used to submit the
+ * reservation to the MUA portal.
  */
 class LegalName extends Model
 {
@@ -37,7 +37,7 @@ class LegalName extends Model
         'authorization_timestamp',
         'submitted_at',
         'last_status_check_at',
-        'mua_account_id',
+        'soldado_id',
         'rejection_reason',
         'mua_available',
         'portal_status',
@@ -74,13 +74,13 @@ class LegalName extends Model
     }
 
     /**
-     * Get the MUA account (soldado) assigned to process this denomination.
+     * Get the soldado whose FIEL is assigned to process this denomination.
      *
-     * @return BelongsTo<MuaAccount, $this>
+     * @return BelongsTo<Soldado, $this>
      */
-    public function muaAccount(): BelongsTo
+    public function soldado(): BelongsTo
     {
-        return $this->belongsTo(MuaAccount::class);
+        return $this->belongsTo(Soldado::class);
     }
 
     /**
@@ -170,7 +170,7 @@ class LegalName extends Model
      */
     public function canRequestStatusCheck(): bool
     {
-        return $this->isInProcess() && $this->mua_account_id !== null;
+        return $this->isInProcess() && $this->soldado_id !== null;
     }
 
     /**

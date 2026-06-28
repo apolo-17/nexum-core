@@ -72,15 +72,15 @@ class MuaStatusCheckService
             );
         }
 
-        $account = $legalName->muaAccount;
+        $soldado = $legalName->soldado;
 
-        $cert = $account?->getCredential('certificate');
-        $keyPem = $account?->getCredential('private_key');
-        $password = $account?->getCredential('password');
+        $cert = $soldado?->getCredential('certificate');
+        $keyPem = $soldado?->getCredential('private_key');
+        $password = $soldado?->getCredential('password');
 
         if (! $cert || ! $keyPem || ! $password) {
             throw new \RuntimeException(
-                "La FIEL [{$account?->id}] no tiene credenciales completas para consultar."
+                "La FIEL [{$soldado?->id}] no tiene credenciales completas para consultar."
             );
         }
 
@@ -126,13 +126,13 @@ class MuaStatusCheckService
         $legalName->recordEvent(
             LegalNameEventTypeEnum::CHECK_REQUESTED,
             'Consulta de estado enviada al bot. El resultado llegará por el callback.',
-            ['mua_account_id' => $account->id, 'mua_account_name' => $account->name],
+            ['soldado_id' => $soldado->id, 'soldado_name' => $soldado->name],
         );
 
         Log::info('MuaStatusCheckService: status check requested.', [
             'legal_name_id' => $legalName->id,
             'name' => $legalName->name,
-            'mua_account_id' => $account->id,
+            'soldado_id' => $soldado->id,
         ]);
     }
 }

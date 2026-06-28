@@ -5,9 +5,9 @@ namespace Tests\Feature\Denomination;
 use App\Enums\LegalNameStatusEnum;
 use App\Filament\Resources\DenominationResource;
 use App\Models\LegalName;
-use App\Models\MuaAccount;
-use App\Models\MuaCredential;
 use App\Models\Registration;
+use App\Models\Soldado;
+use App\Models\SoldadoCredential;
 use App\Services\Mua\MuaSubmissionService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -82,15 +82,16 @@ class DenominationPoolTest extends TestCase
 
         Http::fake(['http://mua-bot:8000/*' => Http::response([], 200)]);
 
-        $account = MuaAccount::create([
+        $soldado = Soldado::create([
             'name' => 'Soldado Uno',
             'rfc' => 'AAAA000101AAA',
+            'available_for_mua' => true,
             'is_active' => true,
         ]);
 
         foreach (['certificate', 'private_key', 'password'] as $type) {
-            (new MuaCredential([
-                'mua_account_id' => $account->id,
+            (new SoldadoCredential([
+                'soldado_id' => $soldado->id,
                 'type' => $type,
             ]))->setEncryptedValue("value-{$type}")->save();
         }

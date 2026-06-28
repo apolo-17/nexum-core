@@ -110,39 +110,41 @@ class Registration extends Model
     }
 
     /**
-     * Get all legal agents (representatives and commissaries) assigned to this acta.
+     * Get all soldados acting in this acta (legal representatives and commissaries).
      *
-     * The pivot carries the share percentage each agent holds in this acta.
+     * The pivot carries the role each soldado plays in this acta and the share
+     * percentage they hold. A soldado flagged for both capabilities can therefore
+     * act in either role depending on the acta.
      *
-     * @return BelongsToMany<LegalAgent, $this>
+     * @return BelongsToMany<Soldado, $this>
      */
-    public function legalAgents(): BelongsToMany
+    public function soldados(): BelongsToMany
     {
-        return $this->belongsToMany(LegalAgent::class, 'legal_agent_registration')
-            ->withPivot('participation_percentage')
+        return $this->belongsToMany(Soldado::class, 'registration_soldado')
+            ->withPivot('role', 'participation_percentage')
             ->withTimestamps();
     }
 
     /**
-     * Get the legal representatives assigned to this acta.
+     * Get the soldados acting as legal representatives in this acta.
      *
-     * @return BelongsToMany<LegalAgent, $this>
+     * @return BelongsToMany<Soldado, $this>
      */
     public function legalRepresentatives(): BelongsToMany
     {
-        return $this->legalAgents()
-            ->where('legal_agents.type', LegalAgentTypeEnum::LEGAL_REPRESENTATIVE);
+        return $this->soldados()
+            ->wherePivot('role', LegalAgentTypeEnum::LEGAL_REPRESENTATIVE->value);
     }
 
     /**
-     * Get the commissaries assigned to this acta.
+     * Get the soldados acting as commissaries in this acta.
      *
-     * @return BelongsToMany<LegalAgent, $this>
+     * @return BelongsToMany<Soldado, $this>
      */
     public function commissaries(): BelongsToMany
     {
-        return $this->legalAgents()
-            ->where('legal_agents.type', LegalAgentTypeEnum::COMMISSARY);
+        return $this->soldados()
+            ->wherePivot('role', LegalAgentTypeEnum::COMMISSARY->value);
     }
 
     /**

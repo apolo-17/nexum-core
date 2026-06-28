@@ -101,7 +101,7 @@ class ProcessSingapurWebhook implements ShouldQueue
         // if conditions are not met it exits cleanly and the cron retries later.
         $registration->legalNames()
             ->where('status', LegalNameStatusEnum::WAIT->value)
-            ->whereNull('mua_account_id')
+            ->whereNull('soldado_id')
             ->each(function (LegalName $legalName): void {
                 SubmitLegalNameToMuaJob::dispatch($legalName->id);
             });
