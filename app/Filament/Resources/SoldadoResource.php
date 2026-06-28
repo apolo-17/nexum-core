@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\EfirmaAppointmentStatusEnum;
+use App\Enums\LegalNameStatusEnum;
 use App\Filament\Resources\SoldadoResource\Pages;
 use App\Models\Soldado;
 use App\Models\SoldadoCredential;
@@ -395,6 +397,32 @@ class SoldadoResource extends Resource
                         ->label('Acceso al panel')
                         ->boolean()
                         ->state(fn (Soldado $record): bool => $record->user_id !== null),
+                ]),
+
+            Section::make('Desempeño (KPIs)')
+                ->description('Reporte del soldado: empresas, citas y denominaciones.')
+                ->columns(4)
+                ->schema([
+                    InfoTextEntry::make('kpi_companies')
+                        ->label('Empresas')
+                        ->state(fn (Soldado $record): int => $record->registrations()->count()),
+
+                    InfoTextEntry::make('kpi_appointments_completed')
+                        ->label('Citas completadas')
+                        ->state(fn (Soldado $record): string => $record->appointments()
+                            ->where('status', EfirmaAppointmentStatusEnum::ATTENDED_APPROVED->value)
+                            ->count()
+                            .' / '.$record->appointments()->count()),
+
+                    InfoTextEntry::make('kpi_denominations_approved')
+                        ->label('Denominaciones aprobadas')
+                        ->state(fn (Soldado $record): int => $record->legalNames()
+                            ->where('status', LegalNameStatusEnum::APPROVED->value)
+                            ->count()),
+
+                    InfoTextEntry::make('active_submissions')
+                        ->label('Denominaciones en proceso')
+                        ->numeric(),
                 ]),
 
             Section::make('FIEL (e.firma)')

@@ -67,6 +67,17 @@ class RegistrationResource extends Resource
     }
 
     /**
+     * Restrict the full expediente resource to the notary team.
+     *
+     * Soldados access the panel too (their own scoped resources); they must not see
+     * every company's expediente here.
+     */
+    public static function canAccess(): bool
+    {
+        return Auth::user()?->hasAnyRole(['super_admin', 'notario', 'asistente_notario']) ?? false;
+    }
+
+    /**
      * Define the form schema used for creating and editing registrations.
      */
     public static function form(Schema $schema): Schema
