@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\CompanyCredentialDownloadController;
 use App\Http\Controllers\Admin\DocumentRelayDownloadController;
 use App\Http\Middleware\EnsureCanViewApiDocs;
 use Illuminate\Support\Facades\Route;
@@ -29,4 +30,10 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () 
         'documents/{document}/preview',
         [DocumentRelayDownloadController::class, 'preview']
     )->name('documents.preview');
+
+    // Safeguarded company credentials (e.firma .cer/.key + RFC document) download.
+    Route::get(
+        'registrations/{registration}/company-credentials/{type}',
+        [CompanyCredentialDownloadController::class, 'download']
+    )->whereIn('type', ['cer', 'key', 'rfc'])->name('company-credentials.download');
 });

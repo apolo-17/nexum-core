@@ -518,6 +518,56 @@ class RegistrationResource extends Resource
                         ->falseIcon('heroicon-o-x-circle')
                         ->state(fn (Registration $record): bool => filled($record->efirma_cer_path)),
                 ]),
+
+            // ----------------------------------------------------------------
+            // Row 6 — Safeguarded company credentials (e.firma + RFC).
+            // Independent of the e.firma appointment flow: these are stored for
+            // retrieval/download only. Always visible so the team can upload and
+            // download them at any stage. Files are served via a gated route;
+            // the e.firma password is revealed only to super_admin.
+            // ----------------------------------------------------------------
+            Section::make('Credenciales de la empresa (FIEL + RFC)')
+                ->description('Resguardo del .cer, .key, contraseña y RFC de la empresa para descarga segura.')
+                ->columnSpan(3)
+                ->columns(4)
+                ->schema([
+                    TextEntry::make('company_fiel_cer_path')
+                        ->label('Certificado .cer')
+                        ->badge()
+                        ->state(fn (Registration $record): string => filled($record->company_fiel_cer_path) ? 'Descargar' : 'No cargado')
+                        ->color(fn (Registration $record): string => filled($record->company_fiel_cer_path) ? 'success' : 'gray')
+                        ->url(fn (Registration $record): ?string => filled($record->company_fiel_cer_path)
+                            ? route('admin.company-credentials.download', ['registration' => $record, 'type' => 'cer'])
+                            : null)
+                        ->openUrlInNewTab(),
+
+                    TextEntry::make('company_fiel_key_path')
+                        ->label('Llave .key')
+                        ->badge()
+                        ->state(fn (Registration $record): string => filled($record->company_fiel_key_path) ? 'Descargar' : 'No cargado')
+                        ->color(fn (Registration $record): string => filled($record->company_fiel_key_path) ? 'success' : 'gray')
+                        ->url(fn (Registration $record): ?string => filled($record->company_fiel_key_path)
+                            ? route('admin.company-credentials.download', ['registration' => $record, 'type' => 'key'])
+                            : null)
+                        ->openUrlInNewTab(),
+
+                    TextEntry::make('company_rfc_path')
+                        ->label('RFC / Constancia')
+                        ->badge()
+                        ->state(fn (Registration $record): string => filled($record->company_rfc_path) ? 'Descargar' : 'No cargado')
+                        ->color(fn (Registration $record): string => filled($record->company_rfc_path) ? 'success' : 'gray')
+                        ->url(fn (Registration $record): ?string => filled($record->company_rfc_path)
+                            ? route('admin.company-credentials.download', ['registration' => $record, 'type' => 'rfc'])
+                            : null)
+                        ->openUrlInNewTab(),
+
+                    TextEntry::make('company_fiel_password')
+                        ->label('Contraseña FIEL')
+                        ->copyable()
+                        ->placeholder('Sin registrar')
+                        ->state(fn (Registration $record): ?string => $record->company_fiel_password)
+                        ->visible(fn (): bool => (bool) auth()->user()?->hasRole('super_admin')),
+                ]),
         ]);
     }
 
