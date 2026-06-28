@@ -40,17 +40,29 @@ enum EfirmaAppointmentStatusEnum: string
 
     /**
      * Return a human-readable Spanish label for display in the dashboard.
-     *
-     * @return string
      */
     public function label(): string
     {
-        return match($this) {
+        return match ($this) {
             self::PENDING_SCHEDULING => 'Cita solicitada',
-            self::SCHEDULED          => 'Cita agendada',
-            self::ATTENDED_APPROVED  => 'Asistió — Aprobado',
-            self::ATTENDED_REJECTED  => 'Asistió — Rechazado',
-            self::NO_SHOW            => 'No asistió',
+            self::SCHEDULED => 'Cita agendada',
+            self::ATTENDED_APPROVED => 'Asistió — Aprobado',
+            self::ATTENDED_REJECTED => 'Asistió — Rechazado',
+            self::NO_SHOW => 'No asistió',
+        };
+    }
+
+    /**
+     * Return the badge color for this status (Filament palette).
+     */
+    public function color(): string
+    {
+        return match ($this) {
+            self::PENDING_SCHEDULING => 'warning',
+            self::SCHEDULED => 'info',
+            self::ATTENDED_APPROVED => 'success',
+            self::ATTENDED_REJECTED => 'danger',
+            self::NO_SHOW => 'danger',
         };
     }
 
@@ -59,8 +71,6 @@ enum EfirmaAppointmentStatusEnum: string
      *
      * Used by the dashboard to determine if the "Solicitar nueva cita" action
      * should be available.
-     *
-     * @return bool
      */
     public function requiresRescheduling(): bool
     {

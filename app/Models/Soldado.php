@@ -89,6 +89,16 @@ class Soldado extends Model
         return $this->belongsTo(User::class);
     }
 
+    /**
+     * Get the SAT appointments this soldado is assigned to attend.
+     *
+     * @return HasMany<Appointment, $this>
+     */
+    public function appointments(): HasMany
+    {
+        return $this->hasMany(Appointment::class);
+    }
+
     // -------------------------------------------------------------------------
     // Business logic helpers
     // -------------------------------------------------------------------------

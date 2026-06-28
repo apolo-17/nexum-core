@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\AppointmentAcknowledgmentDownloadController;
 use App\Http\Controllers\Admin\CompanyCredentialDownloadController;
 use App\Http\Controllers\Admin\DocumentRelayDownloadController;
 use App\Http\Middleware\EnsureCanViewApiDocs;
@@ -36,4 +37,10 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () 
         'registrations/{registration}/company-credentials/{type}',
         [CompanyCredentialDownloadController::class, 'download']
     )->whereIn('type', ['cer', 'key', 'rfc'])->name('company-credentials.download');
+
+    // SAT appointment acuse (acknowledgment) download.
+    Route::get(
+        'appointments/{appointment}/acknowledgment',
+        [AppointmentAcknowledgmentDownloadController::class, 'download']
+    )->name('appointments.acknowledgment.download');
 });

@@ -211,6 +211,16 @@ class Registration extends Model
         return $this->hasMany(Note::class)->orderByDesc('is_pinned')->orderByDesc('created_at');
     }
 
+    /**
+     * Get the SAT appointments (RFC and FIEL) for this company.
+     *
+     * @return HasMany<Appointment, $this>
+     */
+    public function appointments(): HasMany
+    {
+        return $this->hasMany(Appointment::class)->orderBy('type')->orderByDesc('created_at');
+    }
+
     // -------------------------------------------------------------------------
     // KYC completeness
     // -------------------------------------------------------------------------
