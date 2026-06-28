@@ -8,6 +8,7 @@ use Filament\Panel;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
@@ -37,7 +38,19 @@ class User extends Authenticatable implements FilamentUser, JWTSubject
      */
     public function canAccessPanel(Panel $panel): bool
     {
-        return $this->hasAnyRole(['super_admin', 'notario', 'asistente_notario']);
+        return $this->hasAnyRole(['super_admin', 'notario', 'asistente_notario', 'soldado']);
+    }
+
+    /**
+     * Get the soldado profile linked to this user account, if any.
+     *
+     * Only users invited as soldados have a linked profile; notary-team users do not.
+     *
+     * @return HasOne<Soldado, $this>
+     */
+    public function soldado(): HasOne
+    {
+        return $this->hasOne(Soldado::class);
     }
 
     /**

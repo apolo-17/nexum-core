@@ -12,6 +12,8 @@ use Spatie\Permission\PermissionRegistrar;
  * - super_admin  : Full access to all resources and configuration.
  * - notario      : Manages expedients, validates identity, moves stages.
  * - asistente_notario : Supports the notary with tasks and document uploads.
+ * - soldado      : Contracted person (legal rep / MUA holder) with a scoped panel
+ *                  showing their own appointments and registered companies.
  * - developer    : Read-only access to the API documentation (/docs/api) only.
  *                  Excluded from User::canAccessPanel(), so it cannot enter the
  *                  Filament admin nor edit any data.
@@ -29,8 +31,9 @@ class RolesAndPermissionsSeeder extends Seeder
         Role::firstOrCreate(['name' => 'super_admin']);
         Role::firstOrCreate(['name' => 'notario']);
         Role::firstOrCreate(['name' => 'asistente_notario']);
+        Role::firstOrCreate(['name' => 'soldado']);
         Role::firstOrCreate(['name' => 'developer']);
 
-        $this->command->info('Roles created: super_admin, notario, asistente_notario, developer');
+        $this->command->info('Roles created: super_admin, notario, asistente_notario, soldado, developer');
     }
 }
