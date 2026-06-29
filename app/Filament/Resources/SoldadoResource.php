@@ -91,7 +91,7 @@ class SoldadoResource extends Resource
     {
         return $schema->components([
             Section::make('Identidad')
-                ->description('Datos personales del soldado.')
+                ->description('Para registrar solo se piden el nombre y el correo. Al guardar se le envía una invitación para que el soldado defina su contraseña y complete su perfil.')
                 ->columns(2)
                 ->schema([
                     TextInput::make('name')
@@ -106,42 +106,49 @@ class SoldadoResource extends Resource
                         ->maxLength(255)
                         ->unique(ignoreRecord: true),
 
+                    // The fields below are completed later (in edit), not at registration.
                     TextInput::make('phone')
                         ->label('Teléfono')
                         ->tel()
-                        ->maxLength(30),
+                        ->maxLength(30)
+                        ->hiddenOn('create'),
 
                     TextInput::make('rfc')
                         ->label('RFC')
-                        ->required()
                         ->length(13)
                         ->extraInputAttributes(['style' => 'text-transform: uppercase'])
                         ->dehydrateStateUsing(fn (?string $state): ?string => $state !== null ? strtoupper($state) : null)
-                        ->unique(ignoreRecord: true),
+                        ->unique(ignoreRecord: true)
+                        ->hiddenOn('create'),
 
                     TextInput::make('curp')
                         ->label('CURP')
                         ->length(18)
                         ->extraInputAttributes(['style' => 'text-transform: uppercase'])
-                        ->dehydrateStateUsing(fn (?string $state): ?string => $state !== null ? strtoupper($state) : null),
+                        ->dehydrateStateUsing(fn (?string $state): ?string => $state !== null ? strtoupper($state) : null)
+                        ->hiddenOn('create'),
 
                     DatePicker::make('birthdate')
                         ->label('Fecha de nacimiento')
-                        ->native(false),
+                        ->native(false)
+                        ->hiddenOn('create'),
 
                     TextInput::make('birthplace')
                         ->label('Lugar de nacimiento')
-                        ->maxLength(255),
+                        ->maxLength(255)
+                        ->hiddenOn('create'),
 
                     Textarea::make('address')
                         ->label('Domicilio')
                         ->columnSpanFull()
-                        ->rows(2),
+                        ->rows(2)
+                        ->hiddenOn('create'),
                 ]),
 
             Section::make('INE')
                 ->description('Sube ambos lados de la credencial de elector.')
                 ->columns(2)
+                ->hiddenOn('create')
                 ->schema([
                     FileUpload::make('ine_front_path')
                         ->label('INE — anverso')
@@ -163,7 +170,7 @@ class SoldadoResource extends Resource
                 ]),
 
             Section::make('Capacidades')
-                ->description('Define para qué puede usarse este soldado. Si lo activas para MUA, deberás cargar su FIEL.')
+                ->description('Define para qué se usará el soldado (MUA y/o representación). La FIEL se carga después al completar el perfil.')
                 ->columns(2)
                 ->schema([
                     Toggle::make('available_for_mua')
@@ -186,26 +193,24 @@ class SoldadoResource extends Resource
                 ]),
 
             Section::make('FIEL (e.firma)')
-                ->description('Sube los archivos de la e.firma tal cual (.cer y .key). Se guardan cifrados. Al editar, deja los campos vacíos para conservar las credenciales actuales.')
+                ->description('Sube los archivos de la e.firma tal cual (.cer y .key). Se guardan cifrados. Deja los campos vacíos para conservar las credenciales actuales.')
+                ->hiddenOn('create')
                 ->visible(fn (Get $get): bool => (bool) $get('available_for_mua'))
                 ->schema([
                     FileUpload::make('certificate_file')
                         ->label('Certificado (.cer)')
-                        ->required(fn (string $operation, Get $get): bool => $operation === 'create' && (bool) $get('available_for_mua'))
                         ->storeFiles(false)
                         ->maxSize(2048)
                         ->rules([fn (): Closure => self::extensionRule('cer')]),
 
                     FileUpload::make('private_key_file')
                         ->label('Llave privada (.key)')
-                        ->required(fn (string $operation, Get $get): bool => $operation === 'create' && (bool) $get('available_for_mua'))
                         ->storeFiles(false)
                         ->maxSize(2048)
                         ->rules([fn (): Closure => self::extensionRule('key')]),
 
                     TextInput::make('private_key_password')
                         ->label('Contraseña de la llave privada')
-                        ->required(fn (string $operation, Get $get): bool => $operation === 'create' && (bool) $get('available_for_mua'))
                         ->password()
                         ->revealable(),
                 ])->columns(1),

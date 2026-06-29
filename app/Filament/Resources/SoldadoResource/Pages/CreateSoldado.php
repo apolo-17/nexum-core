@@ -85,6 +85,33 @@ class CreateSoldado extends CreateRecord
     }
 
     /**
+     * Send the invitation email right after the soldado is created.
+     *
+     * The super_admin only captures name + email + capabilities; the soldado finishes
+     * registration by setting their password via the invitation link, then can log in.
+     */
+    protected function afterCreate(): void
+    {
+        try {
+            SoldadoResource::grantAccess($this->record);
+
+            Notification::make()
+                ->title('Invitación enviada')
+                ->body('El soldado recibirá un correo para definir su contraseña y completar su registro.')
+                ->success()
+                ->send();
+        } catch (\Throwable $exception) {
+            Log::error('Soldado invitation failed after create.', ['error' => $exception->getMessage()]);
+
+            Notification::make()
+                ->title('Soldado creado, pero no se pudo enviar la invitación')
+                ->body('Usa "Dar acceso" para reintentar. '.$exception->getMessage())
+                ->warning()
+                ->send();
+        }
+    }
+
+    /**
      * Redirect to the detail (view) page after creating the soldado.
      */
     protected function getRedirectUrl(): string
