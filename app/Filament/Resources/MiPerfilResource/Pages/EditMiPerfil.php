@@ -43,6 +43,28 @@ class EditMiPerfil extends EditRecord
     }
 
     /**
+     * No breadcrumbs — the resource has no index page to link back to.
+     *
+     * @return array<string, string>
+     */
+    public function getBreadcrumbs(): array
+    {
+        return [];
+    }
+
+    /**
+     * Only the Save action — drop the default Cancel (it links to the missing index).
+     *
+     * @return array<Action>
+     */
+    protected function getFormActions(): array
+    {
+        return [
+            $this->getSaveFormAction()->label('Guardar mi perfil'),
+        ];
+    }
+
+    /**
      * Strip FIEL fields before saving so they go to soldado_credentials instead.
      *
      * @param  array<string, mixed>  $data
