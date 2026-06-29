@@ -102,7 +102,9 @@ class CompleteRegistration extends ResetPassword
                 ->schema([
                     TextInput::make('phone')->label('Teléfono')->tel()->required()->maxLength(30),
                     TextInput::make('rfc')->label('RFC')->length(13)
-                        ->dehydrateStateUsing(fn (?string $state): ?string => $state !== null ? strtoupper($state) : null),
+                        ->dehydrateStateUsing(fn (?string $state): ?string => $state !== null ? strtoupper($state) : null)
+                        ->unique(table: Soldado::class, column: 'rfc', ignorable: $soldado)
+                        ->validationMessages(['unique' => 'Este RFC ya está registrado para otro soldado.']),
                     TextInput::make('curp')->label('CURP')->length(18)
                         ->dehydrateStateUsing(fn (?string $state): ?string => $state !== null ? strtoupper($state) : null),
                     DatePicker::make('birthdate')->label('Fecha de nacimiento')->native(false),

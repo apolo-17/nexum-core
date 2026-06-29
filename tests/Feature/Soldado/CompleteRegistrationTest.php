@@ -59,4 +59,33 @@ class CompleteRegistrationTest extends TestCase
         $this->assertSame('PEXJ800101AB1', $soldado->rfc);
         $this->assertSame('CDMX', $soldado->birthplace);
     }
+
+    #[Test]
+    public function a_duplicate_rfc_is_rejected_with_a_form_error_not_a_crash(): void
+    {
+        Role::findOrCreate('soldado', 'web');
+
+        // Another soldado already owns this RFC (e.g. the seeded test FIEL soldado).
+        Soldado::create(['name' => 'Otro', 'email' => 'otro@soldados.mx', 'rfc' => 'AOMA940814N35', 'is_active' => true]);
+
+        $user = User::create(['name' => 'Apolo', 'email' => 'apolo@soldados.mx', 'password' => 'temporary']);
+        $user->assignRole('soldado');
+        $soldado = Soldado::create(['name' => 'Apolo', 'email' => 'apolo@soldados.mx', 'is_active' => true, 'user_id' => $user->id]);
+
+        $token = Password::broker()->createToken($user);
+
+        Livewire::test(CompleteRegistration::class, ['email' => $user->email, 'token' => $token])
+            ->fillForm([
+                'password' => 'new-password-123',
+                'passwordConfirmation' => 'new-password-123',
+                'phone' => '5511112222',
+                'rfc' => 'AOMA940814N35',
+            ])
+            ->call('resetPassword')
+            ->assertHasFormErrors(['rfc']);
+
+        // No write happened and the password was NOT changed.
+        $this->assertNull($soldado->fresh()->rfc);
+        $this->assertTrue(Hash::check('temporary', $user->fresh()->password));
+    }
 }
