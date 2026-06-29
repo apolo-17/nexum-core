@@ -3,6 +3,9 @@
     $record = $getRecord();
     $events = $record->events;
 
+    // Timestamps are stored in UTC; display them in the SE / Nexum timezone (CDMX).
+    $tz = 'America/Mexico_City';
+
     $colorClasses = [
         'gray' => 'text-gray-500 bg-gray-100 dark:bg-gray-500/20',
         'info' => 'text-sky-600 bg-sky-100 dark:bg-sky-500/20',
@@ -35,8 +38,8 @@
                             <span class="text-sm font-semibold text-gray-950 dark:text-white">
                                 {{ $type->label() }}
                             </span>
-                            <span class="text-xs text-gray-400" title="{{ $event->created_at->format('d/m/Y H:i:s') }}">
-                                {{ $event->created_at->format('d/m/Y H:i') }}
+                            <span class="text-xs text-gray-400" title="{{ $event->created_at->copy()->timezone($tz)->format('d/m/Y H:i:s') }} (CDMX)">
+                                {{ $event->created_at->copy()->timezone($tz)->format('d/m/Y H:i') }}
                             </span>
                         </div>
 

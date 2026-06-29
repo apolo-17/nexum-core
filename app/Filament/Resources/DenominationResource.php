@@ -34,6 +34,14 @@ use Illuminate\Support\Facades\Auth;
 class DenominationResource extends Resource
 {
     /**
+     * Timezone used to display stored (UTC) timestamps in the dashboard.
+     *
+     * Nexum's notary and the SE portal operate in CDMX, so all dates are shown
+     * in this zone instead of the app's UTC default.
+     */
+    private const TIMEZONE = 'America/Mexico_City';
+
+    /**
      * @var class-string<LegalName>
      */
     protected static ?string $model = LegalName::class;
@@ -103,7 +111,7 @@ class DenominationResource extends Resource
 
                 TextColumn::make('created_at')
                     ->label('Generada')
-                    ->date('d/m/Y')
+                    ->dateTime('d/m/Y H:i', self::TIMEZONE)
                     ->sortable(),
             ])
             ->filters([
@@ -233,9 +241,9 @@ class DenominationResource extends Resource
                 ->columns(3)
                 ->poll('15s')
                 ->schema([
-                    InfoTextEntry::make('created_at')->label('Creada')->dateTime('d/m/Y H:i'),
-                    InfoTextEntry::make('submitted_at')->label('Enviada')->dateTime('d/m/Y H:i')->placeholder('—'),
-                    InfoTextEntry::make('authorization_timestamp')->label('Resuelta')->dateTime('d/m/Y H:i')->placeholder('—'),
+                    InfoTextEntry::make('created_at')->label('Creada')->dateTime('d/m/Y H:i', self::TIMEZONE),
+                    InfoTextEntry::make('submitted_at')->label('Enviada')->dateTime('d/m/Y H:i', self::TIMEZONE)->placeholder('—'),
+                    InfoTextEntry::make('authorization_timestamp')->label('Resuelta')->dateTime('d/m/Y H:i', self::TIMEZONE)->placeholder('—'),
                     InfoTextEntry::make('queue_duration')
                         ->label('Tiempo en cola')
                         ->placeholder('—')
