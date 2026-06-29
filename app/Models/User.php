@@ -38,7 +38,11 @@ class User extends Authenticatable implements FilamentUser, JWTSubject
      */
     public function canAccessPanel(Panel $panel): bool
     {
-        return $this->hasAnyRole(['super_admin', 'notario', 'asistente_notario', 'soldado']);
+        // A linked soldado profile always grants access, even if the role assignment
+        // had a guard/seed hiccup — otherwise an invited soldado could be locked out
+        // right after setting their password.
+        return $this->hasAnyRole(['super_admin', 'notario', 'asistente_notario', 'soldado'])
+            || $this->soldado()->exists();
     }
 
     /**

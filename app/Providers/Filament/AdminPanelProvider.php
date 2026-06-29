@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Auth\CompleteRegistration;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -27,7 +28,7 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
-            ->passwordReset()
+            ->passwordReset(resetAction: CompleteRegistration::class)
             ->brandName('nexumcore')
             ->brandLogo(asset('brand/lockup-color.svg'))
             ->darkModeBrandLogo(asset('brand/lockup-white.svg'))
