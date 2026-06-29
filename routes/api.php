@@ -6,6 +6,8 @@ use App\Http\Controllers\Api\V3\LegalNameController;
 use App\Http\Controllers\Api\V3\MuaBotCallbackController;
 use App\Http\Controllers\Api\V3\MuaPendingController;
 use App\Http\Controllers\Api\V3\RegistrationController;
+use App\Http\Controllers\Api\V3\SatBotCallbackController;
+use App\Http\Controllers\Api\V3\SatBotPendingController;
 use App\Http\Controllers\Api\V3\WebhookController;
 use Illuminate\Support\Facades\Route;
 
@@ -46,6 +48,12 @@ Route::prefix('v3')->group(function () {
     // MUA bot pending poll — secured by X-Bot-Api-Key header
     // The bot calls this on its poll cycle to get denominations awaiting SE resolution
     Route::get('mua-bot/pending', [MuaPendingController::class, 'index']);
+
+    // SAT bot (nexum-citas-sat) — see docs in that repo (docs/CONTRACT.md)
+    // pending: bot pulls appointments to schedule (X-Bot-Api-Key). Nexum assigns an email alias.
+    Route::get('sat-bot/pending', [SatBotPendingController::class, 'index']);
+    // callback: bot reports the scheduled appointment + acuse (HMAC X-Signature)
+    Route::post('webhook/sat-bot', [SatBotCallbackController::class, 'handle']);
 
     // -------------------------------------------------------------------------
     // Protected endpoints — JWT required

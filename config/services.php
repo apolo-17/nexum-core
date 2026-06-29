@@ -48,6 +48,13 @@ return [
         'secret_key' => env('MUA_BOT_SECRET_KEY'),
     ],
 
+    // SAT bot (nexum-citas-sat) — external service that schedules SAT appointments.
+    // api_key secures the pending pull; secret_key signs the HMAC callback.
+    'sat_bot' => [
+        'api_key' => env('SAT_BOT_API_KEY'),
+        'secret_key' => env('SAT_BOT_SECRET_KEY'),
+    ],
+
     // Anthropic Claude API — used by DocumentAnalysisService for KYC document vision extraction.
     'anthropic' => [
         'api_key' => env('ANTHROPIC_API_KEY'),

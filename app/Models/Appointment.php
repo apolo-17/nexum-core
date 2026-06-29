@@ -31,6 +31,7 @@ class Appointment extends Model
         'status',
         'scheduled_at',
         'office',
+        'email_alias',
         'acknowledgment_path',
         'notes',
     ];
