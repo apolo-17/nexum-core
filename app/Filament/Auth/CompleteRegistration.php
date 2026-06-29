@@ -6,6 +6,7 @@ use App\Filament\Resources\SoldadoResource;
 use App\Models\Soldado;
 use App\Models\User;
 use Closure;
+use Filament\Actions\Action;
 use Filament\Auth\Http\Responses\Contracts\PasswordResetResponse;
 use Filament\Auth\Pages\PasswordReset\ResetPassword;
 use Filament\Facades\Filament;
@@ -102,6 +103,7 @@ class CompleteRegistration extends ResetPassword
                 ->schema([
                     TextInput::make('phone')->label('Teléfono')->tel()->required()->maxLength(30),
                     TextInput::make('rfc')->label('RFC')->length(13)
+                        ->live(onBlur: true)
                         ->dehydrateStateUsing(fn (?string $state): ?string => $state !== null ? strtoupper($state) : null)
                         ->unique(table: Soldado::class, column: 'rfc', ignorable: $soldado)
                         ->validationMessages(['unique' => 'Este RFC ya está registrado para otro soldado.']),
@@ -245,5 +247,19 @@ class CompleteRegistration extends ResetPassword
     public function getHeading(): string|Htmlable|null
     {
         return $this->getSoldado() !== null ? 'Completa tu registro' : parent::getHeading();
+    }
+
+    /**
+     * Relabel the submit button for the soldado onboarding ("reset password" → "registro").
+     */
+    public function getResetPasswordFormAction(): Action
+    {
+        $action = parent::getResetPasswordFormAction();
+
+        if ($this->getSoldado() !== null) {
+            $action->label('Completar registro');
+        }
+
+        return $action;
     }
 }

@@ -104,7 +104,9 @@ class SoldadoResource extends Resource
                         ->email()
                         ->required()
                         ->maxLength(255)
-                        ->unique(ignoreRecord: true),
+                        ->live(onBlur: true)
+                        ->unique(ignoreRecord: true)
+                        ->validationMessages(['unique' => 'Este correo ya está registrado para otro soldado.']),
 
                     // The fields below are completed later (in edit), not at registration.
                     TextInput::make('phone')
