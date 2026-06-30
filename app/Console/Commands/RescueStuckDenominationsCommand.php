@@ -84,6 +84,9 @@ class RescueStuckDenominationsCommand extends Command
                     'last_status_check_at' => null,
                     'rejection_reason' => null,
                     'portal_status' => null,
+                    // Cleared so a phantom/foreign approval leaves no stale SE data.
+                    'clave_unica_denominacion' => null,
+                    'authorization_timestamp' => null,
                 ]);
 
                 $name->recordEvent(
@@ -109,20 +112,28 @@ class RescueStuckDenominationsCommand extends Command
      */
     private function candidates(): Collection
     {
-        $query = LegalName::query()->whereIn('status', [
-            LegalNameStatusEnum::REJECTED->value,
-            LegalNameStatusEnum::SUBMITTING->value,
-        ]);
-
         $ids = $this->option('id');
 
+        // Explicit IDs override the status filter so a specific row can be reset
+        // regardless of state — e.g. an APPROVED phantom the bot reported from a
+        // stale/foreign SE authorization that the user cannot actually use.
         if (! empty($ids)) {
-            $query->whereIn('id', $ids);
-        } else {
-            $days = max(0, (int) $this->option('days'));
-            $query->where('updated_at', '>=', Carbon::now()->subDays($days)->startOfDay());
+            return LegalName::query()
+                ->whereIn('id', $ids)
+                ->orderBy('updated_at')
+                ->get();
         }
 
-        return $query->orderBy('updated_at')->get();
+        // Auto-discovery (no IDs): only the safe dead-end states, recently touched.
+        $days = max(0, (int) $this->option('days'));
+
+        return LegalName::query()
+            ->whereIn('status', [
+                LegalNameStatusEnum::REJECTED->value,
+                LegalNameStatusEnum::SUBMITTING->value,
+            ])
+            ->where('updated_at', '>=', Carbon::now()->subDays($days)->startOfDay())
+            ->orderBy('updated_at')
+            ->get();
     }
 }
