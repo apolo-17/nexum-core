@@ -236,15 +236,28 @@ El portal de la SE (Secretaría de Economía) requiere automatización con naveg
 
 ### Autenticación bot → Laravel (webhook de regreso)
 
+El bot firma con HMAC-SHA256 sobre el **JSON canónico** del payload (llaves
+ordenadas alfabéticamente con `ksort`, `JSON_UNESCAPED_SLASHES |
+JSON_UNESCAPED_UNICODE`) y lo manda en el header **`X-Signature`**.
+
+El controller acepta dos esquemas de firma (para poder actualizar el bot sin
+deploy en lockstep):
+- **Cuerpo completo** (preferido): HMAC sobre todo el body (menos `signature`).
+  Cubre `clave_unica`, la constancia PDF, `rejection_reason`, etc.
+- **Heredado**: HMAC sólo sobre `{legal_name_id, status, timestamp}`.
+
 ```python
-import hmac, hashlib
+import hmac, hashlib, json
 secret = os.environ["MUA_BOT_SECRET_KEY"]
-body   = json.dumps(payload).encode()
-sig    = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-headers = {"X-Mua-Signature": sig}
+# Esquema preferido: firmar el cuerpo completo, canónico (ksort + separators).
+canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+sig = hmac.new(secret.encode(), canonical.encode(), hashlib.sha256).hexdigest()
+headers = {"X-Signature": sig}   # X-Mua-Signature se acepta como fallback
 ```
 
-Laravel verifica en `WebhookController@muaCallback`.
+Laravel verifica en `MuaBotCallbackController@handle` (ruta `webhook/mua-bot`).
+Además exige `MUA_BOT_SECRET_KEY` configurada (si falta → `500`, nunca firma con
+llave vacía) y rechaza timestamps con más de 5 min de antigüedad (anti-replay).
 
 ### Crons del bot
 
@@ -399,7 +412,7 @@ DOCUSIGN_AUTH_SERVER=account.docusign.com
 ```
 POST   /api/v3/auth/login                     # JWT login
 POST   /api/v3/webhook/singapur               # Webhook de China (sin auth, HMAC)
-POST   /api/v3/webhook/mua-callback           # Callback del bot MUA (HMAC)
+POST   /api/v3/webhook/mua-bot                # Callback del bot MUA (HMAC X-Signature)
 GET    /api/v3/mua/check-availability         # Estado del portal SE (sin auth)
 GET    /api/v3/legal-names                    # Listado denominaciones (JWT)
 POST   /api/v3/legal-names                    # Crear denominación (JWT)

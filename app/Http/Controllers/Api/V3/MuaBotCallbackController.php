@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V3;
 
+use App\Enums\DocumentTypeEnum;
 use App\Enums\LegalNameEventTypeEnum;
 use App\Enums\LegalNameStatusEnum;
 use App\Http\Controllers\Controller;
@@ -53,7 +54,19 @@ class MuaBotCallbackController extends Controller
     public function handle(Request $request): JsonResponse
     {
         // --- HMAC authentication ---
-        $signature = $request->header('X-Signature');
+        // Refuse to authenticate at all when no shared secret is configured —
+        // otherwise the HMAC would be computed with an empty key and become forgeable.
+        $secret = config('services.mua_bot.secret_key');
+
+        if (! is_string($secret) || $secret === '') {
+            Log::error('MUA bot callback: MUA_BOT_SECRET_KEY is not configured.');
+
+            return response()->json(['error' => 'Server misconfiguration'], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        // Accept either header name. The canonical header is X-Signature; X-Mua-Signature
+        // is honoured as a fallback for older bot builds (see CLAUDE.md §6).
+        $signature = $request->header('X-Signature') ?? $request->header('X-Mua-Signature');
 
         if (! $signature || ! is_string($signature)) {
             return response()->json(['error' => 'Missing signature'], Response::HTTP_UNAUTHORIZED);
@@ -65,7 +78,7 @@ class MuaBotCallbackController extends Controller
             'timestamp' => (int) $request->input('timestamp'),
         ];
 
-        if (! $this->isValidSignature($payload, $signature)) {
+        if (! $this->isValidSignature($payload, $signature, $secret, $request)) {
             Log::warning('MUA bot callback: invalid HMAC signature.', ['ip' => $request->ip()]);
 
             return response()->json(['error' => 'Invalid signature'], Response::HTTP_UNAUTHORIZED);
@@ -198,43 +211,52 @@ class MuaBotCallbackController extends Controller
 
         $s3Path = "registrations/{$registration->id}/constancia_denominacion_{$legalName->id}.pdf";
 
-        DB::transaction(function () use ($legalName, $registration, $claveUnica, $authorizationAt, $portalStatus, $pdfContent, $s3Path): void {
-            // Persist constancia PDF to S3.
-            Storage::disk('s3')->put($s3Path, $pdfContent);
+        // Store the PDF before opening the transaction so a storage failure can't
+        // leave a committed Document row pointing at a missing file. If the DB
+        // transaction then fails, the orphaned object is removed in the catch.
+        Storage::disk('s3')->put($s3Path, $pdfContent);
 
-            // Create the authorization Document record.
-            Document::updateOrCreate(
-                [
-                    'registration_id' => $registration->id,
-                    'document_type' => 'legal_name_authorization',
-                ],
-                [
-                    'file_path' => $s3Path,
-                    'is_approved' => true,
-                ]
-            );
+        try {
+            DB::transaction(function () use ($legalName, $registration, $claveUnica, $authorizationAt, $portalStatus, $s3Path): void {
+                // Create (or update) the authorization Document record.
+                Document::updateOrCreate(
+                    [
+                        'registration_id' => $registration->id,
+                        'type' => DocumentTypeEnum::LEGAL_NAME_AUTHORIZATION->value,
+                    ],
+                    [
+                        'storage_path' => $s3Path,
+                        'name' => "Constancia de denominación — {$legalName->name}",
+                    ]
+                );
 
-            // Reject all other denominations for this registration.
-            LegalName::where('registration_id', $registration->id)
-                ->where('id', '!=', $legalName->id)
-                ->update([
-                    'status' => LegalNameStatusEnum::REJECTED->value,
-                    'rejection_reason' => 'Rechazada automáticamente al aprobarse otra denominación.',
+                // Reject all other denominations for this registration.
+                LegalName::where('registration_id', $registration->id)
+                    ->where('id', '!=', $legalName->id)
+                    ->update([
+                        'status' => LegalNameStatusEnum::REJECTED->value,
+                        'rejection_reason' => 'Rechazada automáticamente al aprobarse otra denominación.',
+                    ]);
+
+                // Approve this denomination.
+                $legalName->update([
+                    'status' => LegalNameStatusEnum::APPROVED->value,
+                    'clave_unica_denominacion' => $claveUnica,
+                    'authorization_timestamp' => $authorizationAt,
+                    'portal_status' => $portalStatus,
                 ]);
 
-            // Approve this denomination.
-            $legalName->update([
-                'status' => LegalNameStatusEnum::APPROVED->value,
-                'clave_unica_denominacion' => $claveUnica,
-                'authorization_timestamp' => $authorizationAt,
-                'portal_status' => $portalStatus,
-            ]);
+                // Decrement the soldado's active submission counter.
+                if ($legalName->soldado) {
+                    $legalName->soldado->decrement('active_submissions');
+                }
+            });
+        } catch (\Throwable $exception) {
+            // The DB transaction rolled back — drop the now-orphaned S3 object.
+            Storage::disk('s3')->delete($s3Path);
 
-            // Decrement the soldado's active submission counter.
-            if ($legalName->soldado) {
-                $legalName->soldado->decrement('active_submissions');
-            }
-        });
+            throw $exception;
+        }
 
         Log::info('MUA bot callback: denomination APPROVED and constancia saved.', [
             'legal_name_id' => $legalName->id,
@@ -267,20 +289,27 @@ class MuaBotCallbackController extends Controller
     ): void {
         $s3Path = "denominations/pool/constancia_denominacion_{$legalName->id}.pdf";
 
-        DB::transaction(function () use ($legalName, $claveUnica, $authorizationAt, $portalStatus, $pdfContent, $s3Path): void {
-            Storage::disk('s3')->put($s3Path, $pdfContent);
+        // Store first, then mutate — drop the orphaned object if the DB tx fails.
+        Storage::disk('s3')->put($s3Path, $pdfContent);
 
-            $legalName->update([
-                'status' => LegalNameStatusEnum::APPROVED->value,
-                'clave_unica_denominacion' => $claveUnica,
-                'authorization_timestamp' => $authorizationAt,
-                'portal_status' => $portalStatus,
-            ]);
+        try {
+            DB::transaction(function () use ($legalName, $claveUnica, $authorizationAt, $portalStatus): void {
+                $legalName->update([
+                    'status' => LegalNameStatusEnum::APPROVED->value,
+                    'clave_unica_denominacion' => $claveUnica,
+                    'authorization_timestamp' => $authorizationAt,
+                    'portal_status' => $portalStatus,
+                ]);
 
-            if ($legalName->soldado) {
-                $legalName->soldado->decrement('active_submissions');
-            }
-        });
+                if ($legalName->soldado) {
+                    $legalName->soldado->decrement('active_submissions');
+                }
+            });
+        } catch (\Throwable $exception) {
+            Storage::disk('s3')->delete($s3Path);
+
+            throw $exception;
+        }
 
         Log::info('MUA bot callback: POOL denomination APPROVED and constancia saved.', [
             'legal_name_id' => $legalName->id,
@@ -492,18 +521,46 @@ class MuaBotCallbackController extends Controller
     /**
      * Verify the HMAC-SHA256 signature of the request.
      *
+     * Accepts either of two signing schemes, so the bot can be upgraded without a
+     * lockstep deploy:
+     *   1. Full-body  — HMAC over the canonical JSON of the entire request body
+     *      (minus any signature field). Covers clave_unica, the constancia PDF,
+     *      rejection_reason, etc., closing the tamper/replay gap of scheme 2.
+     *   2. Legacy     — HMAC over only {legal_name_id, status, timestamp}.
+     *
      * Keys are sorted alphabetically before encoding to ensure a canonical payload —
      * both the bot and this controller must apply the same sorting.
      *
-     * @param  array<string, mixed>  $payload  Extracted fields to sign.
-     * @param  string  $signature  HMAC hex digest from the X-Signature header.
+     * @param  array<string, mixed>  $payload  The legacy three-field payload.
+     * @param  string  $signature  HMAC hex digest from the request header.
+     * @param  string  $secret  Shared secret (already verified non-empty by the caller).
+     * @param  Request  $request  The incoming request (source of the full body).
      */
-    private function isValidSignature(array $payload, string $signature): bool
+    private function isValidSignature(array $payload, string $signature, string $secret, Request $request): bool
     {
-        ksort($payload);
-        $canonical = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        $expectedSignature = hash_hmac('sha256', $canonical, config('services.mua_bot.secret_key'));
+        // Scheme 1 — full body (preferred): everything except the signature itself.
+        $body = $request->except(['signature']);
+        if ($this->hmacMatches($body, $signature, $secret)) {
+            return true;
+        }
 
-        return hash_equals($expectedSignature, $signature);
+        // Scheme 2 — legacy three-field payload (backward compatibility).
+        return $this->hmacMatches($payload, $signature, $secret);
+    }
+
+    /**
+     * Compute the canonical HMAC-SHA256 of an array and compare it, timing-safely.
+     *
+     * @param  array<string, mixed>  $data  Fields to sign (sorted by key).
+     * @param  string  $signature  Provided hex digest to compare against.
+     * @param  string  $secret  Shared secret.
+     */
+    private function hmacMatches(array $data, string $signature, string $secret): bool
+    {
+        ksort($data);
+        $canonical = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $expected = hash_hmac('sha256', (string) $canonical, $secret);
+
+        return hash_equals($expected, $signature);
     }
 }

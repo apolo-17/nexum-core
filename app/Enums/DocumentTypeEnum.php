@@ -69,6 +69,9 @@ enum DocumentTypeEnum: string
     /** e.firma certificate (.cer / .key) — generated at EFIRMA_APPOINTMENT stage. */
     case EFIRMA = 'efirma';
 
+    /** Constancia de autorización de uso de denominación social (SE) — sent by the MUA bot on approval. */
+    case LEGAL_NAME_AUTHORIZATION = 'legal_name_authorization';
+
     /** Any other document not covered by the types above. */
     case OTHER = 'other';
 
@@ -94,6 +97,7 @@ enum DocumentTypeEnum: string
             self::BANK_PROOF => 'Comprobante bancario',
             self::RFC_DOCUMENT => 'Documento RFC',
             self::EFIRMA => 'e.firma',
+            self::LEGAL_NAME_AUTHORIZATION => 'Constancia de denominación social (SE)',
             self::OTHER => 'Otro',
         };
     }
