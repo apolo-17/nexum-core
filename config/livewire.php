@@ -129,7 +129,7 @@ return [
     */
 
     'temporary_file_upload' => [
-        'disk' => env('LIVEWIRE_TEMPORARY_FILE_UPLOAD_DISK', 'local'), // Force local: the app default disk is s3/R2, and temp uploads must not depend on R2 being reachable.
+        'disk' => env('LIVEWIRE_TEMPORARY_FILE_UPLOAD_DISK', env('FILESYSTEM_DISK', 'local')), // Follow the app's default disk: local in dev, R2/s3 in prod. On Laravel Cloud the local disk is ephemeral/multi-instance, so a temp upload written on one container is gone when the validation request lands on another — temporales must live on the shared object store.
         'rules' => null,                                      // Example: ['file', 'mimes:png,jpg'] | Default: ['required', 'file', 'max:12288'] (12MB)
         'directory' => null,                                  // Example: 'tmp'                     | Default: 'livewire-tmp'
         'middleware' => null,                                 // Example: 'throttle:5,1'            | Default: 'throttle:60,1'
