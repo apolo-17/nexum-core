@@ -7,9 +7,12 @@ namespace App\Http\Controllers\Api\V3;
 use App\Enums\DocumentTypeEnum;
 use App\Enums\LegalNameEventTypeEnum;
 use App\Enums\LegalNameStatusEnum;
+use App\Enums\NotificationEventEnum;
 use App\Http\Controllers\Controller;
 use App\Models\Document;
 use App\Models\LegalName;
+use App\Notifications\DenominationStatusNotification;
+use App\Services\Notifications\EventNotifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -130,6 +133,10 @@ class MuaBotCallbackController extends Controller
                         actorType: 'bot',
                     );
                     $this->clearPendingCheck($legalName);
+                    $this->notifySafely(
+                        NotificationEventEnum::DENOMINATION_APPROVED,
+                        new DenominationStatusNotification($legalName, NotificationEventEnum::DENOMINATION_APPROVED),
+                    );
                     break;
 
                 case 'rejected':
@@ -439,6 +446,11 @@ class MuaBotCallbackController extends Controller
                 ['portal_status' => $portalStatus ?: null],
                 actorType: 'bot',
             );
+
+            $this->notifySafely(
+                NotificationEventEnum::DENOMINATION_SUBMITTED,
+                new DenominationStatusNotification($legalName, NotificationEventEnum::DENOMINATION_SUBMITTED),
+            );
         }
 
         Log::info('MUA bot callback: submission confirmed by SE.', [
@@ -478,6 +490,11 @@ class MuaBotCallbackController extends Controller
                 actorType: 'bot',
             );
 
+            $this->notifySafely(
+                NotificationEventEnum::DENOMINATION_FAILED,
+                new DenominationStatusNotification($legalName, NotificationEventEnum::DENOMINATION_FAILED, $reason),
+            );
+
             Log::warning('MUA bot callback: submission failed, returned to queue.', [
                 'legal_name_id' => $legalName->id,
                 'name' => $legalName->name,
@@ -515,6 +532,27 @@ class MuaBotCallbackController extends Controller
     {
         if ($legalName->last_status_check_at !== null) {
             $legalName->update(['last_status_check_at' => null]);
+        }
+    }
+
+    /**
+     * Dispatch an event notification without letting a notification failure break
+     * the callback. Recipient resolution or mail/queue problems are logged and
+     * swallowed — recording the denomination result is the source of truth; the
+     * email + bell are a best-effort side effect.
+     *
+     * @param  NotificationEventEnum  $event  The configurable event that fired.
+     * @param  DenominationStatusNotification  $notification  The notification to deliver.
+     */
+    private function notifySafely(NotificationEventEnum $event, DenominationStatusNotification $notification): void
+    {
+        try {
+            app(EventNotifier::class)->notify($event, $notification);
+        } catch (\Throwable $exception) {
+            Log::warning('MUA bot callback: notification dispatch failed.', [
+                'event' => $event->value,
+                'error' => $exception->getMessage(),
+            ]);
         }
     }
 
