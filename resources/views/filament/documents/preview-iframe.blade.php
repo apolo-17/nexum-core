@@ -80,12 +80,24 @@
 
         if (!frame || !status) { return; }
 
+        function showError(detail) {
+            status.innerHTML = 'No se pudo cargar el documento (' + detail + '). '
+                + '<a href="' + previewUrl + '" target="_blank" rel="noopener" style="color:#93c5fd; margin-left:.35rem;">Ábrelo en una pestaña nueva.</a>';
+        }
+
         fetch(previewUrl, { credentials: 'same-origin' })
             .then(function (response) {
                 if (!response.ok) { throw new Error('HTTP ' + response.status); }
                 return response.blob();
             })
             .then(function (blob) {
+                // Si el servidor devolvió una página de error HTML (R2 caído, etc.)
+                // en vez del PDF, lo detectamos por el content-type y avisamos.
+                if (blob.type && blob.type.indexOf('text/html') === 0) {
+                    showError('respuesta HTML, no PDF');
+                    return;
+                }
+
                 // Asegura el tipo correcto para que el navegador use su visor de PDF.
                 var pdfBlob = blob.type === 'application/pdf'
                     ? blob
@@ -95,9 +107,8 @@
                 frame.style.display = 'block';
                 status.style.display = 'none';
             })
-            .catch(function () {
-                status.innerHTML = 'No se pudo cargar el documento. '
-                    + '<a href="' + previewUrl + '" target="_blank" rel="noopener" style="color:#93c5fd; margin-left:.35rem;">Ábrelo en una pestaña nueva.</a>';
+            .catch(function (err) {
+                showError(err && err.message ? err.message : 'error de red');
             });
     }());
     </script>
