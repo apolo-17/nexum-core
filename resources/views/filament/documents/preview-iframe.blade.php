@@ -41,77 +41,74 @@
     </div>
 
 {{-- =========================================================================
-     CASE 2 — PDF (blob URL en iframe)
+     CASE 2 — PDF (blob URL en iframe, vía Alpine)
 
-     No embebemos $previewUrl directamente porque el edge (Laravel Cloud /
-     Cloudflare) responde con X-Frame-Options/CSP que bloquea el framing
-     ("rechazó la conexión"). Tampoco usamos PDF.js por CDN (cdnjs puede estar
-     bloqueado → se quedaba en "Cargando documento…"). En su lugar descargamos
-     el PDF con fetch (same-origin, con cookies, igual que las imágenes que sí
-     cargan) y lo mostramos como blob: URL local — a los blob: no les aplica
-     X-Frame-Options porque ya no hay respuesta HTTP que filtrar.
+     IMPORTANTE: este HTML lo inyecta un modal de Filament/Livewire, que NO
+     ejecuta etiquetas <script> en línea — por eso PDF.js y la versión con
+     <script> se quedaban en "Cargando documento…" (el JS nunca corría). Alpine
+     sí procesa x-init en el DOM morfeado, así que la lógica vive ahí.
+
+     No embebemos $previewUrl directo porque el edge (Laravel Cloud/Cloudflare)
+     responde con X-Frame-Options/CSP que bloquea el framing ("rechazó la
+     conexión"). En su lugar descargamos el PDF con fetch (same-origin, con
+     cookies, igual que las imágenes que sí cargan) y lo mostramos como blob:
+     URL local — a los blob: no les aplica X-Frame-Options.
      ========================================================================= --}}
 @elseif ($isPdf)
     <div
+        x-data="{
+            loading: true,
+            error: null,
+            previewUrl: @js($previewUrl),
+            async load() {
+                try {
+                    const res = await fetch(this.previewUrl, { credentials: 'same-origin' });
+                    if (! res.ok) { throw new Error('HTTP ' + res.status); }
+                    const blob = await res.blob();
+                    if (blob.type && blob.type.indexOf('text/html') === 0) {
+                        this.error = 'respuesta HTML, no PDF';
+                        this.loading = false;
+                        return;
+                    }
+                    const pdf = blob.type === 'application/pdf'
+                        ? blob
+                        : blob.slice(0, blob.size, 'application/pdf');
+                    this.$refs.frame.src = URL.createObjectURL(pdf);
+                    this.loading = false;
+                } catch (e) {
+                    this.error = (e && e.message) ? e.message : 'error de red';
+                    this.loading = false;
+                }
+            },
+        }"
+        x-init="load()"
         class="w-full rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700"
         style="height: 47vh; min-height: 280px; background: #525659; position: relative;"
     >
         <iframe
-            id="nexum-pdf-frame"
-            style="display: none; width: 100%; height: 100%; border: none; background: transparent;"
+            x-ref="frame"
+            x-show="! loading && ! error"
+            style="width: 100%; height: 100%; border: none; background: transparent;"
             title="Vista previa del documento"
         ></iframe>
 
         <div
-            id="nexum-pdf-status"
-            style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #d1d5db; font-family: system-ui, sans-serif; font-size: .9rem; text-align: center; padding: 1rem;"
+            x-show="loading"
+            style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #d1d5db; font-family: system-ui, sans-serif; font-size: .9rem;"
         >
             Cargando documento…
         </div>
+
+        <div
+            x-show="error"
+            style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #d1d5db; font-family: system-ui, sans-serif; font-size: .9rem; text-align: center; padding: 1rem;"
+        >
+            <span>
+                No se pudo cargar el documento (<span x-text="error"></span>).
+                <a :href="previewUrl" target="_blank" rel="noopener" style="color:#93c5fd; margin-left:.35rem;">Ábrelo en una pestaña nueva.</a>
+            </span>
+        </div>
     </div>
-
-    <script>
-    (function () {
-        'use strict';
-
-        var previewUrl = @json($previewUrl);
-        var frame  = document.getElementById('nexum-pdf-frame');
-        var status = document.getElementById('nexum-pdf-status');
-
-        if (!frame || !status) { return; }
-
-        function showError(detail) {
-            status.innerHTML = 'No se pudo cargar el documento (' + detail + '). '
-                + '<a href="' + previewUrl + '" target="_blank" rel="noopener" style="color:#93c5fd; margin-left:.35rem;">Ábrelo en una pestaña nueva.</a>';
-        }
-
-        fetch(previewUrl, { credentials: 'same-origin' })
-            .then(function (response) {
-                if (!response.ok) { throw new Error('HTTP ' + response.status); }
-                return response.blob();
-            })
-            .then(function (blob) {
-                // Si el servidor devolvió una página de error HTML (R2 caído, etc.)
-                // en vez del PDF, lo detectamos por el content-type y avisamos.
-                if (blob.type && blob.type.indexOf('text/html') === 0) {
-                    showError('respuesta HTML, no PDF');
-                    return;
-                }
-
-                // Asegura el tipo correcto para que el navegador use su visor de PDF.
-                var pdfBlob = blob.type === 'application/pdf'
-                    ? blob
-                    : blob.slice(0, blob.size, 'application/pdf');
-
-                frame.src = URL.createObjectURL(pdfBlob);
-                frame.style.display = 'block';
-                status.style.display = 'none';
-            })
-            .catch(function (err) {
-                showError(err && err.message ? err.message : 'error de red');
-            });
-    }());
-    </script>
 
 {{-- =========================================================================
      CASE 3 — FALLBACK (unknown type)
