@@ -21,6 +21,7 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Infolists\Components\IconEntry;
 use Filament\Infolists\Components\TextEntry as InfoTextEntry;
+use Filament\Infolists\Components\ViewEntry;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
@@ -391,6 +392,14 @@ class SoldadoResource extends Resource
                     InfoTextEntry::make('rfc')->label('RFC'),
                     InfoTextEntry::make('curp')->label('CURP')->placeholder('—'),
                     InfoTextEntry::make('birthdate')->label('Fecha de nacimiento')->date('d/m/Y')->placeholder('—'),
+                ]),
+
+            Section::make('INE')
+                ->description('Credencial de elector cargada por el soldado durante su registro.')
+                ->schema([
+                    ViewEntry::make('ine')
+                        ->hiddenLabel()
+                        ->view('filament.infolists.soldado-ine'),
                 ]),
 
             Section::make('Capacidades y estado')

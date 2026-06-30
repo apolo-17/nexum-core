@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\AppointmentAcknowledgmentDownloadController;
 use App\Http\Controllers\Admin\CompanyCredentialDownloadController;
 use App\Http\Controllers\Admin\DocumentRelayDownloadController;
+use App\Http\Controllers\Admin\SoldadoIneDownloadController;
 use App\Http\Middleware\EnsureCanViewApiDocs;
 use Illuminate\Support\Facades\Route;
 
@@ -43,4 +44,11 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () 
         'appointments/{appointment}/acknowledgment',
         [AppointmentAcknowledgmentDownloadController::class, 'download']
     )->name('appointments.acknowledgment.download');
+
+    // Soldado INE (credencial de elector) images, served inline so they can be
+    // embedded in the soldado detail view. Private files, gated to the notary team.
+    Route::get(
+        'soldados/{soldado}/ine/{side}',
+        [SoldadoIneDownloadController::class, 'preview']
+    )->whereIn('side', ['front', 'back'])->name('soldados.ine.preview');
 });
