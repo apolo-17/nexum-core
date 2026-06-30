@@ -41,136 +41,34 @@
     </div>
 
 {{-- =========================================================================
-     CASE 2 — PDF (PDF.js)
+     CASE 2 — PDF (native browser viewer)
+
+     Rendered in a native <iframe>/<object>; every modern browser ships a PDF
+     viewer, so there is no dependency on an external CDN (the previous PDF.js
+     canvas approach hung on "Cargando documento…" whenever cdnjs was blocked).
+     <object> with an <a> fallback covers the rare browser that won't embed PDFs.
      ========================================================================= --}}
 @elseif ($isPdf)
     <div
-        id="nexum-preview-container"
-        class="w-full rounded-lg border border-gray-200 dark:border-gray-700"
-        style="height: 47vh; min-height: 280px; background: #525659; overflow-y: auto; overflow-x: hidden;"
+        class="w-full rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700"
+        style="height: 47vh; min-height: 280px; background: #525659;"
     >
-        {{-- Canvas wrapper — hidden until PDF.js renders the first page --}}
-        <div id="nexum-pdf-wrapper" style="display: none; padding: 8px;">
-            <canvas id="nexum-pdf-canvas" style="display: block; width: 100%; background: white;"></canvas>
-        </div>
-
-        {{-- Shown while PDF.js is loading --}}
-        <div
-            id="nexum-pdf-loading"
-            style="height: 100%; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-family: system-ui, sans-serif; font-size: .9rem;"
+        <object
+            data="{{ $previewUrl }}"
+            type="application/pdf"
+            style="display: block; width: 100%; height: 100%; border: none;"
         >
-            Cargando documento…
-        </div>
+            <iframe
+                src="{{ $previewUrl }}"
+                style="display: block; width: 100%; height: 100%; border: none; background: transparent;"
+                title="Vista previa del documento"
+            ></iframe>
+            <div style="height: 100%; display: flex; align-items: center; justify-content: center; color: #d1d5db; font-family: system-ui, sans-serif; font-size: .9rem; text-align: center; padding: 1rem;">
+                No se pudo mostrar el PDF aquí.
+                <a href="{{ $previewUrl }}" target="_blank" rel="noopener" style="color: #93c5fd; margin-left: .35rem;">Ábrelo en una pestaña nueva.</a>
+            </div>
+        </object>
     </div>
-
-    {{-- Page navigation — shown only for multi-page PDFs --}}
-    <div
-        id="nexum-pdf-nav"
-        style="display: none; justify-content: center; align-items: center; gap: 1rem; padding: .5rem 0; font-size: .8rem; color: #6b7280;"
-    >
-        <button
-            id="nexum-pdf-prev"
-            style="padding: 2px 14px; border: 1px solid #d1d5db; border-radius: 4px; background: white; cursor: pointer; color: #374151;"
-        >‹</button>
-        <span id="nexum-pdf-page-info">Página 1 de 1</span>
-        <button
-            id="nexum-pdf-next"
-            style="padding: 2px 14px; border: 1px solid #d1d5db; border-radius: 4px; background: white; cursor: pointer; color: #374151;"
-        >›</button>
-    </div>
-
-    <script>
-    (function () {
-        'use strict';
-
-        const PDFJS_CDN  = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-        const WORKER_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-        const previewUrl = @json($previewUrl);
-
-        const container = document.getElementById('nexum-preview-container');
-        const wrapper   = document.getElementById('nexum-pdf-wrapper');
-        const loading   = document.getElementById('nexum-pdf-loading');
-        const canvas    = document.getElementById('nexum-pdf-canvas');
-        const nav       = document.getElementById('nexum-pdf-nav');
-        const prevBtn   = document.getElementById('nexum-pdf-prev');
-        const nextBtn   = document.getElementById('nexum-pdf-next');
-        const pageInfo  = document.getElementById('nexum-pdf-page-info');
-
-        let pdfDoc    = null;
-        let pageNum   = 1;
-        let rendering = false;
-
-        function renderPage(num) {
-            if (!pdfDoc || rendering) { return; }
-            rendering = true;
-
-            pdfDoc.getPage(num).then(function (page) {
-                const ctx          = canvas.getContext('2d');
-                const containerW   = container.clientWidth - 24;
-                const baseViewport = page.getViewport({ scale: 1 });
-                const scale        = containerW / baseViewport.width;
-                const viewport     = page.getViewport({ scale: scale });
-
-                canvas.width  = viewport.width;
-                canvas.height = viewport.height;
-
-                return page.render({ canvasContext: ctx, viewport: viewport }).promise;
-            }).then(function () {
-                rendering = false;
-                pageNum   = num;
-                pageInfo.textContent = 'Página ' + num + ' de ' + pdfDoc.numPages;
-                prevBtn.disabled     = num <= 1;
-                nextBtn.disabled     = num >= pdfDoc.numPages;
-            }).catch(function () {
-                rendering = false;
-            });
-        }
-
-        prevBtn.addEventListener('click', function () {
-            if (pageNum > 1) { renderPage(pageNum - 1); }
-        });
-
-        nextBtn.addEventListener('click', function () {
-            if (pdfDoc && pageNum < pdfDoc.numPages) { renderPage(pageNum + 1); }
-        });
-
-        function initViewer() {
-            if (typeof pdfjsLib === 'undefined') {
-                setTimeout(initViewer, 80);
-                return;
-            }
-
-            pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_CDN;
-
-            pdfjsLib.getDocument(previewUrl).promise
-                .then(function (pdf) {
-                    pdfDoc = pdf;
-
-                    loading.style.display = 'none';
-                    wrapper.style.display = 'block';
-
-                    if (pdf.numPages > 1) {
-                        nav.style.display = 'flex';
-                    }
-
-                    renderPage(1);
-                })
-                .catch(function () {
-                    loading.textContent = 'No se pudo cargar el PDF.';
-                });
-        }
-
-        if (window.__nexumPdfJsLoaded) {
-            initViewer();
-        } else {
-            window.__nexumPdfJsLoaded = true;
-            var script    = document.createElement('script');
-            script.src    = PDFJS_CDN;
-            script.onload = initViewer;
-            document.head.appendChild(script);
-        }
-    }());
-    </script>
 
 {{-- =========================================================================
      CASE 3 — FALLBACK (unknown type)
