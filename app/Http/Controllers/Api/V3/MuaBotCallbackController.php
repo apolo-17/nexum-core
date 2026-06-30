@@ -115,6 +115,11 @@ class MuaBotCallbackController extends Controller
         try {
             switch ($callbackStatus) {
                 case 'approved':
+                    // Capture state before processing so a repeated `approved`
+                    // callback (the bot is idempotent on data, not on email) does
+                    // not fire a duplicate approval notification.
+                    $alreadyApproved = $legalName->status === LegalNameStatusEnum::APPROVED;
+
                     $this->processApproval($request, $legalName);
 
                     $legalName->refresh();
@@ -133,10 +138,13 @@ class MuaBotCallbackController extends Controller
                         actorType: 'bot',
                     );
                     $this->clearPendingCheck($legalName);
-                    $this->notifySafely(
-                        NotificationEventEnum::DENOMINATION_APPROVED,
-                        new DenominationStatusNotification($legalName, NotificationEventEnum::DENOMINATION_APPROVED),
-                    );
+
+                    if (! $alreadyApproved) {
+                        $this->notifySafely(
+                            NotificationEventEnum::DENOMINATION_APPROVED,
+                            new DenominationStatusNotification($legalName, NotificationEventEnum::DENOMINATION_APPROVED),
+                        );
+                    }
                     break;
 
                 case 'rejected':
