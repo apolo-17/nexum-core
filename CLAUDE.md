@@ -153,30 +153,45 @@ China/Singapur → POST /api/v3/webhook/singapur
 
 ### Estructura del JSON de China
 
+> ⚠️ **Contrato real** (definido en `SingapurSubmissionParser` + `SingapurFileDTO`).
+> Los datos de la empresa y los accionistas van **dentro de un objeto `fields`**
+> con llaves **planas e indexadas** (`naturalShareholderName1`, …), **no** en un
+> array `shareholders[]` ni en `company_name`/`company_type` de nivel superior.
+> Para el documento listo para compartir con el relay, ver `docs/webhook-singapur.md`.
+
 ```json
 {
-  "id": "uuid-del-paquete",
-  "registration_number": "000001",
-  "company_folder_name": "000001_NOVA CONSULTORA EMPRESARIAL",
-  "company_name": "NOVA CONSULTORÍA EMPRESARIAL",
-  "company_type": "sa",
-  "language": "zh",
-  "shareholders": [
-    {
-      "index": 1,
-      "type": "natural",
-      "name": "吴佳鑫",
-      "nationality": "china",
-      "email": "jiaxin@empresa.cn",
-      "participation_percentage": 50.0,
-      "is_married": true
-    }
-  ],
+  "id": "uuid-del-paquete-000003",
+  "registration_number": "000003",
+  "company_folder_name": "000003_NOVA CONSULTORA EMPRESARIAL",
+  "incorporation_deed": null,
+  "fields": {
+    "companyName": "NOVA CONSULTORÍA EMPRESARIAL",
+    "companyType": "sa",
+    "_language": "zh",
+    "companyObject": "Servicios de consultoría",
+    "capitalSocial": 50000,
+    "shareholderCount": 2,
+
+    "shareholderType1": "natural",
+    "naturalShareholderName1": "吴佳鑫",
+    "naturalNationality1": "china",
+    "naturalShareholderEmail1": "jiaxin@empresa.cn",
+    "naturalSharePercentage1": 50,
+    "naturalMarried1": "yes",
+
+    "shareholderType2": "natural",
+    "naturalShareholderName2": "李伟",
+    "naturalNationality2": "china",
+    "naturalShareholderEmail2": "liwei@empresa.cn",
+    "naturalSharePercentage2": 50,
+    "naturalMarried2": "no"
+  },
   "files": [
     {
       "field": "naturalTaxCertificate1",
       "original_name": "TAX_ID.pdf",
-      "relay_name": "000001__naturalTaxCertificate1__tax.pdf",
+      "relay_name": "000003__naturalTaxCertificate1__tax.pdf",
       "content_type": "application/pdf",
       "size": 108548,
       "content": "<base64_del_archivo>"
@@ -185,7 +200,28 @@ China/Singapur → POST /api/v3/webhook/singapur
 }
 ```
 
-Header requerido: `X-Nexum-Secret: <valor_de_SINGAPUR_WEBHOOK_SECRET>`
+**Campos obligatorios:**
+
+- **Header:** `X-Nexum-Secret: <valor_de_SINGAPUR_WEBHOOK_SECRET>` (sin esto → `401`).
+- **Validado antes del `202`** (síncrono, en `WebhookController@singapur`): `id`
+  (también es la llave de idempotencia en `webhook_events`).
+- **Validado en el job** (`SingapurSubmissionParser::parse`, falla el procesamiento
+  aunque el HTTP haya devuelto `202`): `registration_number`, `company_folder_name`,
+  `fields`.
+- **Dentro de `fields`:** `shareholderCount` (entero) si hay socios; por cada socio
+  `i` (1-based): `naturalShareholderName{i}` y `naturalSharePercentage{i}`.
+  `companyName` y `companyType` no truenan si faltan (default `''`) pero el
+  expediente quedaría sin nombre/tipo.
+- **Cada entrada de `files[]`:** `field`, `original_name`, `relay_name`,
+  `content_type`, `size` son obligatorias (`SingapurFileDTO::fromArray`); `content`
+  es el base64 inline (sin él el archivo no se almacena).
+
+**Opcionales:** `incorporation_deed` (acta pre-generada en base64, string u objeto
+`{content, content_type, original_name}`), `fields._language` (default `zh`),
+`fields.companyObject`, `fields.capitalSocial`, y los demás campos por socio
+(`naturalGender{i}`, `naturalBirthdate{i}`, `naturalBirthplace{i}`,
+`naturalCivilStatus{i}`, `naturalPhone{i}`, `naturalPhoneCountryCode{i}`,
+`naturalTaxId{i}`, `naturalMarried{i}`).
 
 ---
 

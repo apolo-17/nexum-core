@@ -43,15 +43,36 @@ class WebhookController extends Controller
             );
         }
 
-        // China sends the submission UUID in the `id` field (see submission.json).
-        $eventId = $request->input('id');
+        // Validate the submission envelope. Declaring the rules here also feeds
+        // Scramble's auto-generated API docs (otherwise only `id` is shown).
+        // Inner `fields.*` values are intentionally left loose — they are typed and
+        // parsed downstream by SingapurSubmissionParser. We only enforce the
+        // structural envelope so a malformed payload fails fast with 422 instead of
+        // being accepted (202) and then crashing the queued job.
+        $validated = $request->validate([
+            // Submission UUID — also the idempotency key on webhook_events.
+            'id' => ['required', 'string'],
+            'registration_number' => ['required', 'string'],
+            'company_folder_name' => ['required', 'string'],
 
-        if (blank($eventId)) {
-            return response()->json(
-                ['error' => 'Missing id'],
-                Response::HTTP_UNPROCESSABLE_ENTITY,
-            );
-        }
+            // Flat field bag with company + per-shareholder data (companyName,
+            // companyType, shareholderCount, naturalShareholderName{i}, etc.).
+            'fields' => ['required', 'array'],
+
+            // Optional pre-rendered acta (base64 string or {content,...} object).
+            'incorporation_deed' => ['nullable'],
+
+            // Inline document attachments (the file binary travels in `content`).
+            'files' => ['nullable', 'array'],
+            'files.*.field' => ['required', 'string'],
+            'files.*.original_name' => ['required', 'string'],
+            'files.*.relay_name' => ['required', 'string'],
+            'files.*.content_type' => ['required', 'string'],
+            'files.*.size' => ['required'],
+            'files.*.content' => ['nullable', 'string'],
+        ]);
+
+        $eventId = $validated['id'];
 
         // Idempotency check — if the event already exists, skip silently.
         if (WebhookEvent::where('event_id', $eventId)->exists()) {
