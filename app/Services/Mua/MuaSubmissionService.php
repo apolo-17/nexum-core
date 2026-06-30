@@ -9,6 +9,7 @@ use App\Enums\LegalNameStatusEnum;
 use App\Models\LegalName;
 use App\Models\Soldado;
 use Carbon\Carbon;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -233,23 +234,13 @@ class MuaSubmissionService
         $botUrl = rtrim((string) config('services.mua_bot.url'), '/');
         $apiKey = (string) config('services.mua_bot.api_key');
 
-        Http::timeout(30)
-            ->withHeader('X-Bot-Api-Key', $apiKey)
-            ->post("{$botUrl}/submit", [
-                'legal_name_id' => $legalName->id,
-                'denomination' => $legalName->name,
-                'company_type' => $companyType,
-                'entidad' => self::NEXUM_ENTIDAD,
-                'fedatario_id' => self::NEXUM_FEDATARIO_ID,
-                'cert_base64' => $cert,
-                'key_base64' => $keyPem,
-                'password' => $password,
-            ])
-            ->throw();
-
-        // Honest in-flight state: the request was dispatched to the bot but the SE
-        // has NOT confirmed registration. The bot's signed `submitted` callback is
-        // what advances this to PENDING ("Enviada a la SE").
+        // Mark the denomination in-flight BEFORE dispatching. The bot processes
+        // synchronously (login + capture + sign, ~1 min) and reports the real
+        // outcome via the webhook callback — which only advances from
+        // SUBMITTING/PENDING. Setting the state first guarantees that callback lands
+        // even when the bot outlives our HTTP read timeout below (the original race:
+        // status was set after ->throw(), so a timeout left it stuck in WAIT and the
+        // signed `submitted` callback was ignored).
         $legalName->update([
             'status' => LegalNameStatusEnum::SUBMITTING,
             'soldado_id' => $soldado->id,
@@ -266,11 +257,52 @@ class MuaSubmissionService
             ],
         );
 
-        Log::info('MuaSubmissionService: denomination dispatched to MUA bot.', [
-            'legal_name_id' => $legalName->id,
-            'name' => $legalName->name,
-            'soldado_id' => $soldado->id,
-            'company_type' => $companyType,
-        ]);
+        try {
+            Http::timeout(180)
+                ->withHeader('X-Bot-Api-Key', $apiKey)
+                ->post("{$botUrl}/submit", [
+                    'legal_name_id' => $legalName->id,
+                    'denomination' => $legalName->name,
+                    'company_type' => $companyType,
+                    'entidad' => self::NEXUM_ENTIDAD,
+                    'fedatario_id' => self::NEXUM_FEDATARIO_ID,
+                    'cert_base64' => $cert,
+                    'key_base64' => $keyPem,
+                    'password' => $password,
+                ])
+                ->throw();
+
+            Log::info('MuaSubmissionService: denomination dispatched to MUA bot.', [
+                'legal_name_id' => $legalName->id,
+                'name' => $legalName->name,
+                'soldado_id' => $soldado->id,
+                'company_type' => $companyType,
+            ]);
+        } catch (ConnectionException $exception) {
+            // A read timeout / dropped connection is EXPECTED: the synchronous bot
+            // can run longer than our timeout. It keeps working and reports via the
+            // webhook (the source of truth), so we leave the name SUBMITTING.
+            Log::warning('MuaSubmissionService: bot /submit timed out — leaving SUBMITTING, webhook will finalize.', [
+                'legal_name_id' => $legalName->id,
+                'name' => $legalName->name,
+                'error' => $exception->getMessage(),
+            ]);
+        } catch (RequestException $exception) {
+            // The bot replied non-2xx: it rejected the dispatch outright and no
+            // webhook will follow. Return the name to the queue for a manual resend.
+            $legalName->update([
+                'status' => LegalNameStatusEnum::WAIT,
+                'soldado_id' => null,
+                'submitted_at' => null,
+            ]);
+
+            $legalName->recordEvent(
+                LegalNameEventTypeEnum::SUBMISSION_FAILED,
+                'El bot rechazó el envío. Regresó a la cola.',
+                ['error' => $exception->getMessage()],
+            );
+
+            throw $exception;
+        }
     }
 }
