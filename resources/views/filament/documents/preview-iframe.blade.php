@@ -41,34 +41,66 @@
     </div>
 
 {{-- =========================================================================
-     CASE 2 — PDF (native browser viewer)
+     CASE 2 — PDF (blob URL en iframe)
 
-     Rendered in a native <iframe>/<object>; every modern browser ships a PDF
-     viewer, so there is no dependency on an external CDN (the previous PDF.js
-     canvas approach hung on "Cargando documento…" whenever cdnjs was blocked).
-     <object> with an <a> fallback covers the rare browser that won't embed PDFs.
+     No embebemos $previewUrl directamente porque el edge (Laravel Cloud /
+     Cloudflare) responde con X-Frame-Options/CSP que bloquea el framing
+     ("rechazó la conexión"). Tampoco usamos PDF.js por CDN (cdnjs puede estar
+     bloqueado → se quedaba en "Cargando documento…"). En su lugar descargamos
+     el PDF con fetch (same-origin, con cookies, igual que las imágenes que sí
+     cargan) y lo mostramos como blob: URL local — a los blob: no les aplica
+     X-Frame-Options porque ya no hay respuesta HTTP que filtrar.
      ========================================================================= --}}
 @elseif ($isPdf)
     <div
         class="w-full rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700"
-        style="height: 47vh; min-height: 280px; background: #525659;"
+        style="height: 47vh; min-height: 280px; background: #525659; position: relative;"
     >
-        <object
-            data="{{ $previewUrl }}"
-            type="application/pdf"
-            style="display: block; width: 100%; height: 100%; border: none;"
+        <iframe
+            id="nexum-pdf-frame"
+            style="display: none; width: 100%; height: 100%; border: none; background: transparent;"
+            title="Vista previa del documento"
+        ></iframe>
+
+        <div
+            id="nexum-pdf-status"
+            style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #d1d5db; font-family: system-ui, sans-serif; font-size: .9rem; text-align: center; padding: 1rem;"
         >
-            <iframe
-                src="{{ $previewUrl }}"
-                style="display: block; width: 100%; height: 100%; border: none; background: transparent;"
-                title="Vista previa del documento"
-            ></iframe>
-            <div style="height: 100%; display: flex; align-items: center; justify-content: center; color: #d1d5db; font-family: system-ui, sans-serif; font-size: .9rem; text-align: center; padding: 1rem;">
-                No se pudo mostrar el PDF aquí.
-                <a href="{{ $previewUrl }}" target="_blank" rel="noopener" style="color: #93c5fd; margin-left: .35rem;">Ábrelo en una pestaña nueva.</a>
-            </div>
-        </object>
+            Cargando documento…
+        </div>
     </div>
+
+    <script>
+    (function () {
+        'use strict';
+
+        var previewUrl = @json($previewUrl);
+        var frame  = document.getElementById('nexum-pdf-frame');
+        var status = document.getElementById('nexum-pdf-status');
+
+        if (!frame || !status) { return; }
+
+        fetch(previewUrl, { credentials: 'same-origin' })
+            .then(function (response) {
+                if (!response.ok) { throw new Error('HTTP ' + response.status); }
+                return response.blob();
+            })
+            .then(function (blob) {
+                // Asegura el tipo correcto para que el navegador use su visor de PDF.
+                var pdfBlob = blob.type === 'application/pdf'
+                    ? blob
+                    : blob.slice(0, blob.size, 'application/pdf');
+
+                frame.src = URL.createObjectURL(pdfBlob);
+                frame.style.display = 'block';
+                status.style.display = 'none';
+            })
+            .catch(function () {
+                status.innerHTML = 'No se pudo cargar el documento. '
+                    + '<a href="' + previewUrl + '" target="_blank" rel="noopener" style="color:#93c5fd; margin-left:.35rem;">Ábrelo en una pestaña nueva.</a>';
+            });
+    }());
+    </script>
 
 {{-- =========================================================================
      CASE 3 — FALLBACK (unknown type)
