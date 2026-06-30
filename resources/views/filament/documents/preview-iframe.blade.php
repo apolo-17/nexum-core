@@ -55,7 +55,11 @@
      URL local — a los blob: no les aplica X-Frame-Options.
      ========================================================================= --}}
 @elseif ($isPdf)
+    {{-- wire:ignore: el src del iframe se asigna por JS (blob URL); sin esto un
+         re-render de Livewire vuelve a morfear el subárbol y borra el src, y el
+         PDF "se ve un segundo y desaparece". --}}
     <div
+        wire:ignore
         x-data="{
             loading: true,
             error: null,
