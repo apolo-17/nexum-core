@@ -175,7 +175,8 @@ class DenominationResource extends Resource
 
         if ($submitted) {
             return Notification::make()
-                ->title("«{$record->name}» enviada al portal MUA.")
+                ->title("«{$record->name}»: solicitud enviada al bot.")
+                ->body('Esperando que el bot confirme el registro en la SE. El estado se actualizará solo.')
                 ->success();
         }
 

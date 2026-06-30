@@ -82,61 +82,75 @@ class MuaBotCallbackController extends Controller
             return response()->json(['error' => 'Legal name not found'], Response::HTTP_NOT_FOUND);
         }
 
-        $status = LegalNameStatusEnum::tryFrom($payload['status']);
+        $callbackStatus = $payload['status'];
 
-        // PROCESS is a non-terminal outcome: the SE still has the denomination in
-        // review. It is delivered by on-demand status checks so the dashboard can
-        // confirm "sigue en dictamen" instead of waiting in silence.
-        if (! in_array($status, [
-            LegalNameStatusEnum::APPROVED,
-            LegalNameStatusEnum::REJECTED,
-            LegalNameStatusEnum::PROCESS,
-        ], true)) {
+        // The bot's callback vocabulary, decoupled from our internal status enum:
+        //   submitted → the SE confirmed registration (advances SUBMITTING → PENDING)
+        //   failed    → a bot-side failure (submit or check) — never stays silent
+        //   process   → still in dictamen
+        //   approved / rejected → terminal resolution
+        $allowed = ['submitted', 'failed', 'process', 'approved', 'rejected'];
+
+        if (! in_array($callbackStatus, $allowed, true)) {
             return response()->json(['error' => 'Invalid status value'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         // --- Process result ---
         try {
-            if ($status === LegalNameStatusEnum::APPROVED) {
-                $this->processApproval($request, $legalName);
+            switch ($callbackStatus) {
+                case 'approved':
+                    $this->processApproval($request, $legalName);
 
-                $legalName->refresh();
-                $legalName->recordEvent(
-                    LegalNameEventTypeEnum::APPROVED,
-                    'La SE autorizó la denominación.',
-                    [
-                        'clave_unica' => $legalName->clave_unica_denominacion,
-                        'portal_status' => $legalName->portal_status,
-                    ],
-                    actorType: 'bot',
-                );
-                $legalName->recordEvent(
-                    LegalNameEventTypeEnum::CONSTANCIA_RECEIVED,
-                    'Constancia de autorización recibida.',
-                    actorType: 'bot',
-                );
-                $this->clearPendingCheck($legalName);
-            } elseif ($status === LegalNameStatusEnum::REJECTED) {
-                $this->processRejection($request, $legalName);
+                    $legalName->refresh();
+                    $legalName->recordEvent(
+                        LegalNameEventTypeEnum::APPROVED,
+                        'La SE autorizó la denominación.',
+                        [
+                            'clave_unica' => $legalName->clave_unica_denominacion,
+                            'portal_status' => $legalName->portal_status,
+                        ],
+                        actorType: 'bot',
+                    );
+                    $legalName->recordEvent(
+                        LegalNameEventTypeEnum::CONSTANCIA_RECEIVED,
+                        'Constancia de autorización recibida.',
+                        actorType: 'bot',
+                    );
+                    $this->clearPendingCheck($legalName);
+                    break;
 
-                $legalName->refresh();
-                $legalName->recordEvent(
-                    LegalNameEventTypeEnum::REJECTED,
-                    'La SE rechazó la denominación.',
-                    [
-                        'reason' => $legalName->rejection_reason,
-                        'portal_status' => $legalName->portal_status,
-                    ],
-                    actorType: 'bot',
-                );
-                $this->clearPendingCheck($legalName);
-            } else {
-                $this->processStillInReview($request, $legalName);
+                case 'rejected':
+                    $this->processRejection($request, $legalName);
+
+                    $legalName->refresh();
+                    $legalName->recordEvent(
+                        LegalNameEventTypeEnum::REJECTED,
+                        'La SE rechazó la denominación.',
+                        [
+                            'reason' => $legalName->rejection_reason,
+                            'portal_status' => $legalName->portal_status,
+                        ],
+                        actorType: 'bot',
+                    );
+                    $this->clearPendingCheck($legalName);
+                    break;
+
+                case 'submitted':
+                    $this->processSubmissionConfirmed($request, $legalName);
+                    break;
+
+                case 'process':
+                    $this->processStillInReview($request, $legalName);
+                    break;
+
+                case 'failed':
+                    $this->processFailed($request, $legalName);
+                    break;
             }
         } catch (\Throwable $th) {
             Log::error('MUA bot callback: failed to process denomination result.', [
                 'legal_name_id' => $legalName->id,
-                'status' => $status->value,
+                'status' => $callbackStatus,
                 'exception' => $th->getMessage(),
             ]);
 
@@ -293,8 +307,8 @@ class MuaBotCallbackController extends Controller
             'portal_status' => $portalStatus,
         ]);
 
-        if ($legalName->muaAccount) {
-            $legalName->muaAccount->decrement('active_submissions');
+        if ($legalName->soldado) {
+            $legalName->soldado->decrement('active_submissions');
         }
 
         Log::info('MUA bot callback: denomination REJECTED.', [
@@ -356,6 +370,107 @@ class MuaBotCallbackController extends Controller
             'name' => $legalName->name,
             'portal_status' => $portalStatus,
             'event_logged' => $enteredReview || $portalChanged,
+        ]);
+    }
+
+    /**
+     * Handle a `submitted` callback: the bot confirmed the SE actually registered
+     * the denomination. This advances the honest in-flight SUBMITTING state to
+     * PENDING ("Enviada a la SE"), so that label always reflects a confirmed fact.
+     *
+     * Idempotent and non-regressive: only advances from SUBMITTING (or re-affirms an
+     * existing PENDING). A stale confirmation for a denomination already in dictamen
+     * or resolved is ignored — a later state is never downgraded.
+     *
+     * @param  Request  $request  Request carrying the optional portal_status label.
+     * @param  LegalName  $legalName  The denomination whose registration is confirmed.
+     */
+    private function processSubmissionConfirmed(Request $request, LegalName $legalName): void
+    {
+        if (! in_array($legalName->status, [
+            LegalNameStatusEnum::SUBMITTING,
+            LegalNameStatusEnum::PENDING,
+        ], true)) {
+            return;
+        }
+
+        $portalStatus = (string) $request->input('portal_status', '');
+        $wasSubmitting = $legalName->status === LegalNameStatusEnum::SUBMITTING;
+
+        $legalName->update([
+            'status' => LegalNameStatusEnum::PENDING->value,
+            'portal_status' => $portalStatus !== '' ? $portalStatus : $legalName->portal_status,
+            'last_status_check_at' => null,
+        ]);
+
+        if ($wasSubmitting) {
+            $legalName->recordEvent(
+                LegalNameEventTypeEnum::SUBMITTED,
+                'El bot confirmó que la SE registró la denominación.',
+                ['portal_status' => $portalStatus ?: null],
+                actorType: 'bot',
+            );
+        }
+
+        Log::info('MUA bot callback: submission confirmed by SE.', [
+            'legal_name_id' => $legalName->id,
+            'name' => $legalName->name,
+        ]);
+    }
+
+    /**
+     * Handle a `failed` callback: the bot's background task could not complete.
+     *
+     * Branches on the current state so the failure is honest:
+     *   - SUBMITTING → registration failed; return the name to the queue (WAIT),
+     *     release its FIEL so it can be reassigned, and record the reason.
+     *   - PENDING / PROCESS → a status check or poll failed; keep the (already real)
+     *     status, surface the failure and clear the loading flag.
+     *
+     * @param  Request  $request  Request carrying the optional failure reason.
+     * @param  LegalName  $legalName  The denomination whose operation failed.
+     */
+    private function processFailed(Request $request, LegalName $legalName): void
+    {
+        $reason = (string) $request->input('reason', 'El bot no pudo completar la operación.');
+
+        if ($legalName->status === LegalNameStatusEnum::SUBMITTING) {
+            $legalName->update([
+                'status' => LegalNameStatusEnum::WAIT->value,
+                'soldado_id' => null,
+                'submitted_at' => null,
+                'last_status_check_at' => null,
+            ]);
+
+            $legalName->recordEvent(
+                LegalNameEventTypeEnum::SUBMISSION_FAILED,
+                'El bot no pudo registrar la denominación en la SE. Regresó a la cola.',
+                ['reason' => $reason],
+                actorType: 'bot',
+            );
+
+            Log::warning('MUA bot callback: submission failed, returned to queue.', [
+                'legal_name_id' => $legalName->id,
+                'name' => $legalName->name,
+                'reason' => $reason,
+            ]);
+
+            return;
+        }
+
+        // A check / poll failed for an already-submitted denomination: keep status.
+        $legalName->recordEvent(
+            LegalNameEventTypeEnum::CHECK_FAILED,
+            'El bot no pudo consultar el estado en la SE.',
+            ['reason' => $reason],
+            actorType: 'bot',
+        );
+        $this->clearPendingCheck($legalName);
+
+        Log::warning('MUA bot callback: status check failed.', [
+            'legal_name_id' => $legalName->id,
+            'name' => $legalName->name,
+            'reason' => $reason,
         ]);
     }
 

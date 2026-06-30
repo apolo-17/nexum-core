@@ -25,10 +25,13 @@ enum LegalNameEventTypeEnum: string
     /** Submission deferred — outside business hours or no FIEL with capacity. */
     case DEFERRED = 'deferred';
 
-    /** Submission attempt failed (bot error, e.g. HTTP 403). */
+    /** Submission attempt failed (bot error, e.g. HTTP 403, or bot-side failure callback). */
     case SUBMISSION_FAILED = 'submission_failed';
 
-    /** Successfully submitted to the MUA bot with a FIEL assigned. */
+    /** Submission request dispatched to the bot (accepted), pending SE confirmation. */
+    case SUBMIT_DISPATCHED = 'submit_dispatched';
+
+    /** The bot confirmed the SE actually registered the denomination. */
     case SUBMITTED = 'submitted';
 
     /** A manual SE status check was requested to the bot. */
@@ -63,7 +66,8 @@ enum LegalNameEventTypeEnum: string
             self::QUEUED => 'En cola de envío',
             self::DEFERRED => 'Envío diferido',
             self::SUBMISSION_FAILED => 'Error al enviar',
-            self::SUBMITTED => 'Enviada a la SE',
+            self::SUBMIT_DISPATCHED => 'Solicitud enviada al bot',
+            self::SUBMITTED => 'Registrada en la SE',
             self::CHECK_REQUESTED => 'Consulta de estado solicitada',
             self::CHECK_FAILED => 'Error al solicitar consulta',
             self::IN_PROCESS => 'En dictamen',
@@ -85,7 +89,8 @@ enum LegalNameEventTypeEnum: string
             self::QUEUED => 'heroicon-o-queue-list',
             self::DEFERRED => 'heroicon-o-clock',
             self::SUBMISSION_FAILED => 'heroicon-o-exclamation-triangle',
-            self::SUBMITTED => 'heroicon-o-paper-airplane',
+            self::SUBMIT_DISPATCHED => 'heroicon-o-paper-airplane',
+            self::SUBMITTED => 'heroicon-o-check-circle',
             self::CHECK_REQUESTED => 'heroicon-o-magnifying-glass-circle',
             self::CHECK_FAILED => 'heroicon-o-exclamation-triangle',
             self::IN_PROCESS => 'heroicon-o-arrow-path',
@@ -103,7 +108,7 @@ enum LegalNameEventTypeEnum: string
     {
         return match ($this) {
             self::CREATED, self::AVAILABILITY_CHECKED => 'gray',
-            self::QUEUED, self::IN_PROCESS, self::CHECK_REQUESTED => 'info',
+            self::QUEUED, self::IN_PROCESS, self::CHECK_REQUESTED, self::SUBMIT_DISPATCHED => 'info',
             self::DEFERRED => 'warning',
             self::SUBMISSION_FAILED, self::CHECK_FAILED, self::REJECTED => 'danger',
             self::SUBMITTED => 'primary',

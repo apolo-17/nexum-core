@@ -247,15 +247,18 @@ class MuaSubmissionService
             ])
             ->throw();
 
+        // Honest in-flight state: the request was dispatched to the bot but the SE
+        // has NOT confirmed registration. The bot's signed `submitted` callback is
+        // what advances this to PENDING ("Enviada a la SE").
         $legalName->update([
-            'status' => LegalNameStatusEnum::PENDING,
+            'status' => LegalNameStatusEnum::SUBMITTING,
             'soldado_id' => $soldado->id,
             'submitted_at' => now(),
         ]);
 
         $legalName->recordEvent(
-            LegalNameEventTypeEnum::SUBMITTED,
-            "Enviada al portal MUA con la FIEL «{$soldado->name}».",
+            LegalNameEventTypeEnum::SUBMIT_DISPATCHED,
+            "Solicitud enviada al bot con la FIEL «{$soldado->name}». Esperando confirmación de la SE.",
             [
                 'soldado_id' => $soldado->id,
                 'soldado_name' => $soldado->name,
@@ -263,7 +266,7 @@ class MuaSubmissionService
             ],
         );
 
-        Log::info('MuaSubmissionService: denomination submitted to MUA bot.', [
+        Log::info('MuaSubmissionService: denomination dispatched to MUA bot.', [
             'legal_name_id' => $legalName->id,
             'name' => $legalName->name,
             'soldado_id' => $soldado->id,
