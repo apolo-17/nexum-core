@@ -77,7 +77,13 @@ class DocumentsRelationManager extends RelationManager
                 ->disk(config('filesystems.default'))
                 ->directory(fn () => 'documents/'.$this->ownerRecord->id.'/manual')
                 ->storeFileNamesIn('name')
-                ->acceptedFileTypes(['application/pdf', 'image/jpeg', 'image/png'])
+                ->acceptedFileTypes([
+                    'application/pdf',
+                    'image/jpeg',
+                    'image/png',
+                    'application/msword', // .doc
+                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+                ])
                 ->maxSize(20480)
                 ->required()
                 ->columnSpanFull(),

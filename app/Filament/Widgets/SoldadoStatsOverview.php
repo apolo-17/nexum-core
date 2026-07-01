@@ -2,7 +2,7 @@
 
 namespace App\Filament\Widgets;
 
-use App\Enums\EfirmaAppointmentStatusEnum;
+use App\Enums\AppointmentStatusEnum;
 use App\Enums\LegalNameStatusEnum;
 use App\Models\Soldado;
 use Filament\Widgets\StatsOverviewWidget;
@@ -61,11 +61,11 @@ class SoldadoStatsOverview extends StatsOverviewWidget
         $companies = $soldado->registrations()->count();
 
         $completedAppointments = $soldado->appointments()
-            ->where('status', EfirmaAppointmentStatusEnum::ATTENDED_APPROVED->value)
+            ->where('status', AppointmentStatusEnum::SCHEDULED->value)
             ->count();
 
         $pendingAppointments = $soldado->appointments()
-            ->whereNotIn('status', [EfirmaAppointmentStatusEnum::ATTENDED_APPROVED->value])
+            ->whereNotIn('status', [AppointmentStatusEnum::SCHEDULED->value])
             ->count();
 
         $approvedDenominations = $soldado->legalNames()

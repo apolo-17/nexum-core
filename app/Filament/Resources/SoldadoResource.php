@@ -2,7 +2,7 @@
 
 namespace App\Filament\Resources;
 
-use App\Enums\EfirmaAppointmentStatusEnum;
+use App\Enums\AppointmentStatusEnum;
 use App\Enums\LegalNameStatusEnum;
 use App\Filament\Resources\SoldadoResource\Pages;
 use App\Models\Soldado;
@@ -455,9 +455,9 @@ class SoldadoResource extends Resource
                         ->state(fn (Soldado $record): int => $record->registrations()->count()),
 
                     InfoTextEntry::make('kpi_appointments_completed')
-                        ->label('Citas completadas')
+                        ->label('Citas agendadas')
                         ->state(fn (Soldado $record): string => $record->appointments()
-                            ->where('status', EfirmaAppointmentStatusEnum::ATTENDED_APPROVED->value)
+                            ->where('status', AppointmentStatusEnum::SCHEDULED->value)
                             ->count()
                             .' / '.$record->appointments()->count()),
 

@@ -2,8 +2,8 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
-use App\Enums\EfirmaAppointmentStatusEnum;
 use App\Filament\Resources\MisCitasResource\Pages;
 use App\Models\Appointment;
 use Filament\Resources\Pages\PageRegistration;
@@ -97,13 +97,13 @@ class MisCitasResource extends Resource
                 TextColumn::make('status')
                     ->label('Estado')
                     ->badge()
-                    ->formatStateUsing(fn (EfirmaAppointmentStatusEnum $state): string => $state->label())
-                    ->color(fn (EfirmaAppointmentStatusEnum $state): string => $state->color()),
+                    ->formatStateUsing(fn (AppointmentStatusEnum $state): string => $state->label())
+                    ->color(fn (AppointmentStatusEnum $state): string => $state->color()),
 
-                IconColumn::make('completed')
-                    ->label('Completa')
+                IconColumn::make('scheduled')
+                    ->label('Agendada')
                     ->boolean()
-                    ->state(fn (Appointment $record): bool => $record->isCompleted()),
+                    ->state(fn (Appointment $record): bool => $record->isScheduled()),
 
                 TextColumn::make('scheduled_at')
                     ->label('Fecha')

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V3;
 
-use App\Enums\EfirmaAppointmentStatusEnum;
+use App\Enums\AppointmentStatusEnum;
 use App\Http\Controllers\Controller;
 use App\Models\Appointment;
 use App\Models\AppointmentEmail;
@@ -18,11 +18,17 @@ use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Receives callbacks from the nexum-citas-sat bot reporting a SAT appointment result.
+ * Receives callbacks from the nexum-citas-sat bot reviewing a FORMED SAT appointment.
  *
- * Auth: HMAC-SHA256 over {appointment_id, status, timestamp} in the X-Signature header
- * (identical scheme to MuaBotCallbackController). On "scheduled" it fills the appointment
- * (date, office, acuse → R2), releases the email alias and notifies the soldado.
+ * The appointment was formed MANUALLY by the team; the bot only monitors it. Auth:
+ * HMAC-SHA256 over {appointment_id, status, timestamp} in the X-Signature header
+ * (identical scheme to MuaBotCallbackController). Statuses the bot reports:
+ *
+ *  - scheduled : SAT assigned a slot → fill date/office/acuse → R2, free the alias, notify.
+ *  - in_review : checked, still no slot → bump last_review_at, stay formed.
+ *  - rejected  : SAT rejected the appointment → mark rejected.
+ *  - no_show   : the soldado did not show up → mark no_show.
+ *  - failed    : the bot could not review (transient error) → note it, stay formed to retry.
  *
  * See docs/CONTRACT.md in the nexum-citas-sat repo.
  */
@@ -34,20 +40,20 @@ class SatBotCallbackController extends Controller
     private const MAX_TIMESTAMP_DIFF_SECONDS = 300;
 
     /**
-     * Terminal/known statuses the bot may report.
+     * Known statuses the bot may report (not all map 1:1 to AppointmentStatusEnum).
      *
      * @var list<string>
      */
     private const KNOWN_STATUSES = [
         'scheduled',
-        'attended_approved',
-        'attended_rejected',
+        'in_review',
+        'rejected',
         'no_show',
         'failed',
     ];
 
     /**
-     * Handle a SAT appointment callback from the bot.
+     * Handle a SAT appointment review callback from the bot.
      *
      * @param  Request  $request  Signed callback request.
      */
@@ -86,14 +92,19 @@ class SatBotCallbackController extends Controller
         }
 
         try {
-            if ($payload['status'] === 'failed') {
-                $this->processFailure($request, $appointment);
-            } elseif ($payload['status'] === 'scheduled') {
-                $this->processScheduled($request, $appointment);
-            } else {
-                // attended_approved | attended_rejected | no_show
-                $appointment->update(['status' => EfirmaAppointmentStatusEnum::from($payload['status'])]);
-            }
+            match ($payload['status']) {
+                'scheduled' => $this->processScheduled($request, $appointment),
+                'in_review' => $this->processInReview($appointment),
+                'failed' => $this->processFailure($request, $appointment),
+                'rejected' => $appointment->update([
+                    'status' => AppointmentStatusEnum::REJECTED,
+                    'last_review_at' => now(),
+                ]),
+                'no_show' => $appointment->update([
+                    'status' => AppointmentStatusEnum::NO_SHOW,
+                    'last_review_at' => now(),
+                ]),
+            };
         } catch (\Throwable $th) {
             Log::error('SAT bot callback: failed to process result.', [
                 'appointment_id' => $appointment->id,
@@ -108,7 +119,7 @@ class SatBotCallbackController extends Controller
     }
 
     /**
-     * Apply a scheduled outcome: save date/office/acuse, release the alias, notify.
+     * Apply a scheduled outcome: save date/office/acuse, free the alias, notify.
      *
      * @param  Request  $request  Callback request with scheduling fields.
      * @param  Appointment  $appointment  The appointment being resolved.
@@ -116,8 +127,9 @@ class SatBotCallbackController extends Controller
     private function processScheduled(Request $request, Appointment $appointment): void
     {
         $attributes = [
-            'status' => EfirmaAppointmentStatusEnum::SCHEDULED,
+            'status' => AppointmentStatusEnum::SCHEDULED,
             'office' => $request->input('office') ?: $appointment->office,
+            'last_review_at' => now(),
         ];
 
         if (filled($request->input('scheduled_at'))) {
@@ -140,8 +152,8 @@ class SatBotCallbackController extends Controller
 
         $appointment->update($attributes);
 
-        // Free the alias for reuse (keep email_alias on the appointment as a record).
-        $this->releaseAlias($appointment, clearOnAppointment: false);
+        // Free the pool email for reuse (keep email_alias on the appointment as a record).
+        $this->releaseAlias($appointment);
 
         $this->notifySoldado($appointment);
 
@@ -152,46 +164,55 @@ class SatBotCallbackController extends Controller
     }
 
     /**
-     * Apply a failed outcome: record the reason, keep it pending, release the alias.
+     * Record a review with no slot yet: bump last_review_at, keep the appointment formed.
+     *
+     * @param  Appointment  $appointment  The appointment that was reviewed.
+     */
+    private function processInReview(Appointment $appointment): void
+    {
+        $appointment->update(['last_review_at' => now()]);
+
+        Log::info('SAT bot callback: appointment reviewed, still no slot.', [
+            'appointment_id' => $appointment->id,
+        ]);
+    }
+
+    /**
+     * Apply a failed review: record the reason, keep it formed so the next poll retries.
      *
      * @param  Request  $request  Callback request with failure_reason.
-     * @param  Appointment  $appointment  The appointment that could not be scheduled.
+     * @param  Appointment  $appointment  The appointment that could not be reviewed.
      */
     private function processFailure(Request $request, Appointment $appointment): void
     {
         $reason = (string) $request->input('failure_reason', 'Sin detalle.');
         $stamp = now()->toDateTimeString();
-        $note = trim(($appointment->notes ? $appointment->notes."\n" : '')."[{$stamp}] Bot SAT: fallo al agendar — {$reason}");
+        $note = trim(($appointment->notes ? $appointment->notes."\n" : '')."[{$stamp}] Bot SAT: fallo al revisar — {$reason}");
 
-        // Status stays PENDING_SCHEDULING so the next poll retries it.
-        $appointment->update(['notes' => $note]);
+        // Status stays FORMED so the next review retries it. The alias was set manually, keep it.
+        $appointment->update([
+            'notes' => $note,
+            'last_review_at' => now(),
+        ]);
 
-        // Clear the alias so a fresh one is assigned on the next poll.
-        $this->releaseAlias($appointment, clearOnAppointment: true);
-
-        Log::warning('SAT bot callback: scheduling failed.', [
+        Log::warning('SAT bot callback: review failed.', [
             'appointment_id' => $appointment->id,
             'reason' => $reason,
         ]);
     }
 
     /**
-     * Free the pool email assigned to this appointment.
+     * Free the pool email assigned to this appointment (keep the record on the appointment).
      *
      * @param  Appointment  $appointment  The appointment whose alias is freed.
-     * @param  bool  $clearOnAppointment  When true, also null out the appointment's email_alias.
      */
-    private function releaseAlias(Appointment $appointment, bool $clearOnAppointment): void
+    private function releaseAlias(Appointment $appointment): void
     {
         if (blank($appointment->email_alias)) {
             return;
         }
 
         AppointmentEmail::where('address', $appointment->email_alias)->update(['is_free' => true]);
-
-        if ($clearOnAppointment) {
-            $appointment->update(['email_alias' => null]);
-        }
     }
 
     /**

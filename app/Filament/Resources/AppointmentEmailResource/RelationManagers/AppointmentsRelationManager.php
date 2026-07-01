@@ -2,8 +2,8 @@
 
 namespace App\Filament\Resources\AppointmentEmailResource\RelationManagers;
 
+use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
-use App\Enums\EfirmaAppointmentStatusEnum;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
@@ -39,8 +39,8 @@ class AppointmentsRelationManager extends RelationManager
                 TextColumn::make('status')
                     ->label('Estado')
                     ->badge()
-                    ->formatStateUsing(fn (EfirmaAppointmentStatusEnum $state): string => $state->label())
-                    ->color(fn (EfirmaAppointmentStatusEnum $state): string => $state->color()),
+                    ->formatStateUsing(fn (AppointmentStatusEnum $state): string => $state->label())
+                    ->color(fn (AppointmentStatusEnum $state): string => $state->color()),
 
                 TextColumn::make('soldado.name')
                     ->label('Soldado')

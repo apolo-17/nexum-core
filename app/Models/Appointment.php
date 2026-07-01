@@ -2,8 +2,8 @@
 
 namespace App\Models;
 
+use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
-use App\Enums\EfirmaAppointmentStatusEnum;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -13,9 +13,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 /**
  * A single SAT appointment for a company's incorporation (RFC or FIEL).
  *
- * Each registration needs one RFC appointment and one FIEL appointment. The soldado
- * who attends is linked when known. Captured manually today; the SAT bot will later
- * fill scheduled_at / office / status via a callback.
+ * Lifecycle: the team forms the appointment MANUALLY at the SAT portal (pending_forming
+ * → formed), then the nexum-citas-sat bot reviews the formed ones and, when the SAT
+ * assigns a slot, fills scheduled_at / office / acuse via the callback (→ scheduled).
  */
 class Appointment extends Model
 {
@@ -30,6 +30,8 @@ class Appointment extends Model
         'type',
         'status',
         'scheduled_at',
+        'formed_at',
+        'last_review_at',
         'office',
         'email_alias',
         'acknowledgment_path',
@@ -45,8 +47,10 @@ class Appointment extends Model
     {
         return [
             'type' => AppointmentTypeEnum::class,
-            'status' => EfirmaAppointmentStatusEnum::class,
+            'status' => AppointmentStatusEnum::class,
             'scheduled_at' => 'datetime',
+            'formed_at' => 'datetime',
+            'last_review_at' => 'datetime',
         ];
     }
 
@@ -79,10 +83,18 @@ class Appointment extends Model
     // -------------------------------------------------------------------------
 
     /**
-     * Determine whether this appointment has been completed successfully.
+     * Determine whether this appointment has been scheduled (slot assigned by the SAT).
      */
-    public function isCompleted(): bool
+    public function isScheduled(): bool
     {
-        return $this->status === EfirmaAppointmentStatusEnum::ATTENDED_APPROVED;
+        return $this->status === AppointmentStatusEnum::SCHEDULED;
+    }
+
+    /**
+     * Determine whether this appointment is formed and awaiting the bot's review.
+     */
+    public function isAwaitingReview(): bool
+    {
+        return $this->status === AppointmentStatusEnum::FORMED;
     }
 }

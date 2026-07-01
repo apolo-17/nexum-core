@@ -2,8 +2,8 @@
 
 namespace Tests\Feature\Appointment;
 
+use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
-use App\Enums\EfirmaAppointmentStatusEnum;
 use App\Models\Appointment;
 use App\Models\Registration;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -24,12 +24,12 @@ class AppointmentTest extends TestCase
 
         $registration->appointments()->create([
             'type' => AppointmentTypeEnum::RFC,
-            'status' => EfirmaAppointmentStatusEnum::PENDING_SCHEDULING,
+            'status' => AppointmentStatusEnum::PENDING_FORMING,
         ]);
 
         $registration->appointments()->create([
             'type' => AppointmentTypeEnum::FIEL,
-            'status' => EfirmaAppointmentStatusEnum::SCHEDULED,
+            'status' => AppointmentStatusEnum::SCHEDULED,
         ]);
 
         $this->assertCount(2, $registration->refresh()->appointments);
@@ -40,19 +40,23 @@ class AppointmentTest extends TestCase
     }
 
     #[Test]
-    public function it_casts_type_and_status_and_reports_completion(): void
+    public function it_casts_type_and_status_and_reports_its_state(): void
     {
         $registration = Registration::factory()->create();
 
         $appointment = $registration->appointments()->create([
             'type' => AppointmentTypeEnum::FIEL,
-            'status' => EfirmaAppointmentStatusEnum::ATTENDED_APPROVED,
+            'status' => AppointmentStatusEnum::FORMED,
         ]);
 
         $fresh = Appointment::find($appointment->id);
 
         $this->assertInstanceOf(AppointmentTypeEnum::class, $fresh->type);
-        $this->assertInstanceOf(EfirmaAppointmentStatusEnum::class, $fresh->status);
-        $this->assertTrue($fresh->isCompleted());
+        $this->assertInstanceOf(AppointmentStatusEnum::class, $fresh->status);
+        $this->assertTrue($fresh->isAwaitingReview());
+        $this->assertFalse($fresh->isScheduled());
+
+        $fresh->update(['status' => AppointmentStatusEnum::SCHEDULED]);
+        $this->assertTrue($fresh->refresh()->isScheduled());
     }
 }

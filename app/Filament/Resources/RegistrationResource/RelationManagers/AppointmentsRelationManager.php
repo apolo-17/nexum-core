@@ -2,9 +2,11 @@
 
 namespace App\Filament\Resources\RegistrationResource\RelationManagers;
 
+use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
-use App\Enums\EfirmaAppointmentStatusEnum;
 use App\Models\Appointment;
+use App\Models\AppointmentEmail;
+use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
@@ -23,10 +25,10 @@ use Filament\Tables\Table;
 /**
  * Manages the SAT appointments (RFC and FIEL) for a company.
  *
- * Every company needs two appointments: one to obtain the RFC and one to issue the
- * FIEL (e.firma). Captured manually here; the SAT bot will later fill the date, office
- * and status via a callback. A rejected / no-showed appointment is kept and a new one
- * is created for the reschedule.
+ * Lifecycle: the team FORMS the appointment manually at the SAT portal and marks it
+ * "formada" (choosing the pool email used to receive the token). From there the
+ * nexum-citas-sat bot reviews the formed ones and, when the SAT assigns a slot, fills
+ * the date/office/acuse via the callback (→ "agendada").
  */
 class AppointmentsRelationManager extends RelationManager
 {
@@ -56,8 +58,8 @@ class AppointmentsRelationManager extends RelationManager
 
             Select::make('status')
                 ->label('Estado')
-                ->options(self::statusOptions())
-                ->default(EfirmaAppointmentStatusEnum::PENDING_SCHEDULING->value)
+                ->options(AppointmentStatusEnum::options())
+                ->default(AppointmentStatusEnum::PENDING_FORMING->value)
                 ->required(),
 
             Select::make('soldado_id')
@@ -66,12 +68,22 @@ class AppointmentsRelationManager extends RelationManager
                 ->searchable()
                 ->preload(),
 
+            Select::make('email_alias')
+                ->label('Correo del pool usado para formar')
+                ->options(fn (): array => AppointmentEmail::orderBy('address')->pluck('address', 'address')->all())
+                ->searchable()
+                ->helperText('El correo con el que se formó la cita; ahí llega el token del SAT que el bot revisa.'),
+
+            DateTimePicker::make('formed_at')
+                ->label('Fecha en que se formó (fila virtual)')
+                ->native(false),
+
             DateTimePicker::make('scheduled_at')
-                ->label('Fecha y hora de la cita')
+                ->label('Fecha/hora asignada por el SAT')
                 ->native(false),
 
             TextInput::make('office')
-                ->label('Sede / oficina del SAT')
+                ->label('Sucursal / módulo del SAT')
                 ->maxLength(255),
 
             FileUpload::make('acknowledgment_path')
@@ -102,20 +114,25 @@ class AppointmentsRelationManager extends RelationManager
 
                 BadgeColumn::make('status')
                     ->label('Estado')
-                    ->formatStateUsing(fn (EfirmaAppointmentStatusEnum $state): string => $state->label())
-                    ->color(fn (EfirmaAppointmentStatusEnum $state): string => $state->color()),
+                    ->formatStateUsing(fn (AppointmentStatusEnum $state): string => $state->label())
+                    ->color(fn (AppointmentStatusEnum $state): string => $state->color()),
+
+                TextColumn::make('email_alias')
+                    ->label('Correo')
+                    ->placeholder('—')
+                    ->toggleable(),
 
                 TextColumn::make('scheduled_at')
-                    ->label('Fecha')
+                    ->label('Fecha asignada')
                     ->dateTime('d/m/Y H:i')
-                    ->placeholder('Sin agendar'),
+                    ->placeholder('Sin asignar'),
 
                 TextColumn::make('soldado.name')
                     ->label('Soldado')
                     ->placeholder('—'),
 
                 TextColumn::make('office')
-                    ->label('Sede')
+                    ->label('Sucursal')
                     ->placeholder('—')
                     ->toggleable(),
 
@@ -133,21 +150,27 @@ class AppointmentsRelationManager extends RelationManager
                 SelectFilter::make('type')
                     ->label('Tipo')
                     ->options(AppointmentTypeEnum::options()),
+                SelectFilter::make('status')
+                    ->label('Estado')
+                    ->options(AppointmentStatusEnum::options()),
             ])
             ->defaultSort('type')
-            ->actions([EditAction::make(), DeleteAction::make()])
-            ->headerActions([CreateAction::make()->label('Agregar cita')]);
-    }
+            ->actions([
+                Action::make('markFormed')
+                    ->label('Marcar formada')
+                    ->icon('heroicon-o-check-circle')
+                    ->color('warning')
+                    ->visible(fn (Appointment $record): bool => $record->status === AppointmentStatusEnum::PENDING_FORMING)
+                    ->requiresConfirmation()
+                    ->modalDescription('Confirma que ya formaste la cita en el portal del SAT. A partir de aquí el bot la revisa.')
+                    ->action(fn (Appointment $record) => $record->update([
+                        'status' => AppointmentStatusEnum::FORMED,
+                        'formed_at' => now(),
+                    ])),
 
-    /**
-     * Build the status value => label map for the select input.
-     *
-     * @return array<string, string>
-     */
-    private static function statusOptions(): array
-    {
-        return collect(EfirmaAppointmentStatusEnum::cases())
-            ->mapWithKeys(fn (EfirmaAppointmentStatusEnum $case): array => [$case->value => $case->label()])
-            ->all();
+                EditAction::make(),
+                DeleteAction::make(),
+            ])
+            ->headerActions([CreateAction::make()->label('Agregar cita')]);
     }
 }

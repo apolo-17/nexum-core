@@ -2,8 +2,8 @@
 
 namespace Tests\Feature\SatBot;
 
+use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
-use App\Enums\EfirmaAppointmentStatusEnum;
 use App\Models\AppointmentEmail;
 use App\Models\Registration;
 use App\Models\Soldado;
@@ -17,7 +17,10 @@ use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 /**
- * Feature tests for the nexum-citas-sat integration endpoints (Mitad A).
+ * Feature tests for the nexum-citas-sat integration endpoints.
+ *
+ * Appointments are FORMED manually by the team; the bot only reviews formed ones and
+ * reports back when the SAT assigns a slot.
  */
 class SatBotEndpointsTest extends TestCase
 {
@@ -64,46 +67,53 @@ class SatBotEndpointsTest extends TestCase
     }
 
     #[Test]
-    public function pending_requires_the_api_key(): void
+    public function pending_review_requires_the_api_key(): void
     {
-        $this->getJson('/api/v3/sat-bot/pending')->assertUnauthorized();
+        $this->getJson('/api/v3/sat-bot/pending-review')->assertUnauthorized();
     }
 
     #[Test]
-    public function pending_returns_appointments_and_assigns_a_pool_alias(): void
+    public function pending_review_returns_formed_appointments_with_their_alias(): void
     {
-        $email = AppointmentEmail::create(['address' => 'cita-1@dominio.mx', 'is_free' => true]);
         $soldado = $this->makeSoldado();
         $registration = Registration::factory()->create();
         $appointment = $registration->appointments()->create([
             'type' => AppointmentTypeEnum::RFC,
-            'status' => EfirmaAppointmentStatusEnum::PENDING_SCHEDULING,
+            'status' => AppointmentStatusEnum::FORMED,
             'soldado_id' => $soldado->id,
+            'email_alias' => 'cita-1@dominio.mx',
+            'formed_at' => now(),
         ]);
 
-        $response = $this->withHeader('X-Bot-Api-Key', 'test-key')->getJson('/api/v3/sat-bot/pending');
+        $response = $this->withHeader('X-Bot-Api-Key', 'test-key')->getJson('/api/v3/sat-bot/pending-review');
 
         $response->assertOk()
             ->assertJsonPath('data.0.appointment_id', $appointment->id)
             ->assertJsonPath('data.0.sat_service', 'PM')
             ->assertJsonPath('data.0.email_alias', 'cita-1@dominio.mx');
-
-        $this->assertSame('cita-1@dominio.mx', $appointment->refresh()->email_alias);
-        $this->assertFalse($email->refresh()->is_free);
     }
 
     #[Test]
-    public function pending_skips_appointments_when_the_pool_is_exhausted(): void
+    public function pending_review_skips_appointments_that_are_not_formed_or_lack_an_alias(): void
     {
         $soldado = $this->makeSoldado();
         $registration = Registration::factory()->create();
+
+        // Not yet formed — should be ignored.
         $registration->appointments()->create([
             'type' => AppointmentTypeEnum::FIEL,
-            'status' => EfirmaAppointmentStatusEnum::PENDING_SCHEDULING,
+            'status' => AppointmentStatusEnum::PENDING_FORMING,
             'soldado_id' => $soldado->id,
         ]);
 
-        $response = $this->withHeader('X-Bot-Api-Key', 'test-key')->getJson('/api/v3/sat-bot/pending');
+        // Formed but without a pool alias — the bot cannot read the token, so it is skipped.
+        $registration->appointments()->create([
+            'type' => AppointmentTypeEnum::RFC,
+            'status' => AppointmentStatusEnum::FORMED,
+            'soldado_id' => $soldado->id,
+        ]);
+
+        $response = $this->withHeader('X-Bot-Api-Key', 'test-key')->getJson('/api/v3/sat-bot/pending-review');
 
         $response->assertOk()->assertJsonCount(0, 'data');
     }
@@ -138,9 +148,10 @@ class SatBotEndpointsTest extends TestCase
         $registration = Registration::factory()->create();
         $appointment = $registration->appointments()->create([
             'type' => AppointmentTypeEnum::FIEL,
-            'status' => EfirmaAppointmentStatusEnum::PENDING_SCHEDULING,
+            'status' => AppointmentStatusEnum::FORMED,
             'soldado_id' => $soldado->id,
             'email_alias' => 'cita-2@dominio.mx',
+            'formed_at' => now(),
         ]);
 
         $payload = [
@@ -160,26 +171,59 @@ class SatBotEndpointsTest extends TestCase
         $this->postJson('/api/v3/webhook/sat-bot', $payload, ['X-Signature' => $signature])->assertOk();
 
         $appointment->refresh();
-        $this->assertSame(EfirmaAppointmentStatusEnum::SCHEDULED, $appointment->status);
+        $this->assertSame(AppointmentStatusEnum::SCHEDULED, $appointment->status);
         $this->assertSame('Módulo Culiacán', $appointment->office);
         $this->assertNotNull($appointment->acknowledgment_path);
+        $this->assertNotNull($appointment->last_review_at);
         Storage::disk(config('filesystems.default'))->assertExists($appointment->acknowledgment_path);
 
-        $this->assertTrue($email->refresh()->is_free); // alias released
+        $this->assertTrue($email->refresh()->is_free); // pool email released for reuse
         Notification::assertSentTo($soldado->user, SatAppointmentScheduledNotification::class);
     }
 
     #[Test]
-    public function callback_failed_keeps_it_pending_and_frees_the_alias(): void
+    public function callback_in_review_keeps_it_formed_and_bumps_last_review(): void
+    {
+        $soldado = $this->makeSoldado();
+        $registration = Registration::factory()->create();
+        $appointment = $registration->appointments()->create([
+            'type' => AppointmentTypeEnum::RFC,
+            'status' => AppointmentStatusEnum::FORMED,
+            'soldado_id' => $soldado->id,
+            'email_alias' => 'cita-4@dominio.mx',
+            'formed_at' => now(),
+        ]);
+
+        $payload = [
+            'appointment_id' => $appointment->id,
+            'status' => 'in_review',
+            'timestamp' => time(),
+        ];
+        $signature = $this->sign(
+            ['appointment_id' => $payload['appointment_id'], 'status' => 'in_review', 'timestamp' => $payload['timestamp']],
+            'test-secret',
+        );
+
+        $this->postJson('/api/v3/webhook/sat-bot', $payload, ['X-Signature' => $signature])->assertOk();
+
+        $appointment->refresh();
+        $this->assertSame(AppointmentStatusEnum::FORMED, $appointment->status);
+        $this->assertSame('cita-4@dominio.mx', $appointment->email_alias);
+        $this->assertNotNull($appointment->last_review_at);
+    }
+
+    #[Test]
+    public function callback_failed_keeps_it_formed_and_records_the_reason(): void
     {
         $email = AppointmentEmail::create(['address' => 'cita-3@dominio.mx', 'is_free' => false]);
         $soldado = $this->makeSoldado();
         $registration = Registration::factory()->create();
         $appointment = $registration->appointments()->create([
             'type' => AppointmentTypeEnum::RFC,
-            'status' => EfirmaAppointmentStatusEnum::PENDING_SCHEDULING,
+            'status' => AppointmentStatusEnum::FORMED,
             'soldado_id' => $soldado->id,
             'email_alias' => 'cita-3@dominio.mx',
+            'formed_at' => now(),
         ]);
 
         $payload = [
@@ -196,9 +240,9 @@ class SatBotEndpointsTest extends TestCase
         $this->postJson('/api/v3/webhook/sat-bot', $payload, ['X-Signature' => $signature])->assertOk();
 
         $appointment->refresh();
-        $this->assertSame(EfirmaAppointmentStatusEnum::PENDING_SCHEDULING, $appointment->status);
-        $this->assertNull($appointment->email_alias);
+        $this->assertSame(AppointmentStatusEnum::FORMED, $appointment->status);
+        $this->assertSame('cita-3@dominio.mx', $appointment->email_alias); // alias kept — forming was manual
         $this->assertStringContainsString('SAT sin disponibilidad', (string) $appointment->notes);
-        $this->assertTrue($email->refresh()->is_free);
+        $this->assertFalse($email->refresh()->is_free); // still in use
     }
 }
