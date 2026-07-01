@@ -81,9 +81,13 @@ class DocumentAnalysisService
      * Only documents that carry extractable identity or address data are analysed.
      * Other types (acta constitutiva renders, DocuSign envelopes, etc.) are skipped.
      *
+     * Public so the dispatching job can gate on it BEFORE creating a "processing"
+     * DocumentAnalysis record — otherwise non-analysable docs (actas/renders) would
+     * show a phantom "en proceso" spinner in the dashboard even though no API call runs.
+     *
      * @param  Document  $document  Document to check.
      */
-    private function isAnalysable(Document $document): bool
+    public function isAnalysable(Document $document): bool
     {
         return in_array($document->type, [
             DocumentTypeEnum::PASSPORT,           // Shareholder's own passport (naturalPassport{N})

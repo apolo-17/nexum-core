@@ -61,6 +61,18 @@ class AnalyzeDocumentJob implements ShouldQueue
      */
     public function handle(DocumentAnalysisService $service): void
     {
+        // Gate on document type BEFORE touching DocumentAnalysis. Otherwise a
+        // non-analysable doc (acta constitutiva, render, etc.) would get a phantom
+        // "en proceso" record and show the IA spinner even though no API call runs.
+        if (! $service->isAnalysable($this->document)) {
+            Log::info('AnalyzeDocumentJob: document type is not analysable — skipped (no analysis record).', [
+                'document_id' => $this->document->id,
+                'document_type' => $this->document->type->value,
+            ]);
+
+            return;
+        }
+
         // Mark as processing before the API call so the UI can show a spinner.
         // analyzed=false with no error_message = "in progress" (distinct from failed).
         DocumentAnalysis::updateOrCreate(
