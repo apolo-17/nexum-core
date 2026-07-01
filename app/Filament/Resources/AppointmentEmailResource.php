@@ -3,14 +3,18 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\AppointmentEmailResource\Pages;
+use App\Filament\Resources\AppointmentEmailResource\RelationManagers\AppointmentsRelationManager;
 use App\Models\AppointmentEmail;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
+use Filament\Actions\ViewAction;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Infolists\Components\TextEntry;
 use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
@@ -98,6 +102,12 @@ class AppointmentEmailResource extends Resource
                     ->label('Disponible')
                     ->boolean(),
 
+                TextColumn::make('appointments_count')
+                    ->label('Citas')
+                    ->counts('appointments')
+                    ->badge()
+                    ->color('info'),
+
                 TextColumn::make('notes')
                     ->label('Notas')
                     ->placeholder('—')
@@ -112,11 +122,49 @@ class AppointmentEmailResource extends Resource
                 TernaryFilter::make('is_free')->label('Disponible'),
             ])
             ->headerActions([CreateAction::make()->label('Agregar correo')])
-            ->actions([EditAction::make(), DeleteAction::make()]);
+            ->actions([ViewAction::make(), EditAction::make(), DeleteAction::make()]);
     }
 
     /**
-     * Define the resource pages — list only; create/edit happen in modals.
+     * Define the detail (show) view of a pool address.
+     */
+    public static function infolist(Schema $schema): Schema
+    {
+        return $schema->components([
+            Section::make('Correo del pool')
+                ->columns(3)
+                ->schema([
+                    TextEntry::make('address')->label('Correo'),
+
+                    TextEntry::make('is_free')
+                        ->label('Estado')
+                        ->badge()
+                        ->formatStateUsing(fn (bool $state): string => $state ? 'Disponible' : 'En uso')
+                        ->color(fn (bool $state): string => $state ? 'success' : 'warning'),
+
+                    TextEntry::make('appointments_count')
+                        ->label('Citas procesadas')
+                        ->state(fn (AppointmentEmail $record): int => $record->appointments()->count()),
+
+                    TextEntry::make('notes')->label('Notas')->placeholder('—')->columnSpanFull(),
+                ]),
+        ]);
+    }
+
+    /**
+     * Relation managers shown on the detail view.
+     *
+     * @return array<class-string>
+     */
+    public static function getRelations(): array
+    {
+        return [
+            AppointmentsRelationManager::class,
+        ];
+    }
+
+    /**
+     * Define the resource pages — list + detail view.
      *
      * @return array<string, PageRegistration>
      */
@@ -124,6 +172,7 @@ class AppointmentEmailResource extends Resource
     {
         return [
             'index' => Pages\ListAppointmentEmails::route('/'),
+            'view' => Pages\ViewAppointmentEmail::route('/{record}'),
         ];
     }
 }
