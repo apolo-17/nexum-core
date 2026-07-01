@@ -115,10 +115,24 @@ class MuaBotCallbackController extends Controller
         try {
             switch ($callbackStatus) {
                 case 'approved':
-                    // Capture state before processing so a repeated `approved`
-                    // callback (the bot is idempotent on data, not on email) does
-                    // not fire a duplicate approval notification.
-                    $alreadyApproved = $legalName->status === LegalNameStatusEnum::APPROVED;
+                    // Guard: only accept an approval for a denomination actually in
+                    // dictamen (SUBMITTING/PENDING/PROCESS). A real `approved` arrives
+                    // from a poll/status check while the name is in process. Ignoring
+                    // approvals for names not in process blocks phantom approvals the
+                    // bot may read from the SE's public "authorized" search, and makes
+                    // a repeated `approved` a no-op (idempotent).
+                    if (! in_array($legalName->status, [
+                        LegalNameStatusEnum::SUBMITTING,
+                        LegalNameStatusEnum::PENDING,
+                        LegalNameStatusEnum::PROCESS,
+                    ], true)) {
+                        Log::warning('MUA bot callback: ignoring `approved` for a denomination not in process.', [
+                            'legal_name_id' => $legalName->id,
+                            'status' => $legalName->status->value,
+                        ]);
+
+                        break;
+                    }
 
                     $this->processApproval($request, $legalName);
 
@@ -138,13 +152,10 @@ class MuaBotCallbackController extends Controller
                         actorType: 'bot',
                     );
                     $this->clearPendingCheck($legalName);
-
-                    if (! $alreadyApproved) {
-                        $this->notifySafely(
-                            NotificationEventEnum::DENOMINATION_APPROVED,
-                            new DenominationStatusNotification($legalName, NotificationEventEnum::DENOMINATION_APPROVED),
-                        );
-                    }
+                    $this->notifySafely(
+                        NotificationEventEnum::DENOMINATION_APPROVED,
+                        new DenominationStatusNotification($legalName, NotificationEventEnum::DENOMINATION_APPROVED),
+                    );
                     break;
 
                 case 'rejected':
