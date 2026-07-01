@@ -89,13 +89,7 @@ class DocumentAnalysisService
      */
     public function isAnalysable(Document $document): bool
     {
-        return in_array($document->type, [
-            DocumentTypeEnum::PASSPORT,           // Shareholder's own passport (naturalPassport{N})
-            DocumentTypeEnum::KYC_TAX_CERTIFICATE, // Chinese national ID / tax certificate (naturalTaxCertificate{N})
-            DocumentTypeEnum::KYC_PROOF_OF_ADDRESS,
-            DocumentTypeEnum::KYC_MARRIAGE_CERTIFICATE,
-            DocumentTypeEnum::KYC_SPOUSE_PASSPORT,
-        ], strict: true);
+        return $document->type->isAiAnalysable();
     }
 
     /**

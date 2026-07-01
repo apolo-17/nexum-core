@@ -29,6 +29,25 @@ enum DocumentTypeEnum: string
     /** Spouse's passport. Only for married shareholders. */
     case KYC_SPOUSE_PASSPORT = 'kyc_spouse_passport';
 
+    /**
+     * Whether documents of this type should be sent to Claude for AI extraction.
+     *
+     * Only identity and proof-of-address KYC documents carry extractable data.
+     * Everything else (actas, renders, DocuSign envelopes, credentials, etc.) is
+     * NOT analysable — the IA panel/spinner must never appear for them. Single
+     * source of truth used by both the analysis service and the dashboard state.
+     */
+    public function isAiAnalysable(): bool
+    {
+        return in_array($this, [
+            self::PASSPORT,
+            self::KYC_TAX_CERTIFICATE,
+            self::KYC_PROOF_OF_ADDRESS,
+            self::KYC_MARRIAGE_CERTIFICATE,
+            self::KYC_SPOUSE_PASSPORT,
+        ], strict: true);
+    }
+
     // -------------------------------------------------------------------------
     // Documents generated internally during the incorporation pipeline.
     // -------------------------------------------------------------------------

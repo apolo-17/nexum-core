@@ -259,6 +259,7 @@ class DocumentsRelationManager extends RelationManager
                             'isImage' => $record->isImage(),
                             'isPdf' => $record->isPdf(),
                             'analysis' => $record->analysis,
+                            'showAnalysis' => $record->type->isAiAnalysable(),
                         ]
                     ))
                     ->action(function (Document $record, array $data): void {

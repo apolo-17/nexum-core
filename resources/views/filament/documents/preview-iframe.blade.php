@@ -132,8 +132,10 @@
 
 {{-- =========================================================================
      PANEL DE DATOS EXTRAÍDOS POR IA
-     Se muestra debajo del documento si ya existe un DocumentAnalysis.
+     Solo para documentos analizables (identificaciones/comprobantes). Para
+     actas/renders no se muestra nada de IA. $showAnalysis lo define el tipo.
      ========================================================================= --}}
+@if (($showAnalysis ?? true))
 @if (isset($analysis))
 
     @if ($analysis->analyzed)
@@ -254,4 +256,5 @@
     <div style="margin-top: 10px; padding: 8px 12px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; color: #9ca3af; text-align: center;">
         Sin datos de extracción IA — se procesará automáticamente al aprobar el documento.
     </div>
+@endif
 @endif

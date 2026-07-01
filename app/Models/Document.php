@@ -213,6 +213,12 @@ class Document extends Model
      */
     public function aiAnalysisState(): string
     {
+        // Non-analysable types (actas, renders, credentials, etc.) never go to the AI,
+        // so they must never show a spinner — regardless of approval or any stale record.
+        if (! $this->type->isAiAnalysable()) {
+            return 'none';
+        }
+
         $analysis = $this->analysis;
 
         if ($analysis !== null) {
