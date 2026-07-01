@@ -31,11 +31,6 @@ use Illuminate\Support\Facades\Log;
 class MuaSubmissionService
 {
     /**
-     * Maximum denominations a single FIEL account may submit per calendar day.
-     */
-    private const DAILY_LIMIT = 5;
-
-    /**
      * Timezone used for all business-hours and daily-limit calculations.
      */
     private const TIMEZONE = 'America/Mexico_City';
@@ -128,7 +123,15 @@ class MuaSubmissionService
         $soldado = $this->findAvailableFiel();
 
         if ($soldado === null) {
-            Log::warning('MuaSubmissionService: no FIEL with available daily capacity — denomination deferred.', [
+            // Every FIEL is busy: the SE allows a single in-process request per
+            // fedatario, so the denomination waits until one frees up (its current
+            // denomination is approved or rejected).
+            $legalName->recordEvent(
+                LegalNameEventTypeEnum::DEFERRED,
+                'Sin fedatario disponible: todas las FIEL tienen una denominación en proceso en la SE. Se reintentará cuando se libere una.',
+            );
+
+            Log::warning('MuaSubmissionService: all FIELs occupied with an in-process denomination — deferred.', [
                 'legal_name_id' => $legalName->id,
                 'name' => $legalName->name,
             ]);
@@ -162,41 +165,47 @@ class MuaSubmissionService
     }
 
     /**
-     * Find the soldado FIEL with the lowest daily usage that still has capacity.
+     * Find a soldado FIEL that is free to take a new denomination.
      *
-     * Filters soldados by: MUA capability, active flag, all three credentials present,
-     * and fewer than DAILY_LIMIT submissions today (CDMX calendar day). Returns the one
-     * with the fewest submissions so load is distributed evenly across accounts.
+     * The SE portal (Notaría 248) allows only ONE in-process request per fedatario
+     * at a time, so a FIEL is eligible only when it is not already holding an
+     * in-process denomination. Filters by: MUA capability, active flag, all three
+     * credentials present, and no denomination currently in process. Returns the
+     * first free FIEL, or null when every FIEL is occupied.
      *
-     * @return Soldado|null The best available soldado, or null if none qualify.
+     * @return Soldado|null A free soldado FIEL, or null if none are available.
      */
     public function findAvailableFiel(): ?Soldado
     {
         return Soldado::where('available_for_mua', true)
             ->where('is_active', true)
             ->get()
-            ->filter(function (Soldado $soldado): bool {
+            ->first(function (Soldado $soldado): bool {
                 return $soldado->isReadyForMua()
-                    && $this->dailySubmissionsCount($soldado) < self::DAILY_LIMIT;
-            })
-            ->sortBy(fn (Soldado $soldado): int => $this->dailySubmissionsCount($soldado))
-            ->first();
+                    && ! $this->hasInProcessDenomination($soldado);
+            });
     }
 
     /**
-     * Count how many denominations this soldado has submitted today (CDMX time).
+     * Determine whether the soldado's FIEL is currently occupied.
+     *
+     * A FIEL holding a denomination in a non-terminal state — SUBMITTING, PENDING
+     * or PROCESS — cannot take another one (the SE allows a single in-process
+     * request per fedatario). The slot frees only when that denomination becomes
+     * APPROVED or REJECTED.
      *
      * @param  Soldado  $soldado  The soldado FIEL to check.
-     * @return int Number of submissions made since midnight CDMX today.
+     * @return bool True when the FIEL already has an in-process denomination.
      */
-    public function dailySubmissionsCount(Soldado $soldado): int
+    public function hasInProcessDenomination(Soldado $soldado): bool
     {
-        $todayStart = Carbon::now(self::TIMEZONE)->startOfDay()->utc();
-        $todayEnd = Carbon::now(self::TIMEZONE)->endOfDay()->utc();
-
         return LegalName::where('soldado_id', $soldado->id)
-            ->whereBetween('submitted_at', [$todayStart, $todayEnd])
-            ->count();
+            ->whereIn('status', [
+                LegalNameStatusEnum::SUBMITTING->value,
+                LegalNameStatusEnum::PENDING->value,
+                LegalNameStatusEnum::PROCESS->value,
+            ])
+            ->exists();
     }
 
     /**
