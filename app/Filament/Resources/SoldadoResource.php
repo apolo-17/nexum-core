@@ -33,6 +33,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 
@@ -366,6 +367,36 @@ class SoldadoResource extends Resource
                             Notification::make()
                                 ->title('No se pudo enviar la invitación')
                                 ->body($exception->getMessage())
+                                ->danger()
+                                ->send();
+                        }
+                    }),
+
+                Action::make('resendInvitation')
+                    ->label('Reenviar invitación')
+                    ->icon('heroicon-o-envelope')
+                    ->color('info')
+                    ->visible(fn (Soldado $record): bool => $record->user_id !== null)
+                    ->requiresConfirmation()
+                    ->modalDescription('Se enviará un nuevo correo con un enlace vigente por 60 minutos para que el soldado defina su contraseña. El enlace anterior dejará de funcionar.')
+                    ->action(function (Soldado $record): void {
+                        try {
+                            self::grantAccess($record);
+
+                            Notification::make()
+                                ->title('Invitación reenviada correctamente.')
+                                ->body('El soldado recibirá un nuevo correo para completar su registro.')
+                                ->success()
+                                ->send();
+                        } catch (\Throwable $exception) {
+                            Log::error('Failed to resend soldado invitation.', [
+                                'soldado_id' => $record->id,
+                                'error' => $exception->getMessage(),
+                            ]);
+
+                            Notification::make()
+                                ->title('No se pudo reenviar la invitación')
+                                ->body('Revisa la configuración de correo (Resend).')
                                 ->danger()
                                 ->send();
                         }
