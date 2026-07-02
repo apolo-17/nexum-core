@@ -186,8 +186,6 @@ OBJETO;
 
     /**
      * Run the backfill for every configured company.
-     *
-     * @return void
      */
     public function run(): void
     {
@@ -204,8 +202,6 @@ OBJETO;
      *
      * @param  string  $code  Singapur client code, e.g. "000004".
      * @param  array<string, mixed>  $data  Acta data for this company.
-     *
-     * @return void
      */
     private function backfillCompany(string $code, array $data): void
     {
@@ -219,9 +215,9 @@ OBJETO;
             return;
         }
 
-        DB::transaction(function () use ($registration, $code, $data): void {
+        DB::transaction(function () use ($registration, $data): void {
             $registration->update([
-                'company_type'   => self::COMPANY_TYPE,
+                'company_type' => self::COMPANY_TYPE,
                 'capital_social' => $data['capital_social'],
                 'company_object' => self::OBJETO,
             ]);
@@ -229,14 +225,14 @@ OBJETO;
             LegalName::updateOrCreate(
                 [
                     'registration_id' => $registration->id,
-                    'priority'        => 1,
+                    'priority' => 1,
                 ],
                 [
-                    'name'                     => $data['denomination'],
-                    'company_type'             => self::COMPANY_TYPE,
-                    'status'                   => LegalNameStatusEnum::APPROVED,
+                    'name' => $data['denomination'],
+                    'company_type' => self::COMPANY_TYPE,
+                    'status' => LegalNameStatusEnum::APPROVED,
                     'clave_unica_denominacion' => $data['clave_unica_denominacion'],
-                    'authorization_timestamp'  => $data['authorization_timestamp'],
+                    'authorization_timestamp' => $data['authorization_timestamp'],
                 ],
             );
 
@@ -247,23 +243,23 @@ OBJETO;
                         'passport_number' => $socio['passport_number'],
                     ],
                     [
-                        'name'                     => $socio['name'],
-                        'nationality'              => 'china',
+                        'name' => $socio['name'],
+                        'nationality' => 'china',
                         'participation_percentage' => $socio['participation_percentage'],
-                        'role'                     => $socio['role'],
-                        'email'                    => $socio['email'],
-                        'phone_country_code'       => '+86',
-                        'is_married'               => false,
-                        'gender'                   => $socio['gender'],
-                        'birthdate'                => $socio['birthdate'],
-                        'birthplace'               => $socio['birthplace'],
-                        'civil_status'             => $socio['civil_status'],
-                        'tax_id'                   => $socio['tax_id'],
+                        'role' => $socio['role'],
+                        'email' => $socio['email'],
+                        'phone_country_code' => '+86',
+                        'is_married' => false,
+                        'gender' => $socio['gender'],
+                        'birthdate' => $socio['birthdate'],
+                        'birthplace' => $socio['birthplace'],
+                        'civil_status' => $socio['civil_status'],
+                        'tax_id' => $socio['tax_id'],
                     ],
                 );
             }
         });
 
-        $this->command->info("[{$code}] {$data['denomination']} — denominación, empresa y ".count($data['socios'])." socios cargados.");
+        $this->command->info("[{$code}] {$data['denomination']} — denominación, empresa y ".count($data['socios']).' socios cargados.');
     }
 }
