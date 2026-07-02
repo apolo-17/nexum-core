@@ -312,7 +312,15 @@ class MuaSubmissionService
         );
 
         try {
-            Http::timeout(180)
+            // We only need the bot to RECEIVE the request. It then works ~1 min
+            // (login + capture + sign) and reports the real outcome via the webhook
+            // callback — the source of truth. Blocking the PHP process up to 180s
+            // pinned a worker/web request for minutes and, on a 1 GB instance, forced
+            // Horizon to spin up extra workers → RAM spikes. A short timeout frees the
+            // process fast; the ConnectionException below is the expected, safe path
+            // (status stays SUBMITTING and the webhook finalizes it).
+            Http::connectTimeout(10)
+                ->timeout(30)
                 ->withHeader('X-Bot-Api-Key', $apiKey)
                 ->post("{$botUrl}/submit", [
                     'legal_name_id' => $legalName->id,

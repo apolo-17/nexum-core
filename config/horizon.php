@@ -44,7 +44,7 @@ return [
 
     'prefix' => env(
         'HORIZON_PREFIX',
-        Str::slug(env('APP_NAME', 'nexum'), '_') . '_horizon:',
+        Str::slug(env('APP_NAME', 'nexum'), '_').'_horizon:',
     ),
 
     /*
@@ -72,7 +72,7 @@ return [
 
     'waits' => [
         'redis:webhooks' => 30,
-        'redis:default'  => 120,
+        'redis:default' => 120,
     ],
 
     /*
@@ -82,12 +82,12 @@ return [
     */
 
     'trim' => [
-        'recent'        => 60,     // 1 hour
-        'pending'       => 60,
-        'completed'     => 60,
+        'recent' => 60,     // 1 hour
+        'pending' => 60,
+        'completed' => 60,
         'recent_failed' => 10080,  // 7 days
-        'failed'        => 10080,
-        'monitored'     => 10080,
+        'failed' => 10080,
+        'monitored' => 10080,
     ],
 
     /*
@@ -108,7 +108,7 @@ return [
 
     'metrics' => [
         'trim_snapshots' => [
-            'job'   => 24,
+            'job' => 24,
             'queue' => 24,
         ],
     ],
@@ -150,31 +150,31 @@ return [
 
     'defaults' => [
         'supervisor-webhooks' => [
-            'connection'          => 'redis',
-            'queue'               => ['webhooks'],
-            'balance'             => 'auto',
+            'connection' => 'redis',
+            'queue' => ['webhooks'],
+            'balance' => 'auto',
             'autoScalingStrategy' => 'time',
-            'maxProcesses'        => 1,
-            'maxTime'             => 0,
-            'maxJobs'             => 0,
-            'memory'              => 128,
-            'tries'               => 3,
-            'timeout'             => 120, // ZIP download + parse can take time
-            'nice'                => 0,
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 3,
+            'timeout' => 120, // ZIP download + parse can take time
+            'nice' => 0,
         ],
 
         'supervisor-default' => [
-            'connection'          => 'redis',
-            'queue'               => ['default'],
-            'balance'             => 'auto',
+            'connection' => 'redis',
+            'queue' => ['default'],
+            'balance' => 'auto',
             'autoScalingStrategy' => 'time',
-            'maxProcesses'        => 1,
-            'maxTime'             => 0,
-            'maxJobs'             => 0,
-            'memory'              => 128,
-            'tries'               => 3,
-            'timeout'             => 60,
-            'nice'                => 0,
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 3,
+            'timeout' => 60,
+            'nice' => 0,
         ],
     ],
 
@@ -186,13 +186,17 @@ return [
          * default: up to 10 workers; general background work.
          */
         'production' => [
+            // Single 1 GB instance shared by web + Horizon. Cap each supervisor at
+            // one worker so a submission burst can't fan out to 4 PHP processes and
+            // spike RAM to ~90%. Volume is low (manual denomination sends); raise
+            // these again only if the queue visibly backs up.
             'supervisor-webhooks' => [
-                'maxProcesses'    => 2,
+                'maxProcesses' => 1,
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
             'supervisor-default' => [
-                'maxProcesses'    => 2,
+                'maxProcesses' => 1,
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
@@ -215,12 +219,12 @@ return [
          */
         'staging' => [
             'supervisor-webhooks' => [
-                'maxProcesses'    => 2,
+                'maxProcesses' => 2,
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 5,
             ],
             'supervisor-default' => [
-                'maxProcesses'    => 3,
+                'maxProcesses' => 3,
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 5,
             ],
