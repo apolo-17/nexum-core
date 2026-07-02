@@ -75,6 +75,7 @@ class LegalNamesRelationManager extends RelationManager
                     ->label('Estatus')
                     ->formatStateUsing(fn (LegalNameStatusEnum $state) => $state->label())
                     ->color(fn (LegalNameStatusEnum $state): string => $state->color()),
+                TextColumn::make('soldado.name')->label('FIEL')->placeholder('Se asigna al enviar'),
                 TextColumn::make('clave_unica_denominacion')->label('Clave SE')->placeholder('—'),
             ])
             ->defaultSort('priority')
