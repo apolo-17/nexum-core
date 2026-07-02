@@ -2,8 +2,8 @@
 
 namespace Tests\Feature\Soldado;
 
+use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
-use App\Enums\EfirmaAppointmentStatusEnum;
 use App\Filament\Resources\MisCitasResource;
 use App\Filament\Resources\MisEmpresasResource;
 use App\Models\Registration;
@@ -52,13 +52,13 @@ class SoldadoDashboardTest extends TestCase
         $myAppointment = $regA->appointments()->create([
             'soldado_id' => $mine->id,
             'type' => AppointmentTypeEnum::RFC,
-            'status' => EfirmaAppointmentStatusEnum::SCHEDULED,
+            'status' => AppointmentStatusEnum::SCHEDULED,
         ]);
 
         $regB->appointments()->create([
             'soldado_id' => $other->id,
             'type' => AppointmentTypeEnum::FIEL,
-            'status' => EfirmaAppointmentStatusEnum::SCHEDULED,
+            'status' => AppointmentStatusEnum::SCHEDULED,
         ]);
 
         $this->actingAs($mine->user);
