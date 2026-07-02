@@ -187,6 +187,51 @@ class MuaSubmissionService
     }
 
     /**
+     * Determine whether at least one COMPLETE FIEL exists at all — regardless of
+     * whether it is busy right now.
+     *
+     * "Complete" means an active soldado flagged for MUA that holds all three
+     * credentials (certificate, private_key, password). This is the check to run
+     * before sending: if it returns false there is simply no usable FIEL and the
+     * denominations cannot be registered until one is configured.
+     *
+     * @return bool True when at least one soldado has a complete FIEL.
+     */
+    public function hasAnyCompleteFiel(): bool
+    {
+        return Soldado::where('available_for_mua', true)
+            ->where('is_active', true)
+            ->get()
+            ->contains(fn (Soldado $soldado): bool => $soldado->isReadyForMua());
+    }
+
+    /**
+     * Human-readable reason a submission cannot happen right now, or null if it can.
+     *
+     * Distinguishes the three deferral causes so the dashboard can show an accurate
+     * alert: outside business hours, no complete FIEL configured at all, or every
+     * complete FIEL is currently occupied with an in-process denomination.
+     *
+     * @return string|null The reason, or null when a FIEL is available to submit now.
+     */
+    public function unavailabilityReason(): ?string
+    {
+        if (! $this->isBusinessHours()) {
+            return 'Fuera del horario hábil de la SE (Lun–Vie 09:00–16:00 CDMX).';
+        }
+
+        if (! $this->hasAnyCompleteFiel()) {
+            return 'No hay ninguna FIEL completa disponible. Cada FIEL necesita sus tres elementos (certificado .cer, llave privada .key y contraseña); revisa el módulo de Soldados.';
+        }
+
+        if ($this->findAvailableFiel() === null) {
+            return 'Todas las FIEL están ocupadas con una denominación en proceso en la SE. Se reintentará cuando se libere una.';
+        }
+
+        return null;
+    }
+
+    /**
      * Determine whether the soldado's FIEL is currently occupied.
      *
      * A FIEL holding a denomination in a non-terminal state — SUBMITTING, PENDING

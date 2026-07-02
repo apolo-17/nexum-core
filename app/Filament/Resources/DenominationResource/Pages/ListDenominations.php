@@ -151,14 +151,30 @@ class ListDenominations extends ListRecords
                     return;
                 }
 
+                $service = app(MuaSubmissionService::class);
+
+                // Pre-check: if there is no complete FIEL at all, nothing can be sent.
+                // Alert clearly and list every denomination that stayed unsent.
+                if (! $service->hasAnyCompleteFiel()) {
+                    $names = $pending->pluck('name')->implode(', ');
+
+                    Notification::make()
+                        ->title('No se registró ninguna denominación — sin FIEL disponible.')
+                        ->body('No hay ninguna FIEL completa (certificado .cer, llave privada .key y contraseña). '
+                            ."No se enviaron: {$names}. Configura una FIEL en el módulo de Soldados y vuelve a intentar.")
+                        ->danger()
+                        ->persistent()
+                        ->send();
+
+                    return;
+                }
+
                 $sent = 0;
-                $deferred = 0;
                 $errors = 0;
+                $deferredNames = [];
                 $reason = null;
 
                 foreach ($pending as $name) {
-                    $service = app(MuaSubmissionService::class);
-
                     try {
                         if ($service->trySubmit($name)) {
                             $sent++;
@@ -185,10 +201,9 @@ class ListDenominations extends ListRecords
                     if ($name->status !== LegalNameStatusEnum::WAIT) {
                         $name->update(['status' => LegalNameStatusEnum::WAIT]);
                     }
-                    $deferred++;
-                    $deferReason = ! $service->isBusinessHours()
-                        ? 'Fuera del horario hábil de la SE (Lun–Vie 09:00–16:00 CDMX).'
-                        : 'No hay FIEL con capacidad disponible hoy (límite 5/día por FIEL).';
+                    $deferredNames[] = $name->name;
+                    $deferReason = $service->unavailabilityReason()
+                        ?? 'No fue posible enviar la denominación en este momento.';
                     $reason ??= $deferReason;
 
                     $name->recordEvent(
@@ -198,16 +213,22 @@ class ListDenominations extends ListRecords
                     );
                 }
 
+                $deferred = count($deferredNames);
                 $body = "Enviadas: {$sent} · Diferidas: {$deferred} · Errores: {$errors}.";
 
-                if ($deferred > 0 && $reason !== null) {
-                    $body .= " {$reason}";
+                if ($deferred > 0) {
+                    $body .= ' No se enviaron: '.implode(', ', $deferredNames).'.';
+
+                    if ($reason !== null) {
+                        $body .= " Motivo: {$reason}";
+                    }
                 }
 
                 Notification::make()
                     ->title('Envío de denominaciones procesado.')
                     ->body($body)
                     ->status($errors > 0 || $deferred > 0 ? 'warning' : 'success')
+                    ->persistent()
                     ->send();
             });
     }

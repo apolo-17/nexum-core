@@ -180,14 +180,17 @@ class DenominationResource extends Resource
                 ->success();
         }
 
-        // Deferred — keep it queued as WAIT and explain the reason.
+        // Deferred — keep it queued as WAIT and explain the exact reason.
         if ($record->status !== LegalNameStatusEnum::WAIT) {
             $record->update(['status' => LegalNameStatusEnum::WAIT]);
         }
 
-        $reason = ! $service->isBusinessHours()
-            ? 'Fuera del horario hábil de la SE (Lun–Vie 09:00–16:00 CDMX).'
-            : 'No hay FIEL con capacidad disponible hoy (límite 5/día por FIEL).';
+        $reason = $service->unavailabilityReason()
+            ?? 'No fue posible enviar la denominación en este momento.';
+
+        // No complete FIEL configured is a blocking problem (not a transient defer),
+        // so surface it as an error the operator must act on.
+        $noFiel = ! $service->hasAnyCompleteFiel();
 
         $record->recordEvent(
             LegalNameEventTypeEnum::DEFERRED,
@@ -196,9 +199,11 @@ class DenominationResource extends Resource
         );
 
         return Notification::make()
-            ->title("«{$record->name}»: envío diferido — quedó en espera.")
-            ->body($reason.' Vuelve a intentar cuando aplique.')
-            ->warning()
+            ->title($noFiel
+                ? "«{$record->name}»: no se pudo enviar — sin FIEL disponible."
+                : "«{$record->name}»: envío diferido — quedó en espera.")
+            ->body($reason.($noFiel ? '' : ' Vuelve a intentar cuando aplique.'))
+            ->status($noFiel ? 'danger' : 'warning')
             ->persistent();
     }
 
