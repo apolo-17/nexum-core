@@ -139,6 +139,44 @@ class DenominationResource extends Resource
                     ->action(function (LegalName $record): void {
                         self::attemptSubmit($record)->send();
                     }),
+
+                Action::make('force_delete')
+                    ->label('Eliminar')
+                    ->icon('heroicon-o-trash')
+                    ->color('danger')
+                    // Only draft ("Borrador") or queued ("En cola de envío") names — never
+                    // one already sent / in dictamen / resolved.
+                    ->visible(fn (LegalName $record): bool => in_array(
+                        $record->status,
+                        [LegalNameStatusEnum::DRAFT, LegalNameStatusEnum::WAIT],
+                        true,
+                    ))
+                    ->requiresConfirmation()
+                    ->modalHeading('Eliminar denominación')
+                    ->modalDescription('Se eliminará de forma permanente. Solo aplica a borradores o denominaciones en cola, y únicamente si no están ligadas a ningún expediente.')
+                    ->modalSubmitActionLabel('Eliminar')
+                    ->action(function (LegalName $record): void {
+                        // Safety guard: never delete a denomination tied to a company.
+                        if ($record->registration_id !== null) {
+                            Notification::make()
+                                ->title("«{$record->name}»: no se puede eliminar.")
+                                ->body('Está ligada a un expediente; eliminarla afectaría esa empresa.')
+                                ->danger()
+                                ->send();
+
+                            return;
+                        }
+
+                        $name = $record->name;
+                        // LegalName no usa SoftDeletes → delete() es permanente (force).
+                        // Los eventos hijos se borran solos (FK cascadeOnDelete).
+                        $record->delete();
+
+                        Notification::make()
+                            ->title("«{$name}»: denominación eliminada.")
+                            ->success()
+                            ->send();
+                    }),
             ]);
     }
 
