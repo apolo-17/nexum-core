@@ -84,13 +84,22 @@ class DenominationGeneratorService
     {
         return <<<PROMPT
             Genera exactamente {$quantity} propuestas de denominación social (razón social)
-            para una empresa nueva en México. Reglas:
-            - Nombres originales, sobrios y profesionales, evocando consultoría, comercio o servicios.
-            - En español. Sin el tipo de sociedad al final (no agregues "S.A.", "S. de R.L.", etc.).
+            para empresas de capital chino que se constituyen en México (comercio,
+            importación/exportación y e-commerce). Reglas:
+            - Cada nombre = una palabra o expresión CHINA transliterada al alfabeto latino
+              (pinyin, p. ej. HUA DIAN, DONG HAI, SHANG LI, GUANG HUA, JIN LONG, TIAN XIN)
+              seguida de un descriptor comercial EN ESPAÑOL
+              (p. ej. COMERCIO, DISTRIBUCIÓN, IMPORTACIONES, TIENDA DIGITAL, GLOBAL,
+              INTERNACIONAL, COMERCIAL, LOGÍSTICA).
+            - Estilo de referencia (real): "HUA DIAN TIENDA DIGITAL",
+              "DONGHAI COMERCIO INTERNACIONAL", "SHANG LI COMERCIO DIGITAL",
+              "GUANGHUA DISTRIBUCIÓN".
+            - Pinyin plausible y variado; NO uses caracteres chinos, solo alfabeto latino.
+            - Sin el tipo de sociedad al final (no agregues "S.A.", "S. de R.L.", etc.).
             - Entre 2 y 4 palabras. Sin comillas, sin numeración.
             - Evita marcas conocidas y términos restringidos (México, Nacional, Banco, etc.).
             Devuelve ÚNICAMENTE un arreglo JSON de cadenas, por ejemplo:
-            ["NOMBRE UNO", "NOMBRE DOS"]
+            ["HUA DIAN COMERCIO DIGITAL", "DONG HAI IMPORTACIONES"]
             Nada de texto adicional.
             PROMPT;
     }
