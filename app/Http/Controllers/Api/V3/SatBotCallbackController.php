@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V3;
 
+use App\Enums\AppointmentEventTypeEnum;
 use App\Enums\AppointmentStatusEnum;
 use App\Enums\NotificationEventEnum;
 use App\Http\Controllers\Controller;
@@ -104,14 +105,14 @@ class SatBotCallbackController extends Controller
                 'scheduled' => $this->processScheduled($request, $appointment),
                 'in_review' => $this->processInReview($appointment),
                 'failed' => $this->processFailure($request, $appointment),
-                'rejected' => $appointment->update([
-                    'status' => AppointmentStatusEnum::REJECTED,
-                    'last_review_at' => now(),
-                ]),
-                'no_show' => $appointment->update([
-                    'status' => AppointmentStatusEnum::NO_SHOW,
-                    'last_review_at' => now(),
-                ]),
+                'rejected' => $this->processTerminal(
+                    $appointment, AppointmentStatusEnum::REJECTED,
+                    AppointmentEventTypeEnum::REJECTED, 'El SAT rechazó la cita.',
+                ),
+                'no_show' => $this->processTerminal(
+                    $appointment, AppointmentStatusEnum::NO_SHOW,
+                    AppointmentEventTypeEnum::NO_SHOW, 'El soldado no se presentó a la cita.',
+                ),
             };
         } catch (\Throwable $th) {
             Log::error('SAT bot callback: failed to process result.', [
@@ -124,6 +125,24 @@ class SatBotCallbackController extends Controller
         }
 
         return response()->json(['message' => 'Appointment updated.'], Response::HTTP_OK);
+    }
+
+    /**
+     * Apply a terminal status (rejected / no_show) and leave it on the timeline.
+     *
+     * @param  Appointment  $appointment  The appointment being closed.
+     * @param  AppointmentStatusEnum  $status  The status to set.
+     * @param  AppointmentEventTypeEnum  $event  The timeline entry to append.
+     * @param  string  $description  Human-readable summary for the timeline.
+     */
+    private function processTerminal(
+        Appointment $appointment,
+        AppointmentStatusEnum $status,
+        AppointmentEventTypeEnum $event,
+        string $description,
+    ): void {
+        $appointment->update(['status' => $status, 'last_review_at' => now()]);
+        $appointment->recordEvent($event, $description);
     }
 
     /**
@@ -183,6 +202,13 @@ class SatBotCallbackController extends Controller
 
         $appointment->update($attributes);
 
+        $appointment->recordEvent(
+            AppointmentEventTypeEnum::FORMED,
+            'El bot formó la cita en la fila virtual'
+                .(filled($appointment->office) ? " (sucursal {$appointment->office})" : '').'.',
+            ['office' => $appointment->office, 'email_alias' => $appointment->email_alias],
+        );
+
         $this->notifyTeam(NotificationEventEnum::SAT_APPOINTMENT_FORMED, $appointment, 'formed');
 
         Log::info('SAT bot callback: appointment formed in the virtual queue.', [
@@ -231,6 +257,17 @@ class SatBotCallbackController extends Controller
 
         $this->notifySoldado($appointment);
 
+        $appointment->recordEvent(
+            AppointmentEventTypeEnum::SCHEDULED,
+            'El SAT asignó fecha y hora: '
+                .($appointment->scheduled_at?->format('d/m/Y H:i') ?? 'sin fecha').'.',
+            [
+                'scheduled_at' => $appointment->scheduled_at?->toDateTimeString(),
+                'office' => $appointment->office,
+                'acuse' => filled($appointment->acknowledgment_path),
+            ],
+        );
+
         // Y al equipo, para que sepan que ya hay fecha sin revisar el panel.
         $this->notifyTeam(NotificationEventEnum::SAT_APPOINTMENT_SCHEDULED, $appointment, 'scheduled');
 
@@ -248,6 +285,11 @@ class SatBotCallbackController extends Controller
     private function processInReview(Appointment $appointment): void
     {
         $appointment->update(['last_review_at' => now()]);
+
+        $appointment->recordEvent(
+            AppointmentEventTypeEnum::REVIEWED,
+            'El bot revisó el SAT: el turno sigue en la fila, sin fecha asignada.',
+        );
 
         Log::info('SAT bot callback: appointment reviewed, still no slot.', [
             'appointment_id' => $appointment->id,
@@ -275,6 +317,12 @@ class SatBotCallbackController extends Controller
             'notes' => $note,
             'last_review_at' => now(),
         ]);
+
+        $appointment->recordEvent(
+            AppointmentEventTypeEnum::FAILED,
+            "El bot no pudo {$phase} la cita: {$reason}",
+            ['phase' => $phase, 'reason' => $reason],
+        );
 
         $this->notifyTeam(NotificationEventEnum::SAT_APPOINTMENT_FAILED, $appointment, 'failed', $reason);
 

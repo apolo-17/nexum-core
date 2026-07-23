@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\SatBot;
 
+use App\Enums\AppointmentEventTypeEnum;
 use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
 use App\Enums\NotificationEventEnum;
@@ -363,6 +364,75 @@ class SatBotEndpointsTest extends TestCase
         $response = $this->withHeader('X-Bot-Api-Key', 'test-key')->getJson('/api/v3/sat-bot/pending-review');
 
         $response->assertOk()->assertJsonCount(0, 'data');
+    }
+
+    #[Test]
+    public function every_callback_leaves_a_trace_on_the_timeline(): void
+    {
+        // El punto del historial: saber si el bot ha estado trabajando la cita, no solo
+        // en qué estado quedó.
+        $soldado = $this->makeSoldado();
+        $registration = Registration::factory()->create();
+        $appointment = $registration->appointments()->create([
+            'type' => AppointmentTypeEnum::RFC,
+            'status' => AppointmentStatusEnum::FORMED,
+            'soldado_id' => $soldado->id,
+            'email_alias' => 'soldado1@nexumcore.app',
+            'formed_at' => now(),
+        ]);
+
+        foreach (['in_review', 'in_review', 'failed'] as $status) {
+            $payload = ['appointment_id' => $appointment->id, 'status' => $status,
+                        'failure_reason' => 'sin conexión', 'timestamp' => time()];
+            $signature = $this->sign(
+                ['appointment_id' => $appointment->id, 'status' => $status, 'timestamp' => $payload['timestamp']],
+                'test-secret',
+            );
+            $this->postJson('/api/v3/webhook/sat-bot', $payload, ['X-Signature' => $signature])->assertOk();
+        }
+
+        $tipos = $appointment->events()->pluck('type')->all();
+        $this->assertSame([
+            AppointmentEventTypeEnum::FAILED,
+            AppointmentEventTypeEnum::REVIEWED,
+            AppointmentEventTypeEnum::REVIEWED,
+        ], $tipos); // más reciente primero
+
+        $fallo = $appointment->events()->first();
+        $this->assertSame('bot', $fallo->actor_type);
+        $this->assertStringContainsString('sin conexión', $fallo->description);
+        $this->assertSame('revisar', $fallo->metadata['phase']);
+    }
+
+    #[Test]
+    public function the_scheduled_callback_records_the_date_on_the_timeline(): void
+    {
+        Notification::fake();
+        Storage::fake(config('filesystems.default'));
+
+        $soldado = $this->makeSoldado();
+        $registration = Registration::factory()->create();
+        $appointment = $registration->appointments()->create([
+            'type' => AppointmentTypeEnum::RFC,
+            'status' => AppointmentStatusEnum::FORMED,
+            'soldado_id' => $soldado->id,
+            'email_alias' => 'soldado1@nexumcore.app',
+            'formed_at' => now(),
+        ]);
+
+        $payload = ['appointment_id' => $appointment->id, 'status' => 'scheduled',
+                    'scheduled_at' => '2026-08-05 09:30:00', 'office' => 'ADSC DF "2" Centro',
+                    'timestamp' => time()];
+        $signature = $this->sign(
+            ['appointment_id' => $appointment->id, 'status' => 'scheduled', 'timestamp' => $payload['timestamp']],
+            'test-secret',
+        );
+
+        $this->postJson('/api/v3/webhook/sat-bot', $payload, ['X-Signature' => $signature])->assertOk();
+
+        $evento = $appointment->events()->first();
+        $this->assertSame(AppointmentEventTypeEnum::SCHEDULED, $evento->type);
+        $this->assertStringContainsString('05/08/2026 09:30', $evento->description);
     }
 
     #[Test]

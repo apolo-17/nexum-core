@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\RegistrationResource\RelationManagers;
 
+use App\Enums\AppointmentEventTypeEnum;
 use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
 use App\Models\Appointment;
@@ -9,16 +10,20 @@ use App\Models\AppointmentEmail;
 use App\Models\SatModule;
 use App\Services\Sat\SatFormingService;
 use Filament\Actions\Action;
+use Filament\Infolists\Components\TextEntry as InfoTextEntry;
+use Filament\Infolists\Components\ViewEntry;
 use Filament\Notifications\Notification;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
+use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\BadgeColumn;
 use Filament\Tables\Columns\TextColumn;
@@ -45,6 +50,32 @@ class AppointmentsRelationManager extends RelationManager
     public function isReadOnly(): bool
     {
         return false;
+    }
+
+    /**
+     * Timezone used to display stored (UTC) timestamps: the SAT operates in CDMX.
+     */
+    private const TIMEZONE = 'America/Mexico_City';
+
+    /**
+     * Human-readable office: the bot stores the SAT module id, not its name.
+     *
+     * @param  Appointment  $record  The appointment whose office is shown.
+     */
+    private static function officeName(Appointment $record): string
+    {
+        $office = (string) ($record->office ?? '');
+
+        if ($office === '') {
+            return '';
+        }
+
+        // El bot guarda el id numérico del módulo; tradúcelo al nombre del catálogo.
+        if (ctype_digit($office)) {
+            return SatModule::where('sat_id', (int) $office)->value('name') ?? $office;
+        }
+
+        return $office;
     }
 
     /**
@@ -140,6 +171,17 @@ class AppointmentsRelationManager extends RelationManager
                     ->label('Soldado')
                     ->placeholder('—'),
 
+                TextColumn::make('last_review_at')
+                    ->label('Última revisión')
+                    ->dateTime('d/m/Y H:i', 'America/Mexico_City')
+                    ->since()
+                    ->placeholder('Sin revisar')
+                    ->tooltip(fn ($record) => $record->last_review_at
+                        ? 'El bot la revisó por última vez el '
+                            .$record->last_review_at->timezone('America/Mexico_City')->format('d/m/Y H:i')
+                        : 'El bot todavía no la revisa')
+                    ->toggleable(),
+
                 TextColumn::make('office')
                     ->label('Sucursal')
                     ->placeholder('—')
@@ -165,6 +207,70 @@ class AppointmentsRelationManager extends RelationManager
             ])
             ->defaultSort('type')
             ->actions([
+                ViewAction::make()
+                    ->label('Ver detalle')
+                    ->icon('heroicon-o-eye')
+                    ->modalHeading(fn (Appointment $record): string => 'Cita '.$record->type->label())
+                    ->modalWidth('4xl')
+                    ->schema([
+                        Section::make('La cita')
+                            ->columns(3)
+                            ->schema([
+                                InfoTextEntry::make('type')->label('Trámite')
+                                    ->state(fn (Appointment $r): string => $r->type->label()),
+                                InfoTextEntry::make('status')->label('Estado')->badge()
+                                    ->state(fn (Appointment $r): string => $r->status->label())
+                                    ->color(fn (Appointment $r): string => $r->status->color()),
+                                InfoTextEntry::make('scheduled_at')->label('Fecha asignada por el SAT')
+                                    ->dateTime('d/m/Y H:i', self::TIMEZONE)
+                                    ->placeholder('El SAT aún no asigna fecha'),
+                                InfoTextEntry::make('office')->label('Sucursal')
+                                    ->state(fn (Appointment $r): string => self::officeName($r))
+                                    ->placeholder('—')->columnSpan(2),
+                                InfoTextEntry::make('preferred_module')->label('Sucursal pedida')
+                                    ->state(fn (Appointment $r): ?string => $r->preferred_module
+                                        ? (SatModule::where('sat_id', $r->preferred_module)->value('name')
+                                            ?? (string) $r->preferred_module)
+                                        : null)
+                                    ->placeholder('La elige el bot'),
+                                InfoTextEntry::make('email_alias')->label('Correo del pool')
+                                    ->placeholder('Sin asignar')
+                                    ->helperText('Ahí llega el código que el bot lee en cada revisión.'),
+                                InfoTextEntry::make('formed_at')->label('Formada')
+                                    ->dateTime('d/m/Y H:i', self::TIMEZONE)->placeholder('—'),
+                                InfoTextEntry::make('last_review_at')->label('Última revisión del bot')
+                                    ->dateTime('d/m/Y H:i', self::TIMEZONE)->placeholder('Sin revisar'),
+                            ]),
+
+                        Section::make('Soldado que asiste')
+                            ->columns(3)
+                            ->schema([
+                                InfoTextEntry::make('soldado.name')->label('Nombre')->placeholder('Sin asignar'),
+                                InfoTextEntry::make('soldado.rfc')->label('RFC')
+                                    ->placeholder('⚠️ Sin RFC')
+                                    ->helperText('El SAT identifica la cita de inscripción con este RFC.'),
+                                InfoTextEntry::make('soldado.curp')->label('CURP')->placeholder('—'),
+                                InfoTextEntry::make('soldado.email')->label('Correo')->placeholder('—')
+                                    ->copyable(),
+                                InfoTextEntry::make('soldado.phone')->label('Teléfono')->placeholder('—'),
+                            ]),
+
+                        Section::make('Acuse')
+                            ->schema([
+                                InfoTextEntry::make('acknowledgment_path')->hiddenLabel()
+                                    ->placeholder('Todavía no hay acuse. Llega cuando el SAT asigna la cita.'),
+                            ]),
+
+                        Section::make('Historial')
+                            ->description('Cada paso del bot sobre esta cita, del más reciente al más viejo.')
+                            ->poll('15s')
+                            ->schema([
+                                ViewEntry::make('events')
+                                    ->hiddenLabel()
+                                    ->view('filament.infolists.appointment-timeline'),
+                            ]),
+                    ]),
+
                 Action::make('sendToBot')
                     ->label('Formar con el bot')
                     ->icon('heroicon-o-paper-airplane')
@@ -194,10 +300,18 @@ class AppointmentsRelationManager extends RelationManager
                     ->requiresConfirmation()
                     ->modalDescription('Úsalo solo si TÚ formaste la cita en el portal del SAT. Captura también '
                         .'el correo del pool que usaste, o el bot no podrá leer el código.')
-                    ->action(fn (Appointment $record) => $record->update([
-                        'status' => AppointmentStatusEnum::FORMED,
-                        'formed_at' => now(),
-                    ])),
+                    ->action(function (Appointment $record): void {
+                        $record->update([
+                            'status' => AppointmentStatusEnum::FORMED,
+                            'formed_at' => now(),
+                        ]);
+                        $record->recordEvent(
+                            AppointmentEventTypeEnum::MARKED_MANUALLY,
+                            'Alguien del equipo la marcó formada a mano; el bot la revisa desde aquí.',
+                            ['email_alias' => $record->email_alias],
+                            'user',
+                        );
+                    }),
 
                 EditAction::make(),
                 DeleteAction::make(),

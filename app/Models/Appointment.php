@@ -2,13 +2,16 @@
 
 namespace App\Models;
 
+use App\Enums\AppointmentEventTypeEnum;
 use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Auth;
 
 /**
  * A single SAT appointment for a company's incorporation (RFC or FIEL).
@@ -77,6 +80,48 @@ class Appointment extends Model
     public function soldado(): BelongsTo
     {
         return $this->belongsTo(Soldado::class);
+    }
+
+    /**
+     * Get this appointment's timeline, newest first.
+     *
+     * @return HasMany<AppointmentEvent, $this>
+     */
+    public function events(): HasMany
+    {
+        return $this->hasMany(AppointmentEvent::class)->latest('created_at');
+    }
+
+    // -------------------------------------------------------------------------
+    // Timeline
+    // -------------------------------------------------------------------------
+
+    /**
+     * Append an immutable event to this appointment's timeline.
+     *
+     * When a signed-in user triggers the action the actor is that user; otherwise it is
+     * the bot or the system. Mirrors LegalName::recordEvent().
+     *
+     * @param  AppointmentEventTypeEnum  $type  What happened.
+     * @param  string|null  $description  Human-readable summary shown in the timeline.
+     * @param  array<string, mixed>  $metadata  Event-specific payload (office, reason…).
+     * @param  string|null  $actorType  Fallback actor when nobody is signed in.
+     */
+    public function recordEvent(
+        AppointmentEventTypeEnum $type,
+        ?string $description = null,
+        array $metadata = [],
+        ?string $actorType = 'bot',
+    ): AppointmentEvent {
+        $user = Auth::user();
+
+        return $this->events()->create([
+            'type' => $type,
+            'actor_type' => $user ? 'user' : $actorType,
+            'actor_id' => $user?->getKey(),
+            'description' => $description,
+            'metadata' => $metadata ?: null,
+        ]);
     }
 
     // -------------------------------------------------------------------------

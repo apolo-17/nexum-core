@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Sat;
 
+use App\Enums\AppointmentEventTypeEnum;
 use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
 use App\Models\Appointment;
@@ -109,6 +110,13 @@ class SatFormingService
                 ->post("{$botUrl}/form", $payload)
                 ->throw();
 
+            $appointment->recordEvent(
+                AppointmentEventTypeEnum::FORM_DISPATCHED,
+                "Enviada al bot para formar con el correo {$alias}."
+                    .($appointment->preferred_module ? " Sucursal pedida: {$appointment->preferred_module}." : ''),
+                ['email_alias' => $alias, 'preferred_module' => $appointment->preferred_module],
+            );
+
             Log::info('SatFormingService: appointment dispatched to SAT bot.', [
                 'appointment_id' => $appointment->id,
                 'email_alias' => $alias,
@@ -119,6 +127,13 @@ class SatFormingService
         } catch (ConnectionException $exception) {
             // Expected: the synchronous bot outlives our timeout. It keeps working and
             // reports through the webhook, so we leave the appointment as it is.
+            $appointment->recordEvent(
+                AppointmentEventTypeEnum::FORM_DISPATCHED,
+                "Enviada al bot para formar con el correo {$alias}. El bot sigue trabajando; "
+                    .'el resultado llegará por el webhook.',
+                ['email_alias' => $alias, 'preferred_module' => $appointment->preferred_module],
+            );
+
             Log::warning('SatFormingService: bot /form timed out — the webhook will finalize.', [
                 'appointment_id' => $appointment->id,
                 'error' => $exception->getMessage(),
@@ -129,6 +144,12 @@ class SatFormingService
             // The bot rejected the dispatch outright: no webhook will follow. Free the
             // alias so the appointment can be resent cleanly.
             $this->releaseAlias($appointment);
+
+            $appointment->recordEvent(
+                AppointmentEventTypeEnum::FAILED,
+                'El bot rechazó el envío ('.$exception->response->status().'). Se liberó el correo.',
+                ['status' => $exception->response->status()],
+            );
 
             Log::error('SatFormingService: bot rejected the dispatch.', [
                 'appointment_id' => $appointment->id,
