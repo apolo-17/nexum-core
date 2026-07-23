@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\V3;
 
 use App\Enums\AppointmentStatusEnum;
+use App\Enums\NotificationEventEnum;
 use App\Http\Controllers\Controller;
 use App\Models\Appointment;
 use App\Models\AppointmentEmail;
 use App\Notifications\SatAppointmentScheduledNotification;
+use App\Notifications\SatAppointmentStatusNotification;
+use App\Services\Notifications\EventNotifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -124,6 +127,39 @@ class SatBotCallbackController extends Controller
     }
 
     /**
+     * Tell the team what happened, without ever breaking the callback.
+     *
+     * The appointment is already saved by the time this runs, so a notification problem
+     * (misconfigured recipients, mail transport down) must not turn a successful
+     * callback into a 500 — the bot would treat the update as failed and report it all
+     * over again.
+     *
+     * @param  NotificationEventEnum  $event  The configurable event that fired.
+     * @param  Appointment  $appointment  The appointment the bot reported on.
+     * @param  string  $outcome  formed | scheduled | failed.
+     * @param  string|null  $reason  Failure detail, when relevant.
+     */
+    private function notifyTeam(
+        NotificationEventEnum $event,
+        Appointment $appointment,
+        string $outcome,
+        ?string $reason = null,
+    ): void {
+        try {
+            app(EventNotifier::class)->notify(
+                $event,
+                new SatAppointmentStatusNotification($appointment, $outcome, $reason),
+            );
+        } catch (\Throwable $th) {
+            Log::warning('SAT bot callback: could not notify the team.', [
+                'appointment_id' => $appointment->id,
+                'event' => $event->value,
+                'exception' => $th->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * Apply a formed outcome: the bot queued the appointment in the SAT virtual queue.
      *
      * The pool alias stays locked — the SAT sends the token there and the bot needs it on
@@ -146,6 +182,8 @@ class SatBotCallbackController extends Controller
         }
 
         $appointment->update($attributes);
+
+        $this->notifyTeam(NotificationEventEnum::SAT_APPOINTMENT_FORMED, $appointment, 'formed');
 
         Log::info('SAT bot callback: appointment formed in the virtual queue.', [
             'appointment_id' => $appointment->id,
@@ -193,6 +231,9 @@ class SatBotCallbackController extends Controller
 
         $this->notifySoldado($appointment);
 
+        // Y al equipo, para que sepan que ya hay fecha sin revisar el panel.
+        $this->notifyTeam(NotificationEventEnum::SAT_APPOINTMENT_SCHEDULED, $appointment, 'scheduled');
+
         Log::info('SAT bot callback: appointment scheduled.', [
             'appointment_id' => $appointment->id,
             'scheduled_at' => $appointment->scheduled_at?->toDateTimeString(),
@@ -234,6 +275,8 @@ class SatBotCallbackController extends Controller
             'notes' => $note,
             'last_review_at' => now(),
         ]);
+
+        $this->notifyTeam(NotificationEventEnum::SAT_APPOINTMENT_FAILED, $appointment, 'failed', $reason);
 
         Log::warning('SAT bot callback: step failed.', [
             'appointment_id' => $appointment->id,

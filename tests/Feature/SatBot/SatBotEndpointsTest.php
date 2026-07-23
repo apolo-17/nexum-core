@@ -4,11 +4,14 @@ namespace Tests\Feature\SatBot;
 
 use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
+use App\Enums\NotificationEventEnum;
 use App\Models\AppointmentEmail;
+use App\Models\NotificationSetting;
 use App\Models\Registration;
 use App\Models\Soldado;
 use App\Models\User;
 use App\Notifications\SatAppointmentScheduledNotification;
+use App\Notifications\SatAppointmentStatusNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
@@ -34,6 +37,9 @@ class SatBotEndpointsTest extends TestCase
     {
         parent::setUp();
         config(['services.sat_bot.api_key' => 'test-key', 'services.sat_bot.secret_key' => 'test-secret']);
+        // Los avisos al equipo resuelven destinatarios por este rol; sin él, el
+        // EventNotifier revienta y no se ejercitaría el camino real.
+        Role::findOrCreate('super_admin', 'web');
     }
 
     /**
@@ -234,6 +240,45 @@ class SatBotEndpointsTest extends TestCase
         // El alias sigue bloqueado: ahí llega el token que el bot lee en cada revisión.
         $this->assertSame('soldado1@nexumcore.app', $appointment->email_alias);
         $this->assertFalse($email->refresh()->is_free);
+    }
+
+    #[Test]
+    public function callback_formed_alerts_the_team(): void
+    {
+        Notification::fake();
+
+        // Un admin suscrito al evento "cita formada".
+        $admin = User::create(['name' => 'Admin', 'email' => 'admin@nexumcore.app', 'password' => 'secret']);
+        $admin->assignRole('super_admin');
+        $setting = NotificationSetting::firstOrCreate(
+            ['event' => NotificationEventEnum::SAT_APPOINTMENT_FORMED->value],
+            ['enabled' => true],
+        );
+        $setting->recipients()->attach($admin->id);
+
+        $soldado = $this->makeSoldado();
+        $registration = Registration::factory()->create();
+        $appointment = $registration->appointments()->create([
+            'type' => AppointmentTypeEnum::RFC,
+            'status' => AppointmentStatusEnum::PENDING_FORMING,
+            'soldado_id' => $soldado->id,
+            'email_alias' => 'soldado1@nexumcore.app',
+        ]);
+
+        $payload = [
+            'appointment_id' => $appointment->id,
+            'status' => 'formed',
+            'office' => '66',
+            'timestamp' => time(),
+        ];
+        $signature = $this->sign(
+            ['appointment_id' => $payload['appointment_id'], 'status' => 'formed', 'timestamp' => $payload['timestamp']],
+            'test-secret',
+        );
+
+        $this->postJson('/api/v3/webhook/sat-bot', $payload, ['X-Signature' => $signature])->assertOk();
+
+        Notification::assertSentTo($admin, SatAppointmentStatusNotification::class);
     }
 
     #[Test]

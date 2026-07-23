@@ -40,6 +40,24 @@ enum NotificationEventEnum: string
     case DENOMINATION_FAILED = 'denomination_failed';
 
     /**
+     * The SAT bot queued an appointment in the virtual queue (`formed` callback).
+     * Nothing is scheduled yet — the SAT assigns the slot later.
+     */
+    case SAT_APPOINTMENT_FORMED = 'sat_appointment_formed';
+
+    /**
+     * The SAT assigned a date and time to a formed appointment (`scheduled`
+     * callback). The soldado is notified separately; this one is for the team.
+     */
+    case SAT_APPOINTMENT_SCHEDULED = 'sat_appointment_scheduled';
+
+    /**
+     * The SAT bot could not form or review an appointment (`failed` callback).
+     * The appointment stays in its current state and is retried.
+     */
+    case SAT_APPOINTMENT_FAILED = 'sat_appointment_failed';
+
+    /**
      * Return a human-readable Spanish label for display in the settings UI.
      */
     public function label(): string
@@ -49,6 +67,9 @@ enum NotificationEventEnum: string
             self::DENOMINATION_SUBMITTED => 'Denominación registrada en la SE',
             self::DENOMINATION_APPROVED => 'Denominación aprobada',
             self::DENOMINATION_FAILED => 'Error al enviar denominación',
+            self::SAT_APPOINTMENT_FORMED => 'Cita del SAT formada (fila virtual)',
+            self::SAT_APPOINTMENT_SCHEDULED => 'Cita del SAT con fecha y hora',
+            self::SAT_APPOINTMENT_FAILED => 'Error con una cita del SAT',
         };
     }
 
@@ -66,6 +87,12 @@ enum NotificationEventEnum: string
                 .'(constancia recibida).',
             self::DENOMINATION_FAILED => 'Avisa cuando el bot no pudo registrar una '
                 .'denominación en la SE por un fallo técnico (regresa a la cola para reenviar).',
+            self::SAT_APPOINTMENT_FORMED => 'Avisa cuando el bot formó una cita en la fila '
+                .'virtual del SAT. Todavía no hay fecha: el SAT la asigna después.',
+            self::SAT_APPOINTMENT_SCHEDULED => 'Avisa cuando el SAT asignó fecha y hora a una '
+                .'cita. Al soldado se le notifica aparte; este aviso es para el equipo.',
+            self::SAT_APPOINTMENT_FAILED => 'Avisa cuando el bot no pudo formar o revisar una '
+                .'cita del SAT (la cita se queda como está y se reintenta).',
         };
     }
 }

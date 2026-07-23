@@ -51,6 +51,9 @@ return [
     // SAT bot (nexum-citas-sat) — external service that schedules SAT appointments.
     // api_key secures the pending pull; secret_key signs the HMAC callback.
     'sat_bot' => [
+        // Base URL of the nexum-citas-sat bot. Unlike the MUA bot (a container on the
+        // same Docker network), this one runs on Cloud Run, so it is a public HTTPS URL.
+        'url' => env('SAT_BOT_URL'),
         'api_key' => env('SAT_BOT_API_KEY'),
         'secret_key' => env('SAT_BOT_SECRET_KEY'),
     ],

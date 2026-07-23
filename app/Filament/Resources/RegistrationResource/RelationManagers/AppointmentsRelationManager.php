@@ -7,7 +7,9 @@ use App\Enums\AppointmentTypeEnum;
 use App\Models\Appointment;
 use App\Models\AppointmentEmail;
 use App\Models\SatModule;
+use App\Services\Sat\SatFormingService;
 use Filament\Actions\Action;
+use Filament\Notifications\Notification;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
@@ -163,13 +165,35 @@ class AppointmentsRelationManager extends RelationManager
             ])
             ->defaultSort('type')
             ->actions([
+                Action::make('sendToBot')
+                    ->label('Formar con el bot')
+                    ->icon('heroicon-o-paper-airplane')
+                    ->color('primary')
+                    ->visible(fn (Appointment $record): bool => $record->status === AppointmentStatusEnum::PENDING_FORMING
+                        && $record->soldado_id !== null)
+                    ->requiresConfirmation()
+                    ->modalDescription('El bot formará la cita en la fila virtual del SAT. Tarda ~1 minuto; '
+                        .'el resultado llega solo y verás la cita como "Formada".')
+                    ->action(function (Appointment $record): void {
+                        $ok = app(SatFormingService::class)->dispatchToBot($record);
+
+                        Notification::make()
+                            ->title($ok ? 'Enviada al bot' : 'No se pudo enviar')
+                            ->body($ok
+                                ? 'El bot la está formando. El resultado llega por sí solo en un momento.'
+                                : 'Revisa que la cita tenga soldado, que haya un correo libre del pool y que el bot esté configurado.')
+                            ->status($ok ? 'success' : 'danger')
+                            ->send();
+                    }),
+
                 Action::make('markFormed')
-                    ->label('Marcar formada')
+                    ->label('Marcar formada (a mano)')
                     ->icon('heroicon-o-check-circle')
                     ->color('warning')
                     ->visible(fn (Appointment $record): bool => $record->status === AppointmentStatusEnum::PENDING_FORMING)
                     ->requiresConfirmation()
-                    ->modalDescription('Confirma que ya formaste la cita en el portal del SAT. A partir de aquí el bot la revisa.')
+                    ->modalDescription('Úsalo solo si TÚ formaste la cita en el portal del SAT. Captura también '
+                        .'el correo del pool que usaste, o el bot no podrá leer el código.')
                     ->action(fn (Appointment $record) => $record->update([
                         'status' => AppointmentStatusEnum::FORMED,
                         'formed_at' => now(),
