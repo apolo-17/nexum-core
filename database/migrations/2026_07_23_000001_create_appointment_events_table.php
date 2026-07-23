@@ -24,7 +24,9 @@ return new class extends Migration
                 ->cascadeOnDelete();
             $table->string('type')->comment('Event type — see AppointmentEventTypeEnum');
             $table->string('actor_type')->nullable()->comment('user, system or bot');
-            $table->foreignUlid('actor_id')
+            // users.id is a bigint (not a ULID like appointments), so this has to match
+            // its type — a foreignUlid here cannot reference it.
+            $table->foreignId('actor_id')
                 ->nullable()
                 ->constrained('users')
                 ->nullOnDelete();
