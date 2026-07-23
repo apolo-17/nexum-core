@@ -41,6 +41,13 @@ class Registration extends Model
         'company_type',
         'company_object',
         'capital_social',
+        'fiscal_street',
+        'fiscal_ext_number',
+        'fiscal_int_number',
+        'fiscal_neighborhood',
+        'fiscal_municipality',
+        'fiscal_state',
+        'fiscal_postal_code',
         'rfc',
         'efirma_appointment_at',
         'efirma_status',
@@ -294,4 +301,27 @@ class Registration extends Model
     {
         return ! empty($this->missingKycDocuments());
     }
+
+    /**
+     * Build the company's tax address as one readable line.
+     *
+     * Returns null when nothing has been captured yet, so the dashboard can show its
+     * own "sin capturar" placeholder instead of an empty string.
+     */
+    public function fiscalAddress(): ?string
+    {
+        $numero = trim(($this->fiscal_ext_number ?? '')
+            .($this->fiscal_int_number ? " int. {$this->fiscal_int_number}" : ''));
+
+        $partes = array_filter([
+            trim(($this->fiscal_street ?? '').($numero !== '' ? " {$numero}" : '')),
+            $this->fiscal_neighborhood ? "Col. {$this->fiscal_neighborhood}" : null,
+            $this->fiscal_postal_code,
+            $this->fiscal_municipality,
+            $this->fiscal_state,
+        ], fn (?string $parte): bool => filled($parte));
+
+        return $partes === [] ? null : implode(', ', $partes);
+    }
+
 }

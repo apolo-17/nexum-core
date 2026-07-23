@@ -54,21 +54,28 @@ class SatFormingService
             return false;
         }
 
+        // Validar la configuración ANTES de tocar el pool: si falta la URL o la llave no
+        // hay a dónde mandar la cita, y bloquear un correo aquí lo dejaría inservible
+        // para las demás sin haber intentado nada.
+        $botUrl = rtrim((string) config('services.sat_bot.url'), '/');
+        $apiKey = (string) config('services.sat_bot.api_key');
+
+        if ($botUrl === '' || $apiKey === '') {
+            Log::error('SatFormingService: SAT bot url/api key not configured.', [
+                'appointment_id' => $appointment->id,
+                'has_url' => $botUrl !== '',
+                'has_api_key' => $apiKey !== '',
+            ]);
+
+            return false;
+        }
+
         $alias = $this->assignAlias($appointment);
 
         if ($alias === null) {
             Log::warning('SatFormingService: no free pool address available.', [
                 'appointment_id' => $appointment->id,
             ]);
-
-            return false;
-        }
-
-        $botUrl = rtrim((string) config('services.sat_bot.url'), '/');
-        $apiKey = (string) config('services.sat_bot.api_key');
-
-        if ($botUrl === '' || $apiKey === '') {
-            Log::error('SatFormingService: SAT bot url/api key not configured.');
 
             return false;
         }

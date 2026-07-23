@@ -118,6 +118,21 @@ class RegistrationResource extends Resource
                         ->nullable(),
                 ]),
 
+            Section::make('Domicilio fiscal')
+                ->description('Captúralo del comprobante (recibo de luz, internet, contrato de arrendamiento…). '
+                    .'Sube el PDF en Documentos como «Comprobante de domicilio fiscal (México)».')
+                ->columns(3)
+                ->collapsed()
+                ->schema([
+                    TextInput::make('fiscal_street')->label('Calle')->maxLength(255)->columnSpan(2),
+                    TextInput::make('fiscal_ext_number')->label('Núm. exterior')->maxLength(50),
+                    TextInput::make('fiscal_int_number')->label('Núm. interior')->maxLength(50),
+                    TextInput::make('fiscal_neighborhood')->label('Colonia')->maxLength(255),
+                    TextInput::make('fiscal_postal_code')->label('Código postal')->maxLength(10),
+                    TextInput::make('fiscal_municipality')->label('Alcaldía / municipio')->maxLength(255),
+                    TextInput::make('fiscal_state')->label('Estado')->maxLength(255)->default('Ciudad de México'),
+                ]),
+
             Section::make('Estado del expediente')
                 ->columns(2)
                 ->schema([
@@ -333,6 +348,30 @@ class RegistrationResource extends Resource
             // Visible from ACTA_PREPARATION onwards so the notary can verify
             // the corporate data before generating the draft.
             // ----------------------------------------------------------------
+            Section::make('Domicilio fiscal')
+                ->columnSpan(3)
+                ->columns(3)
+                ->schema([
+                    TextEntry::make('fiscal_address')
+                        ->label('Dirección')
+                        ->columnSpan(2)
+                        ->placeholder('Sin capturar — edita el expediente para agregarlo')
+                        ->state(fn (Registration $record): ?string => $record->fiscalAddress()),
+
+                    TextEntry::make('fiscal_proof')
+                        ->label('Comprobante')
+                        ->state(function (Registration $record): string {
+                            $doc = $record->documents()
+                                ->where('type', DocumentTypeEnum::PROOF_OF_ADDRESS_MX->value)
+                                ->latest()
+                                ->first();
+
+                            return $doc ? 'Cargado' : 'Sin comprobante';
+                        })
+                        ->badge()
+                        ->color(fn (string $state): string => $state === 'Cargado' ? 'success' : 'gray'),
+                ]),
+
             Section::make('Datos para el Acta Constitutiva')
                 ->columnSpan(3)
                 ->columns(3)

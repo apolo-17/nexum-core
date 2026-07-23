@@ -79,6 +79,9 @@ enum DocumentTypeEnum: string
     /** Constancia de Situación Fiscal (SAT Mexico) — generated at SAT_REGISTRATION stage. */
     case CSF = 'csf';
 
+    /** Mexican proof of the company's tax address (utility bill, lease…). */
+    case PROOF_OF_ADDRESS_MX = 'proof_of_address_mx';
+
     /** Bank proof. */
     case BANK_PROOF = 'bank_proof';
 
@@ -113,6 +116,7 @@ enum DocumentTypeEnum: string
             self::ACTA_SIGNED => 'Acta Constitutiva firmada (DocuSign)',
             self::INCORPORATION_ACT => 'Acta constitutiva',
             self::CSF => 'Constancia de Situación Fiscal (SAT)',
+            self::PROOF_OF_ADDRESS_MX => 'Comprobante de domicilio fiscal (México)',
             self::BANK_PROOF => 'Comprobante bancario',
             self::RFC_DOCUMENT => 'Documento RFC',
             self::EFIRMA => 'e.firma',
