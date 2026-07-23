@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V3\MuaBotCallbackController;
 use App\Http\Controllers\Api\V3\MuaPendingController;
 use App\Http\Controllers\Api\V3\RegistrationController;
 use App\Http\Controllers\Api\V3\SatBotCallbackController;
+use App\Http\Controllers\Api\V3\SatBotFormingController;
 use App\Http\Controllers\Api\V3\SatBotReviewController;
 use App\Http\Controllers\Api\V3\WebhookController;
 use Illuminate\Support\Facades\Route;
@@ -50,10 +51,12 @@ Route::prefix('v3')->group(function () {
     Route::get('mua-bot/pending', [MuaPendingController::class, 'index']);
 
     // SAT bot (nexum-citas-sat) — see docs in that repo (docs/CONTRACT.md)
-    // Appointments are FORMED manually by the team; the bot only reviews them.
-    // pending-review: bot pulls FORMED appointments to check at the SAT (X-Bot-Api-Key).
+    // Two phases, both polled by the bot with X-Bot-Api-Key:
+    // 1) pending-forming: appointments to FORM in the SAT virtual queue (alias locked here).
+    Route::get('sat-bot/pending-forming', [SatBotFormingController::class, 'index']);
+    // 2) pending-review: FORMED appointments to check at the SAT until a slot is assigned.
     Route::get('sat-bot/pending-review', [SatBotReviewController::class, 'index']);
-    // callback: bot reports the review result — scheduled + acuse, in_review, rejected… (HMAC X-Signature)
+    // callback: bot reports the result — formed, scheduled + acuse, in_review… (HMAC X-Signature)
     Route::post('webhook/sat-bot', [SatBotCallbackController::class, 'handle']);
 
     // -------------------------------------------------------------------------

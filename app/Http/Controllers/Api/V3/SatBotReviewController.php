@@ -15,20 +15,24 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Exposes FORMED SAT appointments (awaiting review) to the nexum-citas-sat bot.
  *
- * The team forms each appointment MANUALLY at the SAT portal and marks it "formada"
- * (choosing the pool email used). The bot then polls GET /api/v3/sat-bot/pending-review
- * to learn which formed appointments to check, reads the SAT status, and reports back via
- * the callback when a slot is assigned. Auth: shared X-Bot-Api-Key header.
+ * Phase 2 of the bot's cycle. An appointment reaches `formed` either because the bot
+ * formed it in the virtual queue (phase 1, see SatBotFormingController) or because the
+ * team formed it by hand and marked it so in the panel. The bot polls
+ * GET /api/v3/sat-bot/pending-review to learn which ones to check, reads the SAT status,
+ * and reports back via the callback when a slot is assigned. Auth: X-Bot-Api-Key header.
  *
- * This does NOT reserve/schedule anything — forming is manual. It only lists what the bot
- * should monitor. Mirrors the mua:poll pattern.
+ * This does NOT reserve/schedule anything — it only lists what the bot should monitor.
+ * Mirrors the mua:poll pattern.
  */
 class SatBotReviewController extends Controller
 {
     /**
-     * Fixed SAT entidad federativa — Sinaloa, where Nexum's notary operates.
+     * SAT entidad for Ciudad de México (10 in the SAT catalog, not the 09 INEGI code).
+     *
+     * Must match SatBotFormingController::NEXUM_ENTIDAD: the bot forms in CDMX offices,
+     * so it has to review them in the same entidad.
      */
-    private const NEXUM_ENTIDAD = '25';
+    private const NEXUM_ENTIDAD = '10';
 
     /**
      * Return FORMED appointments (with an assigned email alias) for the bot to review.

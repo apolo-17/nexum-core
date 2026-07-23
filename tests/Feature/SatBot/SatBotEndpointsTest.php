@@ -19,8 +19,9 @@ use Tests\TestCase;
 /**
  * Feature tests for the nexum-citas-sat integration endpoints.
  *
- * Appointments are FORMED manually by the team; the bot only reviews formed ones and
- * reports back when the SAT assigns a slot.
+ * Two phases: the bot FORMS pending_forming appointments in the SAT virtual queue
+ * (pending-forming + callback "formed"), then REVIEWS the formed ones until the SAT
+ * assigns a slot (pending-review + callback "scheduled"/"in_review").
  */
 class SatBotEndpointsTest extends TestCase
 {
@@ -64,6 +65,207 @@ class SatBotEndpointsTest extends TestCase
             'is_active' => true,
             'user_id' => $user->id,
         ]);
+    }
+
+    #[Test]
+    public function pending_forming_requires_the_api_key(): void
+    {
+        $this->getJson('/api/v3/sat-bot/pending-forming')->assertUnauthorized();
+    }
+
+    #[Test]
+    public function pending_forming_returns_appointments_and_locks_a_pool_alias(): void
+    {
+        AppointmentEmail::create(['address' => 'soldado1@nexumcore.app', 'is_free' => true]);
+        $soldado = $this->makeSoldado();
+        $registration = Registration::factory()->create();
+        $appointment = $registration->appointments()->create([
+            'type' => AppointmentTypeEnum::RFC,
+            'status' => AppointmentStatusEnum::PENDING_FORMING,
+            'soldado_id' => $soldado->id,
+        ]);
+
+        $response = $this->withHeader('X-Bot-Api-Key', 'test-key')->getJson('/api/v3/sat-bot/pending-forming');
+
+        $response->assertOk()
+            ->assertJsonPath('data.0.appointment_id', $appointment->id)
+            ->assertJsonPath('data.0.sat_service', 'PM')
+            ->assertJsonPath('data.0.entidad', '10') // CDMX en el catálogo del SAT (no el 09 del INEGI)
+            ->assertJsonPath('data.0.email_alias', 'soldado1@nexumcore.app');
+
+        // El alias queda bloqueado y pegado a la cita.
+        $this->assertSame('soldado1@nexumcore.app', $appointment->refresh()->email_alias);
+        $this->assertFalse(AppointmentEmail::first()->is_free);
+    }
+
+    #[Test]
+    public function pending_forming_passes_the_chosen_office_to_the_bot(): void
+    {
+        AppointmentEmail::create(['address' => 'soldado1@nexumcore.app', 'is_free' => true]);
+        $soldado = $this->makeSoldado();
+        $registration = Registration::factory()->create();
+        $registration->appointments()->create([
+            'type' => AppointmentTypeEnum::RFC,
+            'status' => AppointmentStatusEnum::PENDING_FORMING,
+            'soldado_id' => $soldado->id,
+            'preferred_module' => 66, // ADSC DF "2" Centro
+        ]);
+
+        $this->withHeader('X-Bot-Api-Key', 'test-key')->getJson('/api/v3/sat-bot/pending-forming')
+            ->assertOk()
+            ->assertJsonPath('data.0.preferred_module', 66);
+    }
+
+    #[Test]
+    public function pending_forming_leaves_the_office_null_when_nobody_chose_one(): void
+    {
+        // Sin sucursal elegida, el bot recorre su propia lista de CDMX.
+        AppointmentEmail::create(['address' => 'soldado1@nexumcore.app', 'is_free' => true]);
+        $soldado = $this->makeSoldado();
+        $registration = Registration::factory()->create();
+        $registration->appointments()->create([
+            'type' => AppointmentTypeEnum::RFC,
+            'status' => AppointmentStatusEnum::PENDING_FORMING,
+            'soldado_id' => $soldado->id,
+        ]);
+
+        $this->withHeader('X-Bot-Api-Key', 'test-key')->getJson('/api/v3/sat-bot/pending-forming')
+            ->assertOk()
+            ->assertJsonPath('data.0.preferred_module', null);
+    }
+
+    #[Test]
+    public function pending_forming_reuses_the_alias_already_assigned(): void
+    {
+        // Idempotencia: reintentar una cita no debe consumir un segundo correo del pool.
+        AppointmentEmail::create(['address' => 'soldado1@nexumcore.app', 'is_free' => false]);
+        AppointmentEmail::create(['address' => 'soldado2@nexumcore.app', 'is_free' => true]);
+        $soldado = $this->makeSoldado();
+        $registration = Registration::factory()->create();
+        $registration->appointments()->create([
+            'type' => AppointmentTypeEnum::FIEL,
+            'status' => AppointmentStatusEnum::PENDING_FORMING,
+            'soldado_id' => $soldado->id,
+            'email_alias' => 'soldado1@nexumcore.app',
+        ]);
+
+        $this->withHeader('X-Bot-Api-Key', 'test-key')->getJson('/api/v3/sat-bot/pending-forming')
+            ->assertOk()
+            ->assertJsonPath('data.0.email_alias', 'soldado1@nexumcore.app')
+            ->assertJsonPath('data.0.sat_service', 'E');
+
+        // El segundo correo sigue libre.
+        $this->assertTrue(AppointmentEmail::where('address', 'soldado2@nexumcore.app')->first()->is_free);
+    }
+
+    #[Test]
+    public function pending_forming_skips_appointments_without_soldado_or_free_alias(): void
+    {
+        $soldado = $this->makeSoldado();
+        $registration = Registration::factory()->create();
+
+        // Sin soldado: el SAT necesita sus datos para formar.
+        $registration->appointments()->create([
+            'type' => AppointmentTypeEnum::RFC,
+            'status' => AppointmentStatusEnum::PENDING_FORMING,
+        ]);
+
+        // Con soldado pero el pool está agotado: no se entrega sin buzón donde leer el token.
+        $registration->appointments()->create([
+            'type' => AppointmentTypeEnum::FIEL,
+            'status' => AppointmentStatusEnum::PENDING_FORMING,
+            'soldado_id' => $soldado->id,
+        ]);
+
+        $this->withHeader('X-Bot-Api-Key', 'test-key')->getJson('/api/v3/sat-bot/pending-forming')
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+    }
+
+    #[Test]
+    public function pending_forming_ignores_already_formed_appointments(): void
+    {
+        AppointmentEmail::create(['address' => 'soldado1@nexumcore.app', 'is_free' => true]);
+        $soldado = $this->makeSoldado();
+        $registration = Registration::factory()->create();
+        $registration->appointments()->create([
+            'type' => AppointmentTypeEnum::RFC,
+            'status' => AppointmentStatusEnum::FORMED,
+            'soldado_id' => $soldado->id,
+            'email_alias' => 'otro@dominio.mx',
+            'formed_at' => now(),
+        ]);
+
+        $this->withHeader('X-Bot-Api-Key', 'test-key')->getJson('/api/v3/sat-bot/pending-forming')
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+    }
+
+    #[Test]
+    public function callback_formed_marks_it_formed_and_keeps_the_alias(): void
+    {
+        $email = AppointmentEmail::create(['address' => 'soldado1@nexumcore.app', 'is_free' => false]);
+        $soldado = $this->makeSoldado();
+        $registration = Registration::factory()->create();
+        $appointment = $registration->appointments()->create([
+            'type' => AppointmentTypeEnum::RFC,
+            'status' => AppointmentStatusEnum::PENDING_FORMING,
+            'soldado_id' => $soldado->id,
+            'email_alias' => 'soldado1@nexumcore.app',
+        ]);
+
+        $payload = [
+            'appointment_id' => $appointment->id,
+            'status' => 'formed',
+            'office' => 'ADSC Centro CDMX',
+            'timestamp' => time(),
+        ];
+        $signature = $this->sign(
+            ['appointment_id' => $payload['appointment_id'], 'status' => 'formed', 'timestamp' => $payload['timestamp']],
+            'test-secret',
+        );
+
+        $this->postJson('/api/v3/webhook/sat-bot', $payload, ['X-Signature' => $signature])->assertOk();
+
+        $appointment->refresh();
+        $this->assertSame(AppointmentStatusEnum::FORMED, $appointment->status);
+        $this->assertNotNull($appointment->formed_at);
+        $this->assertSame('ADSC Centro CDMX', $appointment->office);
+        // El alias sigue bloqueado: ahí llega el token que el bot lee en cada revisión.
+        $this->assertSame('soldado1@nexumcore.app', $appointment->email_alias);
+        $this->assertFalse($email->refresh()->is_free);
+    }
+
+    #[Test]
+    public function callback_failed_while_forming_keeps_it_pending_forming(): void
+    {
+        $soldado = $this->makeSoldado();
+        $registration = Registration::factory()->create();
+        $appointment = $registration->appointments()->create([
+            'type' => AppointmentTypeEnum::RFC,
+            'status' => AppointmentStatusEnum::PENDING_FORMING,
+            'soldado_id' => $soldado->id,
+            'email_alias' => 'soldado1@nexumcore.app',
+        ]);
+
+        $payload = [
+            'appointment_id' => $appointment->id,
+            'status' => 'failed',
+            'failure_reason' => 'no llegó el token',
+            'timestamp' => time(),
+        ];
+        $signature = $this->sign(
+            ['appointment_id' => $payload['appointment_id'], 'status' => 'failed', 'timestamp' => $payload['timestamp']],
+            'test-secret',
+        );
+
+        $this->postJson('/api/v3/webhook/sat-bot', $payload, ['X-Signature' => $signature])->assertOk();
+
+        $appointment->refresh();
+        // Sigue por formar: el próximo ciclo la reintenta con el MISMO alias.
+        $this->assertSame(AppointmentStatusEnum::PENDING_FORMING, $appointment->status);
+        $this->assertSame('soldado1@nexumcore.app', $appointment->email_alias);
+        $this->assertStringContainsString('fallo al formar', (string) $appointment->notes);
     }
 
     #[Test]

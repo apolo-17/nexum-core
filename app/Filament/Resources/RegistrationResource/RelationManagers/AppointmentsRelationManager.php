@@ -6,6 +6,7 @@ use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
 use App\Models\Appointment;
 use App\Models\AppointmentEmail;
+use App\Models\SatModule;
 use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
@@ -68,11 +69,17 @@ class AppointmentsRelationManager extends RelationManager
                 ->searchable()
                 ->preload(),
 
+            Select::make('preferred_module')
+                ->label('Sucursal del SAT donde formar')
+                ->options(fn (): array => SatModule::options())
+                ->searchable()
+                ->helperText('Opcional. Si la dejas vacía, el bot elige entre las sucursales de CDMX.'),
+
             Select::make('email_alias')
                 ->label('Correo del pool usado para formar')
                 ->options(fn (): array => AppointmentEmail::orderBy('address')->pluck('address', 'address')->all())
                 ->searchable()
-                ->helperText('El correo con el que se formó la cita; ahí llega el token del SAT que el bot revisa.'),
+                ->helperText('Lo asigna el bot al formar. Solo llénalo si formaste la cita a mano.'),
 
             DateTimePicker::make('formed_at')
                 ->label('Fecha en que se formó (fila virtual)')

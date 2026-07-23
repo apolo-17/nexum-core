@@ -33,6 +33,7 @@ class Appointment extends Model
         'formed_at',
         'last_review_at',
         'office',
+        'preferred_module',
         'email_alias',
         'acknowledgment_path',
         'notes',

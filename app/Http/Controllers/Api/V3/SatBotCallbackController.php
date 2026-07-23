@@ -18,17 +18,20 @@ use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Receives callbacks from the nexum-citas-sat bot reviewing a FORMED SAT appointment.
+ * Receives callbacks from the nexum-citas-sat bot working a SAT appointment.
  *
- * The appointment was formed MANUALLY by the team; the bot only monitors it. Auth:
- * HMAC-SHA256 over {appointment_id, status, timestamp} in the X-Signature header
- * (identical scheme to MuaBotCallbackController). Statuses the bot reports:
+ * The bot runs two phases: it FORMS the appointment in the SAT virtual queue (phase 1,
+ * fed by SatBotFormingController) and then REVIEWS it until the SAT assigns a slot
+ * (phase 2, fed by SatBotReviewController). Auth: HMAC-SHA256 over
+ * {appointment_id, status, timestamp} in the X-Signature header (identical scheme to
+ * MuaBotCallbackController). Statuses the bot reports:
  *
+ *  - formed    : queued in the SAT virtual queue → mark formed + formed_at, keep the alias.
  *  - scheduled : SAT assigned a slot → fill date/office/acuse → R2, free the alias, notify.
  *  - in_review : checked, still no slot → bump last_review_at, stay formed.
  *  - rejected  : SAT rejected the appointment → mark rejected.
  *  - no_show   : the soldado did not show up → mark no_show.
- *  - failed    : the bot could not review (transient error) → note it, stay formed to retry.
+ *  - failed    : the bot could not form/review (transient error) → note it and retry later.
  *
  * See docs/CONTRACT.md in the nexum-citas-sat repo.
  */
@@ -45,6 +48,7 @@ class SatBotCallbackController extends Controller
      * @var list<string>
      */
     private const KNOWN_STATUSES = [
+        'formed',
         'scheduled',
         'in_review',
         'rejected',
@@ -93,6 +97,7 @@ class SatBotCallbackController extends Controller
 
         try {
             match ($payload['status']) {
+                'formed' => $this->processFormed($request, $appointment),
                 'scheduled' => $this->processScheduled($request, $appointment),
                 'in_review' => $this->processInReview($appointment),
                 'failed' => $this->processFailure($request, $appointment),
@@ -116,6 +121,37 @@ class SatBotCallbackController extends Controller
         }
 
         return response()->json(['message' => 'Appointment updated.'], Response::HTTP_OK);
+    }
+
+    /**
+     * Apply a formed outcome: the bot queued the appointment in the SAT virtual queue.
+     *
+     * The pool alias stays locked — the SAT sends the token there and the bot needs it on
+     * every review. It is released when the appointment reaches `scheduled`. `office`
+     * carries the SAT branch the bot picked, when it reports one.
+     *
+     * @param  Request  $request  Callback request, optionally carrying the chosen office.
+     * @param  Appointment  $appointment  The appointment that was formed.
+     */
+    private function processFormed(Request $request, Appointment $appointment): void
+    {
+        $attributes = [
+            'status' => AppointmentStatusEnum::FORMED,
+            'formed_at' => now(),
+            'last_review_at' => now(),
+        ];
+
+        if (filled($request->input('office'))) {
+            $attributes['office'] = (string) $request->input('office');
+        }
+
+        $appointment->update($attributes);
+
+        Log::info('SAT bot callback: appointment formed in the virtual queue.', [
+            'appointment_id' => $appointment->id,
+            'office' => $appointment->office,
+            'email_alias' => $appointment->email_alias,
+        ]);
     }
 
     /**
@@ -178,25 +214,30 @@ class SatBotCallbackController extends Controller
     }
 
     /**
-     * Apply a failed review: record the reason, keep it formed so the next poll retries.
+     * Apply a failure: record the reason and leave the status untouched so it retries.
+     *
+     * Works for both phases — a `pending_forming` appointment stays pending_forming and a
+     * `formed` one stays formed, so the next poll picks it up again. The alias is kept in
+     * both cases: reusing it keeps the retry idempotent instead of draining the pool.
      *
      * @param  Request  $request  Callback request with failure_reason.
-     * @param  Appointment  $appointment  The appointment that could not be reviewed.
+     * @param  Appointment  $appointment  The appointment that could not be processed.
      */
     private function processFailure(Request $request, Appointment $appointment): void
     {
         $reason = (string) $request->input('failure_reason', 'Sin detalle.');
         $stamp = now()->toDateTimeString();
-        $note = trim(($appointment->notes ? $appointment->notes."\n" : '')."[{$stamp}] Bot SAT: fallo al revisar — {$reason}");
+        $phase = $appointment->status === AppointmentStatusEnum::PENDING_FORMING ? 'formar' : 'revisar';
+        $note = trim(($appointment->notes ? $appointment->notes."\n" : '')."[{$stamp}] Bot SAT: fallo al {$phase} — {$reason}");
 
-        // Status stays FORMED so the next review retries it. The alias was set manually, keep it.
         $appointment->update([
             'notes' => $note,
             'last_review_at' => now(),
         ]);
 
-        Log::warning('SAT bot callback: review failed.', [
+        Log::warning('SAT bot callback: step failed.', [
             'appointment_id' => $appointment->id,
+            'phase' => $phase,
             'reason' => $reason,
         ]);
     }
