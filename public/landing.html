@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexum Core — Backend Bridge Incorporation</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <style>
+        :root {
+            --brand: #185FA5;
+            --brand-light: #378ADD;
+            --brand-dark: #0F3F70;
+            --ink: #101828;
+            --muted: #667085;
+            --line: #E4E7EC;
+            --bg: #FFFFFF;
+            --bg-soft: #F7F9FC;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--ink);
+            background: var(--bg);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+        .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+        /* Header */
+        header {
+            position: sticky; top: 0; z-index: 50;
+            background: rgba(255,255,255,0.85);
+            backdrop-filter: saturate(180%) blur(12px);
+            border-bottom: 1px solid var(--line);
+        }
+        .nav { display: flex; align-items: center; justify-content: space-between; height: 68px; }
+        .nav img { height: 34px; display: block; }
+        .nav-actions { display: flex; align-items: center; gap: 12px; }
+        .lang {
+            display: inline-flex; border: 1px solid var(--line); border-radius: 999px;
+            overflow: hidden; background: #fff;
+        }
+        .lang button {
+            border: 0; background: transparent; cursor: pointer;
+            padding: 6px 14px; font-size: 13px; font-weight: 600; color: var(--muted);
+        }
+        .lang button.active { background: var(--brand); color: #fff; }
+        .btn {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 10px 18px; border-radius: 10px; font-weight: 600; font-size: 14px;
+            text-decoration: none; cursor: pointer; border: 1px solid transparent;
+            transition: transform .05s ease, box-shadow .2s ease, background .2s ease;
+        }
+        .btn:active { transform: translateY(1px); }
+        .btn-primary { background: var(--brand); color: #fff; box-shadow: 0 1px 2px rgba(16,24,40,.08); }
+        .btn-primary:hover { background: var(--brand-dark); }
+        .btn-ghost { color: var(--brand); border-color: var(--line); background: #fff; }
+        .btn-ghost:hover { background: var(--bg-soft); }
+        .btn-lg { padding: 14px 26px; font-size: 15px; }
+
+        /* Hero */
+        .hero {
+            background:
+                radial-gradient(1200px 500px at 80% -10%, rgba(55,138,221,.18), transparent 60%),
+                linear-gradient(180deg, #fff 0%, var(--bg-soft) 100%);
+            padding: 84px 0 72px;
+            border-bottom: 1px solid var(--line);
+        }
+        .pill {
+            display: inline-flex; align-items: center; gap: 8px;
+            font-size: 13px; font-weight: 600; color: var(--brand);
+            background: rgba(24,95,165,.08); border: 1px solid rgba(24,95,165,.18);
+            padding: 6px 14px; border-radius: 999px; margin-bottom: 22px;
+        }
+        .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--brand-light); }
+        h1 {
+            font-size: clamp(34px, 5vw, 56px); line-height: 1.08; letter-spacing: -0.02em;
+            font-weight: 800; max-width: 760px; color: var(--ink);
+        }
+        h1 .accent { color: var(--brand); }
+        .lead { font-size: clamp(17px, 2vw, 20px); color: var(--muted); max-width: 620px; margin-top: 22px; }
+        .cta-row { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 34px; }
+        .trust { display: flex; flex-wrap: wrap; gap: 26px; margin-top: 42px; color: var(--muted); font-size: 14px; }
+        .trust b { color: var(--ink); font-size: 22px; font-weight: 800; display: block; }
+
+        /* Sections */
+        section.block { padding: 78px 0; }
+        .eyebrow { color: var(--brand); font-weight: 700; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+        h2 { font-size: clamp(26px, 3.5vw, 38px); letter-spacing: -0.02em; font-weight: 800; margin-top: 10px; max-width: 620px; }
+        .section-lead { color: var(--muted); margin-top: 14px; max-width: 620px; font-size: 17px; }
+
+        .grid { display: grid; gap: 22px; margin-top: 46px; }
+        .grid-3 { grid-template-columns: repeat(3, 1fr); }
+        .card {
+            border: 1px solid var(--line); border-radius: 16px; padding: 26px; background: #fff;
+            transition: box-shadow .2s ease, transform .2s ease, border-color .2s ease;
+        }
+        .card:hover { box-shadow: 0 12px 34px rgba(16,24,40,.08); transform: translateY(-2px); border-color: #D5DEEA; }
+        .card .ico {
+            width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center;
+            background: rgba(24,95,165,.10); color: var(--brand); margin-bottom: 16px;
+        }
+        .card h3 { font-size: 18px; font-weight: 700; }
+        .card p { color: var(--muted); font-size: 15px; margin-top: 8px; }
+
+        /* Pipeline */
+        .pipe { background: var(--bg-soft); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+        .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 46px; }
+        .step { display: flex; gap: 14px; align-items: flex-start; padding: 18px; background:#fff; border:1px solid var(--line); border-radius: 14px; }
+        .step .num {
+            flex: 0 0 34px; height: 34px; border-radius: 9px; background: var(--brand); color:#fff;
+            font-weight: 700; display: grid; place-items: center; font-size: 15px;
+        }
+        .step h4 { font-size: 15px; font-weight: 700; }
+        .step p { color: var(--muted); font-size: 13.5px; margin-top: 3px; }
+
+        /* CTA */
+        .cta-band {
+            background: linear-gradient(120deg, var(--brand-dark), var(--brand) 55%, var(--brand-light));
+            border-radius: 24px; padding: 56px 48px; color: #fff; text-align: center;
+            box-shadow: 0 24px 60px rgba(24,95,165,.28);
+        }
+        .cta-band h2 { color: #fff; margin: 0 auto; }
+        .cta-band p { color: rgba(255,255,255,.85); margin: 14px auto 0; max-width: 520px; font-size: 17px; }
+        .cta-band .btn-white { background: #fff; color: var(--brand); margin-top: 28px; }
+        .cta-band .btn-white:hover { background: #EAF1FB; }
+
+        /* Footer */
+        footer { border-top: 1px solid var(--line); padding: 40px 0; }
+        .foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+        .foot img { height: 26px; opacity: .9; }
+        .foot small { color: var(--muted); font-size: 13px; }
+
+        [data-en] { display: none; }
+        html[lang="en"] [data-es] { display: none; }
+        html[lang="en"] [data-en] { display: inline; }
+        html[lang="en"] p[data-en], html[lang="en"] div[data-en] { display: block; }
+
+        @media (max-width: 860px) {
+            .grid-3 { grid-template-columns: 1fr; }
+            .steps { grid-template-columns: 1fr; }
+            .cta-band { padding: 40px 24px; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="wrap nav">
+            <img src="/brand/lockup-color.svg" alt="Nexum Core">
+            <div class="nav-actions">
+                <div class="lang" role="group" aria-label="Language">
+                    <button id="btn-es" class="active" onclick="setLang('es')">ES</button>
+                    <button id="btn-en" onclick="setLang('en')">EN</button>
+                </div>
+                <a class="btn btn-primary" href="/admin">
+                    <span data-es>Ingresar</span><span data-en>Sign in</span>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- HERO -->
+    <div class="hero">
+        <div class="wrap">
+            <span class="pill">
+                <span class="dot"></span>
+                <span data-es>Backend Bridge Incorporation</span>
+                <span data-en>Backend Bridge Incorporation</span>
+            </span>
+            <h1>
+                <span data-es>El puente para constituir tu empresa en <span class="accent">México</span>, sin fricción.</span>
+                <span data-en>The bridge to incorporate your company in <span class="accent">Mexico</span>, without friction.</span>
+            </h1>
+            <p class="lead">
+                <span data-es>Nexum Core gestiona todo el proceso de constitución de empresas mexicanas para clientes internacionales: desde el expediente KYC hasta la e.firma del SAT, en una sola plataforma.</span>
+                <span data-en>Nexum Core manages the full incorporation process for international clients in Mexico: from the KYC file to the SAT e-signature, all in a single platform.</span>
+            </p>
+            <div class="cta-row">
+                <a class="btn btn-primary btn-lg" href="#contact">
+                    <span data-es>Comenzar ahora</span><span data-en>Get started</span>
+                </a>
+                <a class="btn btn-ghost btn-lg" href="#how">
+                    <span data-es>Ver cómo funciona</span><span data-en>See how it works</span>
+                </a>
+            </div>
+            <div class="trust">
+                <div><b>9</b><span data-es>etapas del proceso</span><span data-en>pipeline stages</span></div>
+                <div><b>100%</b><span data-es>trazabilidad y auditoría</span><span data-en>traceability & audit</span></div>
+                <div><b>SA · SRL · SAPI</b><span data-es>tipos de sociedad</span><span data-en>company types</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FEATURES -->
+    <section class="block wrap" id="features">
+        <span class="eyebrow" data-es>Plataforma</span><span class="eyebrow" data-en>Platform</span>
+        <h2>
+            <span data-es>Todo el expediente, de principio a fin</span>
+            <span data-en>The entire case file, end to end</span>
+        </h2>
+        <p class="section-lead">
+            <span data-es>Diseñado para equipos de notaría que necesitan control, visibilidad y cero pasos manuales innecesarios.</span>
+            <span data-en>Built for notary teams that need control, visibility and zero unnecessary manual steps.</span>
+        </p>
+        <div class="grid grid-3">
+            <div class="card">
+                <div class="ico">📥</div>
+                <h3><span data-es>Recepción automática</span><span data-en>Automated intake</span></h3>
+                <p>
+                    <span data-es>Los expedientes KYC llegan por webhook seguro y se archivan al instante en almacenamiento cifrado.</span>
+                    <span data-en>KYC files arrive via secure webhook and are archived instantly in encrypted storage.</span>
+                </p>
+            </div>
+            <div class="card">
+                <div class="ico">🧭</div>
+                <h3><span data-es>Pipeline guiado</span><span data-en>Guided pipeline</span></h3>
+                <p>
+                    <span data-es>Nueve etapas claras, desde validación de identidad hasta empresa operativa, con confirmación paso a paso.</span>
+                    <span data-en>Nine clear stages, from identity validation to an operating company, confirmed step by step.</span>
+                </p>
+            </div>
+            <div class="card">
+                <div class="ico">🏛️</div>
+                <h3><span data-es>Denominación social</span><span data-en>Company name filing</span></h3>
+                <p>
+                    <span data-es>Solicitud y dictamen de denominación ante la Secretaría de Economía, automatizado con el portal SE.</span>
+                    <span data-en>Company name request and ruling before the Ministry of Economy, automated with the SE portal.</span>
+                </p>
+            </div>
+            <div class="card">
+                <div class="ico">🔐</div>
+                <h3><span data-es>Firma electrónica</span><span data-en>Electronic signature</span></h3>
+                <p>
+                    <span data-es>Firma de socios y gestión de la e.firma del SAT integradas en el mismo flujo del expediente.</span>
+                    <span data-en>Partner signatures and SAT e-signature management integrated into the same case flow.</span>
+                </p>
+            </div>
+            <div class="card">
+                <div class="ico">📊</div>
+                <h3><span data-es>Panel y métricas</span><span data-en>Dashboard & metrics</span></h3>
+                <p>
+                    <span data-es>KPIs por rol, distribución por etapa y estado de cada expediente en tiempo real.</span>
+                    <span data-en>Role-based KPIs, stage distribution and the status of every case in real time.</span>
+                </p>
+            </div>
+            <div class="card">
+                <div class="ico">🔔</div>
+                <h3><span data-es>Notificaciones</span><span data-en>Notifications</span></h3>
+                <p>
+                    <span data-es>Alertas configurables por evento, con correo con la marca y campana en el dashboard.</span>
+                    <span data-en>Configurable per-event alerts, with branded email and in-dashboard bell.</span>
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- HOW IT WORKS -->
+    <div class="pipe" id="how">
+        <section class="block wrap">
+            <span class="eyebrow" data-es>Cómo funciona</span><span class="eyebrow" data-en>How it works</span>
+            <h2>
+                <span data-es>De la solicitud a la empresa operativa</span>
+                <span data-en>From request to an operating company</span>
+            </h2>
+            <div class="steps">
+                <div class="step"><div class="num">1</div><div><h4><span data-es>Datos recibidos</span><span data-en>Data received</span></h4><p><span data-es>El expediente llega y se registra.</span><span data-en>The case file arrives and is registered.</span></p></div></div>
+                <div class="step"><div class="num">2</div><div><h4><span data-es>Validación de identidad</span><span data-en>Identity validation</span></h4><p><span data-es>Pasaportes y documentos KYC.</span><span data-en>Passports and KYC documents.</span></p></div></div>
+                <div class="step"><div class="num">3</div><div><h4><span data-es>Denominación social</span><span data-en>Company name</span></h4><p><span data-es>Dictamen ante la SE.</span><span data-en>Ruling before the SE.</span></p></div></div>
+                <div class="step"><div class="num">4</div><div><h4><span data-es>Firma de socios</span><span data-en>Partner signature</span></h4><p><span data-es>Firma electrónica del acta.</span><span data-en>Electronic signing of the deed.</span></p></div></div>
+                <div class="step"><div class="num">5</div><div><h4><span data-es>Constitución</span><span data-en>Incorporation</span></h4><p><span data-es>Acta constitutiva formalizada.</span><span data-en>Articles of incorporation formalized.</span></p></div></div>
+                <div class="step"><div class="num">6</div><div><h4><span data-es>Domicilio fiscal</span><span data-en>Tax address</span></h4><p><span data-es>Registro ante el SAT.</span><span data-en>Registration with SAT.</span></p></div></div>
+                <div class="step"><div class="num">7</div><div><h4><span data-es>Alta en el SAT</span><span data-en>SAT registration</span></h4><p><span data-es>Obtención del RFC.</span><span data-en>RFC issuance.</span></p></div></div>
+                <div class="step"><div class="num">8</div><div><h4><span data-es>Cita e.firma</span><span data-en>e-signature appointment</span></h4><p><span data-es>Certificados .cer y .key.</span><span data-en>.cer and .key certificates.</span></p></div></div>
+                <div class="step"><div class="num">9</div><div><h4><span data-es>Empresa operativa</span><span data-en>Operating company</span></h4><p><span data-es>Lista para operar en México.</span><span data-en>Ready to operate in Mexico.</span></p></div></div>
+            </div>
+        </section>
+    </div>
+
+    <!-- CTA -->
+    <section class="block wrap" id="contact">
+        <div class="cta-band">
+            <h2>
+                <span data-es>¿Listo para constituir tu empresa en México?</span>
+                <span data-en>Ready to incorporate your company in Mexico?</span>
+            </h2>
+            <p>
+                <span data-es>Habla con nuestro equipo y comienza tu expediente hoy mismo.</span>
+                <span data-en>Talk to our team and start your case file today.</span>
+            </p>
+            <a class="btn btn-white btn-lg" href="mailto:contacto@nexumcore.app">
+                <span data-es>Contactar al equipo</span><span data-en>Contact the team</span>
+            </a>
+        </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer>
+        <div class="wrap foot">
+            <img src="/brand/lockup-color.svg" alt="Nexum Core">
+            <small>
+                <span data-es>© 2026 Backend Bridge Incorporation · Todos los derechos reservados</span>
+                <span data-en>© 2026 Backend Bridge Incorporation · All rights reserved</span>
+            </small>
+        </div>
+    </footer>
+
+    <script>
+        function setLang(lang) {
+            document.documentElement.lang = lang;
+            document.getElementById('btn-es').classList.toggle('active', lang === 'es');
+            document.getElementById('btn-en').classList.toggle('active', lang === 'en');
+            try { localStorage.setItem('nexum_lang', lang); } catch (e) {}
+        }
+        (function () {
+            var forced = new URLSearchParams(location.search).get('lang');
+            if (forced === 'en' || forced === 'es') { setLang(forced); return; }
+            var saved;
+            try { saved = localStorage.getItem('nexum_lang'); } catch (e) {}
+            var lang = saved || (navigator.language && navigator.language.startsWith('en') ? 'en' : 'es');
+            setLang(lang);
+        })();
+    </script>
+</body>
+</html>
