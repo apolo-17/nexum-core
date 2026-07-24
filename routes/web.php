@@ -7,8 +7,10 @@ use App\Http\Controllers\Admin\SoldadoIneDownloadController;
 use App\Http\Middleware\EnsureCanViewApiDocs;
 use Illuminate\Support\Facades\Route;
 
+// Public bilingual (ES/EN) marketing landing page. Static, self-contained HTML in
+// public/landing.html — served here so it lives at the clean root URL.
 Route::get('/', function () {
-    return view('welcome');
+    return response()->file(public_path('landing.html'));
 });
 
 // Bilingual API docs UI (ES default, real-time toggle to EN). The JSON specs
