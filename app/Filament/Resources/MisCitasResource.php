@@ -130,6 +130,7 @@ class MisCitasResource extends Resource
                     ->label('Tipo')
                     ->options(AppointmentTypeEnum::options()),
             ])
+            ->recordUrl(fn (Appointment $record): string => Pages\ViewMiCita::getUrl(['record' => $record]))
             ->defaultSort('scheduled_at', 'desc');
     }
 
@@ -142,6 +143,7 @@ class MisCitasResource extends Resource
     {
         return [
             'index' => Pages\ListMisCitas::route('/'),
+            'view' => Pages\ViewMiCita::route('/{record}'),
         ];
     }
 }
