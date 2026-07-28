@@ -4,8 +4,10 @@ namespace App\Filament\Resources;
 
 use App\Enums\DocumentTypeEnum;
 use App\Enums\EfirmaAppointmentStatusEnum;
+use App\Enums\LegalNameStatusEnum;
 use App\Enums\RegistrationStageEnum;
 use App\Enums\RegistrationStatusEnum;
+use App\Enums\ShareholderRoleEnum;
 use App\Filament\Resources\RegistrationResource\Pages;
 use App\Filament\Resources\RegistrationResource\RelationManagers;
 use App\Models\Registration;
@@ -16,13 +18,17 @@ use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DateTimePicker;
+use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Filament\Infolists\Components\IconEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\BadgeColumn;
@@ -91,7 +97,15 @@ class RegistrationResource extends Resource
                         ->label('Código de cliente (Singapur)')
                         ->required()
                         ->unique(ignoreRecord: true)
-                        ->maxLength(255),
+                        ->maxLength(255)
+                        ->helperText('Identificador único del expediente. Si se dio de alta fuera del '
+                            .'relay, inventa uno trazable (por ejemplo EXT-0001).'),
+
+                    TextInput::make('singapur_folder_name')
+                        ->label('Carpeta del relay')
+                        ->maxLength(255)
+                        ->placeholder('000003_NOVA CONSULTORA EMPRESARIAL')
+                        ->helperText('Sólo si el expediente vino de China. Déjalo vacío en altas manuales.'),
 
                     TextInput::make('singapur_package_id')
                         ->label('ID de paquete ZIP')
@@ -101,6 +115,43 @@ class RegistrationResource extends Resource
             Section::make('Empresa')
                 ->columns(2)
                 ->schema([
+                    TextInput::make('legal_name')
+                        ->label('Razón social')
+                        ->required()
+                        ->maxLength(255)
+                        ->columnSpanFull()
+                        ->helperText('Se guarda como la denominación de prioridad 1 del expediente.')
+                        // Virtual field: it lives in legal_names, not in registrations.
+                        ->dehydrated(false)
+                        ->afterStateHydrated(
+                            fn (TextInput $component, ?Registration $record): mixed => $component->state(
+                                $record?->primaryLegalName?->name
+                            )
+                        )
+                        ->saveRelationshipsUsing(
+                            fn (Registration $record, ?string $state, Get $get): mixed => self::syncPrimaryLegalName(
+                                $record,
+                                $state,
+                                $get('legal_name_status'),
+                            )
+                        ),
+
+                    Select::make('legal_name_status')
+                        ->label('Estatus de la denominación')
+                        ->options(
+                            collect(LegalNameStatusEnum::cases())
+                                ->mapWithKeys(fn ($case) => [$case->value => $case->label()])
+                        )
+                        ->default(LegalNameStatusEnum::APPROVED->value)
+                        ->dehydrated(false)
+                        ->afterStateHydrated(
+                            fn (Select $component, ?Registration $record): mixed => $component->state(
+                                $record?->primaryLegalName?->status?->value
+                                    ?? LegalNameStatusEnum::APPROVED->value
+                            )
+                        )
+                        ->helperText('Un expediente ya constituido llega con la denominación aprobada.'),
+
                     Select::make('company_type')
                         ->label('Tipo de sociedad')
                         ->options([
@@ -109,6 +160,19 @@ class RegistrationResource extends Resource
                             'SAPI de CV' => 'SAPI de CV',
                         ]),
 
+                    Textarea::make('company_object')
+                        ->label('Objeto social')
+                        ->rows(3)
+                        ->columnSpanFull()
+                        ->helperText('Necesario para generar el acta constitutiva.'),
+
+                    TextInput::make('capital_social')
+                        ->label('Capital social')
+                        ->numeric()
+                        ->prefix('$')
+                        ->suffix('MXN')
+                        ->helperText('Mínimo legal para SA de CV: 50,000.'),
+
                     TextInput::make('rfc')
                         ->label('RFC')
                         ->maxLength(13),
@@ -116,6 +180,62 @@ class RegistrationResource extends Resource
                     DateTimePicker::make('efirma_appointment_at')
                         ->label('Cita e.firma SAT')
                         ->nullable(),
+                ]),
+
+            Section::make('Socios')
+                ->description('Captura aquí a los accionistas del expediente. Los datos que faltan para '
+                    .'el acta (género, estado civil, nacimiento, domicilio) se completan después en la '
+                    .'pestaña Socios del expediente.')
+                ->visibleOn('create')
+                ->schema([
+                    Repeater::make('shareholders')
+                        ->relationship()
+                        ->hiddenLabel()
+                        ->columns(2)
+                        ->defaultItems(1)
+                        ->addActionLabel('Agregar socio')
+                        ->itemLabel(fn (array $state): ?string => $state['name'] ?? null)
+                        ->schema([
+                            TextInput::make('name')
+                                ->label('Nombre completo')
+                                ->required()
+                                ->columnSpanFull(),
+
+                            TextInput::make('nationality')
+                                ->label('Nacionalidad')
+                                ->required()
+                                ->default('China'),
+
+                            TextInput::make('passport_number')
+                                ->label('N.° pasaporte'),
+
+                            TextInput::make('participation_percentage')
+                                ->label('% de participación')
+                                ->numeric()
+                                ->suffix('%')
+                                ->required(),
+
+                            Select::make('role')
+                                ->label('Rol')
+                                ->options(
+                                    collect(ShareholderRoleEnum::cases())
+                                        ->mapWithKeys(fn ($case) => [$case->value => $case->label()])
+                                )
+                                ->default(ShareholderRoleEnum::SHAREHOLDER->value)
+                                ->required(),
+
+                            TextInput::make('email')
+                                ->label('Correo')
+                                ->email(),
+
+                            TextInput::make('phone')
+                                ->label('Teléfono'),
+
+                            Toggle::make('is_married')
+                                ->label('Casado/a')
+                                ->helperText('Soltero → 2 docs KYC, casado → 4 (acta de matrimonio + pasaporte del cónyuge).')
+                                ->columnSpanFull(),
+                        ]),
                 ]),
 
             Section::make('Domicilio fiscal')
@@ -142,6 +262,7 @@ class RegistrationResource extends Resource
                             collect(RegistrationStageEnum::cases())
                                 ->mapWithKeys(fn ($case) => [$case->value => $case->label()])
                         )
+                        ->default(RegistrationStageEnum::DATA_RECEIVED->value)
                         ->required(),
 
                     Select::make('status')
@@ -150,6 +271,7 @@ class RegistrationResource extends Resource
                             collect(RegistrationStatusEnum::cases())
                                 ->mapWithKeys(fn ($case) => [$case->value => $case->label()])
                         )
+                        ->default(RegistrationStatusEnum::ACTIVE->value)
                         ->required(),
                 ]),
 
@@ -173,6 +295,36 @@ class RegistrationResource extends Resource
                         ->nullable(),
                 ]),
         ]);
+    }
+
+    /**
+     * Persist the company name typed in the form as the priority-1 denomination.
+     *
+     * The razón social lives in legal_names, not in registrations, so the form field is
+     * virtual and this runs once the registration exists. Updating (rather than adding)
+     * keeps a single priority-1 row, which is the one every downstream consumer reads —
+     * the dashboard title, the acta, and the SAT bot payload.
+     *
+     * @param  Registration  $record  The registration just created or saved.
+     * @param  string|null  $name  The company name typed by the user.
+     * @param  string|null  $status  LegalNameStatusEnum value chosen alongside the name.
+     */
+    protected static function syncPrimaryLegalName(
+        Registration $record,
+        ?string $name,
+        ?string $status,
+    ): void {
+        if (blank($name)) {
+            return;
+        }
+
+        $record->legalNames()->updateOrCreate(
+            ['priority' => 1],
+            [
+                'name' => $name,
+                'status' => LegalNameStatusEnum::tryFrom((string) $status) ?? LegalNameStatusEnum::APPROVED,
+            ],
+        );
     }
 
     /**
@@ -758,11 +910,12 @@ class RegistrationResource extends Resource
      */
     public static function getPages(): array
     {
-        // CreateRegistration is intentionally excluded — expedients are created
-        // automatically when the Singapur relay posts a webhook event.
-        // Manual creation is not supported to enforce data integrity.
+        // Expedients normally arrive from the Singapur relay webhook. CreateRegistration
+        // covers the other case: a company incorporated outside the platform that the
+        // team needs to register manually to keep working it here.
         return [
             'index' => Pages\ListRegistrations::route('/'),
+            'create' => Pages\CreateRegistration::route('/create'),
             'view' => Pages\ViewRegistration::route('/{record}'),
             'edit' => Pages\EditRegistration::route('/{record}/edit'),
             'edit-acta-inline' => Pages\EditActaInlinePage::route('/{record}/edit-acta-inline'),
