@@ -10,8 +10,10 @@ use App\Enums\RegistrationStatusEnum;
 use App\Enums\ShareholderRoleEnum;
 use App\Filament\Resources\RegistrationResource\Pages;
 use App\Filament\Resources\RegistrationResource\RelationManagers;
+use App\Models\LegalName;
 use App\Models\Registration;
 use App\Models\User;
+use App\Services\Denomination\ClaimPoolDenominationService;
 use BackedEnum;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -25,10 +27,12 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Infolists\Components\IconEntry;
 use Filament\Infolists\Components\TextEntry;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\BadgeColumn;
@@ -115,9 +119,47 @@ class RegistrationResource extends Resource
             Section::make('Empresa')
                 ->columns(2)
                 ->schema([
+                    Select::make('pool_legal_name_id')
+                        ->label('Denominación aprobada (pool)')
+                        ->columnSpanFull()
+                        ->searchable()
+                        ->native(false)
+                        ->placeholder('Sin vincular — captura la razón social a mano')
+                        ->options(fn (?Registration $record): array => self::poolDenominationOptions($record))
+                        ->helperText('Toma una denominación ya autorizada por la SE y la vuelve la razón social '
+                            .'del expediente. Su constancia se adjunta automáticamente en Documentos.')
+                        // Virtual field: claiming happens in legal_names + documents.
+                        ->dehydrated(false)
+                        ->live()
+                        ->afterStateHydrated(
+                            fn (Select $component, ?Registration $record): mixed => $component->state(
+                                self::linkedPoolDenominationId($record)
+                            )
+                        )
+                        ->afterStateUpdated(function (?string $state, Set $set): void {
+                            $denomination = filled($state) ? LegalName::find($state) : null;
+
+                            if ($denomination === null) {
+                                return;
+                            }
+
+                            // Mirror the claimed name into the (now read-only) fields so the
+                            // operator sees exactly what will be saved.
+                            $set('legal_name', $denomination->name);
+                            $set('legal_name_status', LegalNameStatusEnum::APPROVED->value);
+                        })
+                        ->saveRelationshipsUsing(
+                            fn (Registration $record, ?string $state): mixed => self::claimPoolDenomination(
+                                $record,
+                                $state,
+                            )
+                        ),
+
                     TextInput::make('legal_name')
                         ->label('Razón social')
-                        ->required()
+                        ->required(fn (Get $get): bool => blank($get('pool_legal_name_id')))
+                        // A name authorized by the SE is not editable by hand.
+                        ->readOnly(fn (Get $get): bool => filled($get('pool_legal_name_id')))
                         ->maxLength(255)
                         ->columnSpanFull()
                         ->helperText('Se guarda como la denominación de prioridad 1 del expediente.')
@@ -133,6 +175,7 @@ class RegistrationResource extends Resource
                                 $record,
                                 $state,
                                 $get('legal_name_status'),
+                                $get('pool_legal_name_id'),
                             )
                         ),
 
@@ -143,6 +186,7 @@ class RegistrationResource extends Resource
                                 ->mapWithKeys(fn ($case) => [$case->value => $case->label()])
                         )
                         ->default(LegalNameStatusEnum::APPROVED->value)
+                        ->disabled(fn (Get $get): bool => filled($get('pool_legal_name_id')))
                         ->dehydrated(false)
                         ->afterStateHydrated(
                             fn (Select $component, ?Registration $record): mixed => $component->state(
@@ -308,13 +352,40 @@ class RegistrationResource extends Resource
      * @param  Registration  $record  The registration just created or saved.
      * @param  string|null  $name  The company name typed by the user.
      * @param  string|null  $status  LegalNameStatusEnum value chosen alongside the name.
+     * @param  string|null  $poolLegalNameId  Pool denomination selected in the same form, if any.
      */
     protected static function syncPrimaryLegalName(
         Registration $record,
         ?string $name,
         ?string $status,
+        ?string $poolLegalNameId = null,
     ): void {
+        // A pool denomination owns priority 1: claimPoolDenomination() writes it and
+        // its SE-authorized name/status must never be overwritten from the text field.
+        if (filled($poolLegalNameId)) {
+            return;
+        }
+
         if (blank($name)) {
+            return;
+        }
+
+        $current = $record->primaryLegalName;
+
+        // A denomination authorized by the SE carries a folio: the name on it is the
+        // one on the constancia, so it cannot be rewritten by hand from this form
+        // (clearing the picker must not become a back door to renaming it).
+        if ($current !== null
+            && filled($current->clave_unica_denominacion)
+            && $current->name !== $name) {
+            Notification::make()
+                ->title('La razón social no se cambió.')
+                ->body("«{$current->name}» está autorizada por la SE (folio {$current->clave_unica_denominacion}). "
+                    .'Para usar otra, vincula una denominación distinta del pool.')
+                ->warning()
+                ->persistent()
+                ->send();
+
             return;
         }
 
@@ -325,6 +396,129 @@ class RegistrationResource extends Resource
                 'status' => LegalNameStatusEnum::tryFrom((string) $status) ?? LegalNameStatusEnum::APPROVED,
             ],
         );
+    }
+
+    /**
+     * Build the options for the pool denomination picker.
+     *
+     * Lists every SE-approved name still free to claim, plus the one already linked
+     * to this expedient (otherwise the select would render empty on an edit form and
+     * look as if the link had been lost).
+     *
+     * @param  Registration|null  $record  The expedient being edited, null on create.
+     * @return array<string, string> Denomination id => label.
+     */
+    protected static function poolDenominationOptions(?Registration $record): array
+    {
+        $options = LegalName::query()
+            ->whereNull('registration_id')
+            ->where('status', LegalNameStatusEnum::APPROVED->value)
+            ->orderBy('name')
+            ->get()
+            ->mapWithKeys(fn (LegalName $name): array => [
+                $name->id => self::poolDenominationLabel($name),
+            ])
+            ->all();
+
+        $linked = $record?->primaryLegalName;
+
+        if ($linked !== null && filled($linked->clave_unica_denominacion)) {
+            $options[$linked->id] = self::poolDenominationLabel($linked).' — vinculada';
+        }
+
+        return $options;
+    }
+
+    /**
+     * Format a denomination for the picker: name, régimen and SE folio.
+     *
+     * @param  LegalName  $name  The denomination to label.
+     */
+    protected static function poolDenominationLabel(LegalName $name): string
+    {
+        $parts = array_filter([
+            $name->name,
+            filled($name->company_type) ? strtoupper((string) $name->company_type) : null,
+            filled($name->clave_unica_denominacion) ? "folio {$name->clave_unica_denominacion}" : null,
+        ]);
+
+        return implode(' · ', $parts);
+    }
+
+    /**
+     * Resolve which pool denomination is already linked to this expedient, if any.
+     *
+     * Only a name carrying an SE folio counts as coming from the pool; a manually
+     * typed razón social must leave the picker empty so it stays editable.
+     *
+     * @param  Registration|null  $record  The expedient being edited, null on create.
+     * @return string|null The linked denomination id.
+     */
+    protected static function linkedPoolDenominationId(?Registration $record): ?string
+    {
+        $linked = $record?->primaryLegalName;
+
+        return $linked !== null && filled($linked->clave_unica_denominacion)
+            ? $linked->id
+            : null;
+    }
+
+    /**
+     * Claim the pool denomination chosen in the form for this expedient.
+     *
+     * Runs on save (the picker is a virtual field). Skips silently when nothing is
+     * selected or when the very same name is already linked — re-saving the form
+     * must not re-run the claim.
+     *
+     * @param  Registration  $record  The registration just created or saved.
+     * @param  string|null  $legalNameId  The pool denomination id selected in the form.
+     */
+    protected static function claimPoolDenomination(Registration $record, ?string $legalNameId): void
+    {
+        if (blank($legalNameId) || $legalNameId === self::linkedPoolDenominationId($record)) {
+            return;
+        }
+
+        $denomination = LegalName::find($legalNameId);
+
+        if ($denomination === null) {
+            Notification::make()
+                ->title('La denominación seleccionada ya no existe.')
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        $result = app(ClaimPoolDenominationService::class)->claim($denomination, $record);
+
+        if (! $result->claimed) {
+            Notification::make()
+                ->title("«{$denomination->name}»: no se pudo vincular.")
+                ->body($result->reason)
+                ->danger()
+                ->persistent()
+                ->send();
+
+            return;
+        }
+
+        if (! $result->constanciaAttached) {
+            Notification::make()
+                ->title("«{$denomination->name}»: vinculada sin constancia.")
+                ->body($result->reason)
+                ->warning()
+                ->persistent()
+                ->send();
+
+            return;
+        }
+
+        Notification::make()
+            ->title("«{$denomination->name}»: vinculada al expediente.")
+            ->body('Se adjuntó la constancia de la SE en Documentos.')
+            ->success()
+            ->send();
     }
 
     /**

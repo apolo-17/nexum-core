@@ -4,14 +4,13 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V3;
 
-use App\Enums\LegalNameEventTypeEnum;
 use App\Enums\LegalNameStatusEnum;
 use App\Http\Controllers\Controller;
 use App\Models\LegalName;
 use App\Models\Registration;
+use App\Services\Denomination\ClaimPoolDenominationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -72,42 +71,23 @@ class DenominationPoolController extends Controller
             );
         }
 
-        $claimed = DB::transaction(function () use ($legalName, $registration): bool {
-            /** @var LegalName $fresh */
-            $fresh = LegalName::whereKey($legalName->getKey())->lockForUpdate()->first();
+        // Same claim the dashboard runs: assigns the name as priority 1 and copies
+        // its SE constancia into the expedient's documents.
+        $result = app(ClaimPoolDenominationService::class)->claim($legalName, $registration);
 
-            // Still available? (approved and not yet assigned)
-            if ($fresh->registration_id !== null
-                || $fresh->status !== LegalNameStatusEnum::APPROVED) {
-                return false;
-            }
-
-            $fresh->update(['registration_id' => $registration->id]);
-
-            return true;
-        });
-
-        if (! $claimed) {
+        if (! $result->claimed) {
             return response()->json(
                 ['error' => 'Denomination is no longer available.'],
                 Response::HTTP_CONFLICT,
             );
         }
 
-        $legalName->recordEvent(
-            LegalNameEventTypeEnum::CLAIMED,
-            "Asignada al expediente {$registration->singapur_client_code}.",
-            [
-                'registration_id' => $registration->id,
-                'registration_code' => $registration->singapur_client_code,
-            ],
-        );
-
         return response()->json([
             'data' => [
                 'id' => $legalName->id,
                 'name' => $legalName->name,
                 'registration_code' => $registration->singapur_client_code,
+                'constancia_attached' => $result->constanciaAttached,
             ],
         ], Response::HTTP_OK);
     }

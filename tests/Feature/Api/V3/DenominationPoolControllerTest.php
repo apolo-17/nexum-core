@@ -7,6 +7,7 @@ use App\Models\LegalName;
 use App\Models\Registration;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -23,6 +24,10 @@ class DenominationPoolControllerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // Claiming copies the SE constancia into the expedient — keep it off real R2.
+        Storage::fake('s3');
+
         $this->actingAs(User::factory()->create(), 'api');
     }
 
