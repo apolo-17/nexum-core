@@ -5,11 +5,12 @@ namespace App\Filament\Resources;
 use App\Enums\LegalNameEventTypeEnum;
 use App\Enums\LegalNameStatusEnum;
 use App\Filament\Resources\DenominationResource\Pages;
-use App\Models\LegalName;
 use App\Jobs\SubmitDenominationToMuaNowJob;
+use App\Models\LegalName;
 use App\Services\Mua\MuaSubmissionService;
 use Carbon\CarbonInterface;
 use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
 use Filament\Actions\ViewAction;
 use Filament\Infolists\Components\TextEntry as InfoTextEntry;
 use Filament\Infolists\Components\ViewEntry;
@@ -124,68 +125,77 @@ class DenominationResource extends Resource
             ])
             ->defaultSort('created_at', 'desc')
             ->actions([
-                ViewAction::make(),
+                ActionGroup::make([
+                    ViewAction::make()->label('Ver detalle'),
 
-                Action::make('send_to_se')
-                    ->label('Enviar a la SE')
-                    ->icon('heroicon-o-paper-airplane')
-                    ->color('info')
-                    ->visible(fn (LegalName $record): bool => in_array(
-                        $record->status,
-                        [LegalNameStatusEnum::DRAFT, LegalNameStatusEnum::WAIT],
-                        true,
-                    ))
-                    ->requiresConfirmation()
-                    ->modalDescription('El bot enviará la denominación al portal MUA en segundo plano '
-                        .'(si es horario hábil y hay FIEL disponible). Puedes cerrar esto; el estado se actualiza solo.')
-                    ->action(function (LegalName $record): void {
-                        // Segundo plano: el modal cierra al instante en vez de esperar ~1 min al bot.
-                        SubmitDenominationToMuaNowJob::dispatch($record->id);
+                    Action::make('send_to_se')
+                        ->label('Enviar a la SE')
+                        ->icon('heroicon-o-paper-airplane')
+                        ->color('info')
+                        ->visible(fn (LegalName $record): bool => in_array(
+                            $record->status,
+                            [LegalNameStatusEnum::DRAFT, LegalNameStatusEnum::WAIT],
+                            true,
+                        ))
+                        ->requiresConfirmation()
+                        ->modalDescription('El bot enviará la denominación al portal MUA en segundo plano '
+                            .'(si es horario hábil y hay FIEL disponible). Puedes cerrar esto; el estado se actualiza solo.')
+                        ->action(function (LegalName $record): void {
+                            // Segundo plano: el modal cierra al instante en vez de esperar ~1 min al bot.
+                            SubmitDenominationToMuaNowJob::dispatch($record->id);
 
-                        Notification::make()
-                            ->title('Enviando a la SE')
-                            ->body('Se está enviando en segundo plano. El estado se actualizará solo cuando el bot confirme.')
-                            ->info()
-                            ->send();
-                    }),
-
-                Action::make('force_delete')
-                    ->label('Eliminar')
-                    ->icon('heroicon-o-trash')
-                    ->color('danger')
-                    // Only draft ("Borrador") or queued ("En cola de envío") names — never
-                    // one already sent / in dictamen / resolved.
-                    ->visible(fn (LegalName $record): bool => in_array(
-                        $record->status,
-                        [LegalNameStatusEnum::DRAFT, LegalNameStatusEnum::WAIT],
-                        true,
-                    ))
-                    ->requiresConfirmation()
-                    ->modalHeading('Eliminar denominación')
-                    ->modalDescription('Se eliminará de forma permanente. Solo aplica a borradores o denominaciones en cola, y únicamente si no están ligadas a ningún expediente.')
-                    ->modalSubmitActionLabel('Eliminar')
-                    ->action(function (LegalName $record): void {
-                        // Safety guard: never delete a denomination tied to a company.
-                        if ($record->registration_id !== null) {
                             Notification::make()
-                                ->title("«{$record->name}»: no se puede eliminar.")
-                                ->body('Está ligada a un expediente; eliminarla afectaría esa empresa.')
-                                ->danger()
+                                ->title('Enviando a la SE')
+                                ->body('Se está enviando en segundo plano. El estado se actualizará solo cuando el bot confirme.')
+                                ->info()
                                 ->send();
+                        }),
 
-                            return;
-                        }
+                    Action::make('force_delete')
+                        ->label('Eliminar')
+                        ->icon('heroicon-o-trash')
+                        ->color('danger')
+                        // Only draft ("Borrador") or queued ("En cola de envío") names — never
+                        // one already sent / in dictamen / resolved.
+                        ->visible(fn (LegalName $record): bool => in_array(
+                            $record->status,
+                            [LegalNameStatusEnum::DRAFT, LegalNameStatusEnum::WAIT],
+                            true,
+                        ))
+                        ->requiresConfirmation()
+                        ->modalHeading('Eliminar denominación')
+                        ->modalDescription('Se eliminará de forma permanente. Solo aplica a borradores o denominaciones en cola, y únicamente si no están ligadas a ningún expediente.')
+                        ->modalSubmitActionLabel('Eliminar')
+                        ->action(function (LegalName $record): void {
+                            // Safety guard: never delete a denomination tied to a company.
+                            if ($record->registration_id !== null) {
+                                Notification::make()
+                                    ->title("«{$record->name}»: no se puede eliminar.")
+                                    ->body('Está ligada a un expediente; eliminarla afectaría esa empresa.')
+                                    ->danger()
+                                    ->send();
 
-                        $name = $record->name;
-                        // LegalName no usa SoftDeletes → delete() es permanente (force).
-                        // Los eventos hijos se borran solos (FK cascadeOnDelete).
-                        $record->delete();
+                                return;
+                            }
 
-                        Notification::make()
-                            ->title("«{$name}»: denominación eliminada.")
-                            ->success()
-                            ->send();
-                    }),
+                            $name = $record->name;
+                            // LegalName no usa SoftDeletes → delete() es permanente (force).
+                            // Los eventos hijos se borran solos (FK cascadeOnDelete).
+                            $record->delete();
+
+                            Notification::make()
+                                ->title("«{$name}»: denominación eliminada.")
+                                ->success()
+                                ->send();
+                        }),
+                ])
+                    // Un solo botón "⋮" agrupa las acciones para que la tabla no se rompa
+                    // ni tenga scroll lateral; despliega las acciones escondidas.
+                    ->label('Acciones')
+                    ->icon('heroicon-m-ellipsis-vertical')
+                    ->tooltip('Acciones')
+                    ->button()
+                    ->hiddenLabel(),
             ]);
     }
 
