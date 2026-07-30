@@ -6,6 +6,7 @@ use App\Enums\LegalNameEventTypeEnum;
 use App\Enums\LegalNameStatusEnum;
 use App\Filament\Resources\DenominationResource\Pages;
 use App\Models\LegalName;
+use App\Jobs\SubmitDenominationToMuaNowJob;
 use App\Services\Mua\MuaSubmissionService;
 use Carbon\CarbonInterface;
 use Filament\Actions\Action;
@@ -135,9 +136,17 @@ class DenominationResource extends Resource
                         true,
                     ))
                     ->requiresConfirmation()
-                    ->modalDescription('Se enviará la denominación al portal MUA de inmediato (si es horario hábil y hay FIEL disponible).')
+                    ->modalDescription('El bot enviará la denominación al portal MUA en segundo plano '
+                        .'(si es horario hábil y hay FIEL disponible). Puedes cerrar esto; el estado se actualiza solo.')
                     ->action(function (LegalName $record): void {
-                        self::attemptSubmit($record)->send();
+                        // Segundo plano: el modal cierra al instante en vez de esperar ~1 min al bot.
+                        SubmitDenominationToMuaNowJob::dispatch($record->id);
+
+                        Notification::make()
+                            ->title('Enviando a la SE')
+                            ->body('Se está enviando en segundo plano. El estado se actualizará solo cuando el bot confirme.')
+                            ->info()
+                            ->send();
                     }),
 
                 Action::make('force_delete')

@@ -8,8 +8,10 @@ use App\Enums\AppointmentTypeEnum;
 use App\Models\Appointment;
 use App\Models\AppointmentEmail;
 use App\Models\SatModule;
-use App\Services\Sat\SatFormingService;
+use App\Jobs\FormSatAppointmentJob;
+use App\Services\Sat\SatReviewService;
 use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
 use Filament\Infolists\Components\TextEntry as InfoTextEntry;
 use Filament\Infolists\Components\ViewEntry;
 use Filament\Notifications\Notification;
@@ -22,6 +24,8 @@ use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
@@ -100,7 +104,19 @@ class AppointmentsRelationManager extends RelationManager
                 ->label('Soldado que asiste')
                 ->relationship('soldado', 'name')
                 ->searchable()
-                ->preload(),
+                ->preload()
+                ->live(),
+
+            Toggle::make('form_now')
+                ->label('Formar en la fila virtual al guardar')
+                ->helperText('El bot lo formará en segundo plano en cuanto guardes; te avisamos por correo. '
+                    .'Si lo apagas, después lo formas con el botón "Formar con el bot".')
+                ->default(true)
+                ->inline(false)
+                // Solo tiene sentido si hay soldado y la cita está por formar.
+                ->visible(fn (Get $get): bool => filled($get('soldado_id'))
+                    && ($get('status') ?? AppointmentStatusEnum::PENDING_FORMING->value)
+                        === AppointmentStatusEnum::PENDING_FORMING->value),
 
             Select::make('preferred_module')
                 ->label('Sucursal del SAT donde formar')
@@ -207,6 +223,7 @@ class AppointmentsRelationManager extends RelationManager
             ])
             ->defaultSort('type')
             ->actions([
+                ActionGroup::make([
                 ViewAction::make()
                     ->label('Ver detalle')
                     ->icon('heroicon-o-eye')
@@ -278,17 +295,44 @@ class AppointmentsRelationManager extends RelationManager
                     ->visible(fn (Appointment $record): bool => $record->status === AppointmentStatusEnum::PENDING_FORMING
                         && $record->soldado_id !== null)
                     ->requiresConfirmation()
-                    ->modalDescription('El bot formará la cita en la fila virtual del SAT. Tarda ~1 minuto; '
-                        .'el resultado llega solo y verás la cita como "Formada".')
+                    ->modalDescription('El bot formará la cita en la fila virtual del SAT en segundo plano. '
+                        .'Puedes cerrar esto; el resultado llega por correo y verás la cita como "Formada".')
                     ->action(function (Appointment $record): void {
-                        $ok = app(SatFormingService::class)->dispatchToBot($record);
+                        // Segundo plano: el modal cierra al instante, el bot trabaja en la cola.
+                        FormSatAppointmentJob::dispatch($record->id);
 
                         Notification::make()
-                            ->title($ok ? 'Enviada al bot' : 'No se pudo enviar')
-                            ->body($ok
-                                ? 'El bot la está formando. El resultado llega por sí solo en un momento.'
-                                : 'Revisa que la cita tenga soldado, que haya un correo libre del pool y que el bot esté configurado.')
-                            ->status($ok ? 'success' : 'danger')
+                            ->title('Enviada a formar')
+                            ->body('El bot la está formando en segundo plano. Te avisamos por correo cuando quede lista.')
+                            ->success()
+                            ->send();
+                    }),
+
+                Action::make('reviewNow')
+                    ->label('Revisar status ahora')
+                    ->icon('heroicon-o-arrow-path')
+                    ->color('info')
+                    ->visible(fn (Appointment $record): bool => $record->status === AppointmentStatusEnum::FORMED)
+                    ->modalHeading('Revisar el status en el SAT')
+                    ->modalDescription('Voy a consultar el SAT en vivo para ver si ya te asignaron fecha. '
+                        .'Tarda unos segundos.')
+                    ->modalSubmitActionLabel('Revisar ahora')
+                    ->action(function (Appointment $record): void {
+                        $result = app(SatReviewService::class)->reviewNow($record);
+                        $record->refresh();
+
+                        Notification::make()
+                            ->title(match ($result['status'] ?? 'error') {
+                                'scheduled' => '¡Ya tienes fecha!',
+                                'in_review' => 'Sigue en espera',
+                                default => 'No se pudo revisar',
+                            })
+                            ->body($result['message'] ?? 'Sin detalle.')
+                            ->status(match ($result['status'] ?? 'error') {
+                                'scheduled' => 'success',
+                                'in_review' => 'info',
+                                default => 'danger',
+                            })
                             ->send();
                     }),
 
@@ -313,9 +357,50 @@ class AppointmentsRelationManager extends RelationManager
                         );
                     }),
 
-                EditAction::make(),
-                DeleteAction::make(),
+                EditAction::make()->label('Editar')->modalHeading('Editar cita')
+                    ->after(fn (Appointment $record, array $data) => self::maybeDispatchForming($record, $data)),
+                DeleteAction::make()->label('Eliminar'),
+                ])
+                    // Un solo botón "⋮" agrupa todas las acciones para que la tabla no se
+                    // rompa ni tenga scroll lateral; despliega las acciones escondidas.
+                    ->label('Acciones')
+                    ->icon('heroicon-m-ellipsis-vertical')
+                    ->tooltip('Acciones')
+                    ->button()
+                    ->hiddenLabel(),
             ])
-            ->headerActions([CreateAction::make()->label('Agregar cita')]);
+            ->headerActions([
+                CreateAction::make()->label('Agregar cita')
+                    ->after(fn (Appointment $record, array $data) => self::maybeDispatchForming($record, $data)),
+            ]);
+    }
+
+    /**
+     * Send the appointment to be formed if the user asked for it when saving.
+     *
+     * The "Formar al guardar" toggle (form_now) is not a DB column — it only signals
+     * intent here. Fires only for a pending_forming appointment that already has a
+     * soldado, so the bot has who to queue.
+     *
+     * @param  Appointment  $record  The appointment just saved.
+     * @param  array<string, mixed>  $data  The submitted form data (carries form_now).
+     */
+    private static function maybeDispatchForming(Appointment $record, array $data): void
+    {
+        $wantsForming = (bool) ($data['form_now'] ?? false);
+
+        if (! $wantsForming
+            || $record->status !== AppointmentStatusEnum::PENDING_FORMING
+            || $record->soldado_id === null) {
+            return;
+        }
+
+        FormSatAppointmentJob::dispatch($record->id);
+
+        Notification::make()
+            ->title('Enviada a formar')
+            ->body('El bot la está formando en segundo plano. Te avisamos por correo cuando quede lista.')
+            ->success()
+            ->send();
     }
 }
