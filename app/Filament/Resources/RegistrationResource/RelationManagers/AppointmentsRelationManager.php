@@ -222,6 +222,9 @@ class AppointmentsRelationManager extends RelationManager
                     ->options(AppointmentStatusEnum::options()),
             ])
             ->defaultSort('type')
+            // Refresca sola cada 5s: al formar en segundo plano, el estado pasa a
+            // "Formada" (y luego "Agendada") sin que el usuario tenga que dar F5.
+            ->poll('5s')
             ->actions([
                 ActionGroup::make([
                 ViewAction::make()

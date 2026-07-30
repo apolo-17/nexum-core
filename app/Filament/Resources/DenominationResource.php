@@ -124,6 +124,9 @@ class DenominationResource extends Resource
                         ->all()),
             ])
             ->defaultSort('created_at', 'desc')
+            // Refresca sola cada 5s: al enviar a la SE, el estado pasa a "Enviando…" y
+            // luego a "Aprobada/Rechazada" sin que el usuario tenga que dar F5.
+            ->poll('5s')
             ->actions([
                 ActionGroup::make([
                     ViewAction::make()->label('Ver detalle'),

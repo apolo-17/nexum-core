@@ -6,6 +6,7 @@ use App\Filament\Resources\UserResource\Pages;
 use App\Models\User;
 use App\Notifications\AccountInvitationNotification;
 use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\Select;
@@ -141,38 +142,47 @@ class UserResource extends Resource
                     ->sortable(),
             ])
             ->actions([
-                EditAction::make(),
+                ActionGroup::make([
+                    EditAction::make()->label('Editar'),
 
-                Action::make('resend_invitation')
-                    ->label('Reenviar invitación')
-                    ->icon('heroicon-o-envelope')
-                    ->color('info')
-                    ->visible(fn (User $record): bool => $record->email_verified_at === null)
-                    ->requiresConfirmation()
-                    ->action(function (User $record): void {
-                        try {
-                            self::sendInvitation($record);
+                    Action::make('resend_invitation')
+                        ->label('Reenviar invitación')
+                        ->icon('heroicon-o-envelope')
+                        ->color('info')
+                        ->visible(fn (User $record): bool => $record->email_verified_at === null)
+                        ->requiresConfirmation()
+                        ->action(function (User $record): void {
+                            try {
+                                self::sendInvitation($record);
 
-                            Notification::make()
-                                ->title('Invitación reenviada correctamente.')
-                                ->success()
-                                ->send();
-                        } catch (\Throwable $exception) {
-                            Log::error('Failed to resend invitation email.', [
-                                'user_id' => $record->id,
-                                'error' => $exception->getMessage(),
-                            ]);
+                                Notification::make()
+                                    ->title('Invitación reenviada correctamente.')
+                                    ->success()
+                                    ->send();
+                            } catch (\Throwable $exception) {
+                                Log::error('Failed to resend invitation email.', [
+                                    'user_id' => $record->id,
+                                    'error' => $exception->getMessage(),
+                                ]);
 
-                            Notification::make()
-                                ->title('No se pudo reenviar la invitación.')
-                                ->body('Revisa la configuración de correo (Resend).')
-                                ->danger()
-                                ->send();
-                        }
-                    }),
+                                Notification::make()
+                                    ->title('No se pudo reenviar la invitación.')
+                                    ->body('Revisa la configuración de correo (Resend).')
+                                    ->danger()
+                                    ->send();
+                            }
+                        }),
 
-                DeleteAction::make()
-                    ->visible(fn (User $record): bool => $record->id !== Auth::id()),
+                    DeleteAction::make()->label('Eliminar')
+                        ->visible(fn (User $record): bool => $record->id !== Auth::id()),
+                ])
+                    // Un solo botón "⋮" agrupa las acciones para que la tabla no se rompa
+                    // ni tenga scroll lateral; despliega las acciones escondidas.
+                    ->label('Acciones')
+                    ->icon('heroicon-m-ellipsis-vertical')
+                    ->tooltip('Acciones')
+                    ->button()
+                    ->hiddenLabel(),
             ]);
     }
 
