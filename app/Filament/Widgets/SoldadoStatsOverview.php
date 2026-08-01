@@ -34,7 +34,9 @@ class SoldadoStatsOverview extends StatsOverviewWidget
         }
 
         try {
-            return $user->hasRole('soldado');
+            // Solo para soldados "puros": si además es super_admin, ve su panel de admin,
+            // no las estadísticas de soldado (que ahí solo hacen ruido).
+            return $user->hasRole('soldado') && ! $user->hasRole('super_admin');
         } catch (\Throwable) {
             return false;
         }

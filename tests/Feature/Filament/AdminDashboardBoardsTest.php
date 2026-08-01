@@ -6,7 +6,6 @@ use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
 use App\Enums\LegalNameStatusEnum;
 use App\Filament\Widgets\DenominationsBoard;
-use App\Filament\Widgets\OperationsStatsOverview;
 use App\Filament\Widgets\SatAppointmentsBoard;
 use App\Models\Appointment;
 use App\Models\LegalName;
@@ -69,7 +68,6 @@ class AdminDashboardBoardsTest extends TestCase
 
         $this->actingAs($admin);
 
-        Livewire::test(OperationsStatsOverview::class)->assertOk();
         Livewire::test(SatAppointmentsBoard::class)
             ->assertOk()
             ->assertCanSeeTableRecords([$appointment]);
@@ -112,7 +110,6 @@ class AdminDashboardBoardsTest extends TestCase
         $user->assignRole('notario');
         $this->actingAs($user);
 
-        $this->assertFalse(OperationsStatsOverview::canView());
         $this->assertFalse(SatAppointmentsBoard::canView());
         $this->assertFalse(DenominationsBoard::canView());
     }
