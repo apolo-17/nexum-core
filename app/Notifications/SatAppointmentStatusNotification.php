@@ -4,8 +4,12 @@ namespace App\Notifications;
 
 use App\Models\Appointment;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Notifies the TEAM (admins) about what the SAT bot did with an appointment.
@@ -15,12 +19,21 @@ use Illuminate\Notifications\Notification;
  * soldado gets their own, friendlier notification (SatAppointmentScheduledNotification)
  * only when there is an actual date to attend.
  *
+ * Queued (ShouldQueue) with retries: a transient mail failure (like the one that lost
+ * one of these) is retried automatically, and failed() records it if it still can't be
+ * delivered — instead of vanishing in the caller's try/catch. Needs Horizon running.
+ *
  * Recipients are whoever is selected for the matching NotificationEventEnum in the
  * "Notificaciones" settings module — this class never decides who gets it.
  */
-class SatAppointmentStatusNotification extends Notification
+class SatAppointmentStatusNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
+    use Queueable, SerializesModels;
+
+    /**
+     * Retry a failed delivery up to 3 times before giving up.
+     */
+    public int $tries = 3;
 
     /**
      * @param  Appointment  $appointment  The appointment the bot reported on.
@@ -32,6 +45,30 @@ class SatAppointmentStatusNotification extends Notification
         private readonly string $outcome,
         private readonly ?string $reason = null,
     ) {}
+
+    /**
+     * Wait 10s, then 30s, then 60s between retries (transient mail errors clear fast).
+     *
+     * @return list<int>
+     */
+    public function backoff(): array
+    {
+        return [10, 30, 60];
+    }
+
+    /**
+     * Record the failure after all retries are exhausted, so it is never lost silently.
+     *
+     * @param  Throwable  $exception  Why the last attempt failed.
+     */
+    public function failed(Throwable $exception): void
+    {
+        Log::error('SatAppointmentStatusNotification: no se pudo avisar al equipo tras los reintentos.', [
+            'appointment_id' => $this->appointment->id,
+            'outcome' => $this->outcome,
+            'error' => $exception->getMessage(),
+        ]);
+    }
 
     /**
      * Declare the delivery channels: dashboard bell + email.

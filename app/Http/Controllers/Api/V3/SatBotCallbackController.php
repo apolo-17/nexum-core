@@ -363,10 +363,21 @@ class SatBotCallbackController extends Controller
 
         $notification = new SatAppointmentScheduledNotification($appointment);
 
-        if ($soldado->user !== null) {
-            $soldado->user->notify($notification);
-        } elseif (filled($soldado->email)) {
-            Notification::route('mail', $soldado->email)->notify($notification);
+        try {
+            // Queued: this only pushes to the queue (retries + failure logging live in
+            // the notification). The appointment is already saved, so a dispatch hiccup
+            // must not turn the callback into a 500 and make the bot think it failed.
+            if ($soldado->user !== null) {
+                $soldado->user->notify($notification);
+            } elseif (filled($soldado->email)) {
+                Notification::route('mail', $soldado->email)->notify($notification);
+            }
+        } catch (\Throwable $th) {
+            Log::warning('SAT bot callback: could not queue the soldado notification.', [
+                'appointment_id' => $appointment->id,
+                'soldado_id' => $appointment->soldado_id,
+                'exception' => $th->getMessage(),
+            ]);
         }
     }
 

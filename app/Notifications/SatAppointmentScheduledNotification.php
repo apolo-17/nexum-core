@@ -6,8 +6,12 @@ use App\Filament\Resources\MisCitasResource;
 use App\Models\Appointment;
 use App\Models\User;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Notifies a soldado that one of their SAT appointments (RFC or FIEL) was scheduled.
@@ -15,13 +19,21 @@ use Illuminate\Notifications\Notification;
  * Sent when the nexum-citas-sat bot reports a "scheduled" outcome. Delivered by email
  * (branded) and, when the soldado has a dashboard account, also as a bell notification.
  *
+ * Queued (ShouldQueue) so a transient mail hiccup (Resend rate limit, timeout) is
+ * retried automatically instead of being lost. After all retries fail, failed() records
+ * exactly what went wrong. Needs a queue worker (Horizon) running.
+ *
  * WhatsApp/SMS: add a channel here (e.g. 'whatsapp') once a provider is wired — the
- * soldado's phone is on the model. Delivered synchronously so it arrives even without
- * a queue worker.
+ * soldado's phone is on the model.
  */
-class SatAppointmentScheduledNotification extends Notification
+class SatAppointmentScheduledNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
+    use Queueable, SerializesModels;
+
+    /**
+     * Retry a failed delivery up to 3 times before giving up.
+     */
+    public int $tries = 3;
 
     /**
      * @param  Appointment  $appointment  The scheduled appointment.
@@ -29,6 +41,30 @@ class SatAppointmentScheduledNotification extends Notification
     public function __construct(
         private readonly Appointment $appointment,
     ) {}
+
+    /**
+     * Wait 10s, then 30s, then 60s between retries (transient mail errors clear fast).
+     *
+     * @return list<int>
+     */
+    public function backoff(): array
+    {
+        return [10, 30, 60];
+    }
+
+    /**
+     * Record the failure after all retries are exhausted, so it is never lost silently.
+     *
+     * @param  Throwable  $exception  Why the last attempt failed.
+     */
+    public function failed(Throwable $exception): void
+    {
+        Log::error('SatAppointmentScheduledNotification: no se pudo avisar al soldado tras los reintentos.', [
+            'appointment_id' => $this->appointment->id,
+            'soldado_id' => $this->appointment->soldado_id,
+            'error' => $exception->getMessage(),
+        ]);
+    }
 
     /**
      * Declare the delivery channels.
