@@ -58,6 +58,12 @@ return [
         'secret_key' => env('SAT_BOT_SECRET_KEY'),
     ],
 
+    // Manual intake API — token to inspect/complete expedientes that arrived incomplete
+    // from the relay. Only the team holds it. Generate with: openssl rand -hex 32.
+    'intake' => [
+        'token' => env('INTAKE_API_TOKEN'),
+    ],
+
     // Anthropic Claude API — used by DocumentAnalysisService for KYC document vision extraction.
     'anthropic' => [
         'api_key' => env('ANTHROPIC_API_KEY'),

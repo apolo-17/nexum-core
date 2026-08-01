@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V3\LegalNameController;
 use App\Http\Controllers\Api\V3\MuaBotCallbackController;
 use App\Http\Controllers\Api\V3\MuaPendingController;
 use App\Http\Controllers\Api\V3\RegistrationController;
+use App\Http\Controllers\Api\V3\IntakeController;
 use App\Http\Controllers\Api\V3\SatBotCallbackController;
 use App\Http\Controllers\Api\V3\SatBotFormingController;
 use App\Http\Controllers\Api\V3\SatBotReviewController;
@@ -58,6 +59,10 @@ Route::prefix('v3')->group(function () {
     Route::get('sat-bot/pending-review', [SatBotReviewController::class, 'index']);
     // callback: bot reports the result — formed, scheduled + acuse, in_review… (HMAC X-Signature)
     Route::post('webhook/sat-bot', [SatBotCallbackController::class, 'handle']);
+
+    // Intake manual de expedientes — completar los que llegaron incompletos del relay.
+    // Protegido con token dedicado (X-Intake-Token), solo del equipo.
+    Route::get('intake/{ref}', [IntakeController::class, 'show']);
 
     // -------------------------------------------------------------------------
     // Protected endpoints — JWT required
