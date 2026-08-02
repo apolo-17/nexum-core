@@ -206,6 +206,29 @@ class IntakeControllerTest extends TestCase
     }
 
     #[Test]
+    public function complete_can_reset_an_intake_advance(): void
+    {
+        $registration = Registration::factory()->create([
+            'singapur_client_code' => '000301', 'stage' => 'data_received', 'status' => 'active',
+        ]);
+
+        // Advance by mistake…
+        $this->withHeader('X-Intake-Token', 'intake-secret')
+            ->postJson('/api/v3/intake/000301/complete', ['advance_to_stage' => 'tax_address'])->assertOk();
+        $this->assertSame(6, $registration->refresh()->stageTransitions()->count());
+
+        // …then revert: stage falls back and the intake transitions are removed.
+        $this->withHeader('X-Intake-Token', 'intake-secret')
+            ->postJson('/api/v3/intake/000301/complete', ['reset_stage_to' => 'data_received'])
+            ->assertOk()
+            ->assertJsonPath('applied.stage.reset_to', 'data_received');
+
+        $registration->refresh();
+        $this->assertSame('data_received', $registration->getRawOriginal('stage'));
+        $this->assertSame(0, $registration->stageTransitions()->count());
+    }
+
+    #[Test]
     public function complete_is_idempotent_for_documents(): void
     {
         \Illuminate\Support\Facades\Storage::fake(config('filesystems.default'));
