@@ -49,7 +49,7 @@ class IntakeController extends Controller
         }
 
         $registrations = Registration::query()
-            ->with(['shareholders', 'primaryLegalName', 'documents'])
+            ->with(['shareholders', 'primaryLegalName', 'documents', 'appointments.soldado'])
             ->orderBy('singapur_client_code')
             ->get();
 
@@ -59,6 +59,12 @@ class IntakeController extends Controller
             'denomination' => $r->primaryLegalName?->name,
             'company_type' => $r->company_type,
             'stage' => $r->getRawOriginal('stage'),
+            'appointments' => $r->appointments->map(fn ($a): array => [
+                'type' => $a->getRawOriginal('type'),
+                'status' => $a->getRawOriginal('status'),
+                'scheduled_at' => $a->scheduled_at?->toIso8601String(),
+                'soldado' => $a->soldado?->name,
+            ])->all(),
             'has_object' => filled($r->company_object),
             'has_capital' => filled($r->capital_social),
             'has_fiscal_address' => filled($r->fiscal_street),
