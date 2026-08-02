@@ -94,6 +94,12 @@ enum DocumentTypeEnum: string
     /** Constancia de autorización de uso de denominación social (SE) — sent by the MUA bot on approval. */
     case LEGAL_NAME_AUTHORIZATION = 'legal_name_authorization';
 
+    /** Beneficial owner (Beneficiario Controlador) KYC form — one per shareholder. */
+    case BENEFICIAL_OWNER = 'beneficial_owner';
+
+    /** Public Registry of Property inscription boleta (Boleta de inscripción del RPP). */
+    case RPP_REGISTRATION = 'rpp_registration';
+
     /** Any other document not covered by the types above. */
     case OTHER = 'other';
 
@@ -121,6 +127,8 @@ enum DocumentTypeEnum: string
             self::RFC_DOCUMENT => 'Documento RFC',
             self::EFIRMA => 'e.firma',
             self::LEGAL_NAME_AUTHORIZATION => 'Constancia de denominación social (SE)',
+            self::BENEFICIAL_OWNER => 'Beneficiario controlador (KYC)',
+            self::RPP_REGISTRATION => 'Boleta de inscripción (RPP)',
             self::OTHER => 'Otro',
         };
     }

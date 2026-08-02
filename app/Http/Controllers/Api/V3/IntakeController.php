@@ -5,10 +5,18 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\V3;
 
 use App\Enums\DocumentTypeEnum;
+use App\Enums\RegistrationStageEnum;
+use App\Enums\ShareholderRoleEnum;
 use App\Http\Controllers\Controller;
+use App\Models\Document;
 use App\Models\Registration;
+use App\Models\Shareholder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -50,6 +58,196 @@ class IntakeController extends Controller
         $registration->load(['shareholders', 'legalNames', 'documents', 'primaryLegalName']);
 
         return response()->json(['data' => $this->present($registration)], Response::HTTP_OK);
+    }
+
+    /**
+     * Complete an expediente: apply verified fields, upsert shareholders, store documents.
+     *
+     * Idempotent and safe to re-run: registration fields are only overwritten with the
+     * values provided; shareholders are matched by name (updated, not duplicated); and a
+     * document is skipped if one with the same name already exists. Every change is logged.
+     *
+     * Body shape:
+     *   {
+     *     "registration": { "company_object": "...", "capital_social": 10000,
+     *                       "fiscal_street": "...", "fiscal_ext_number": "2", ... },
+     *     "shareholders": [ { "name": "...", "participation_percentage": 99,
+     *                         "passport_number": "...", "tax_id": "...", "role": "...", ... } ],
+     *     "documents":    [ { "type": "acta_signed", "name": "...pdf",
+     *                         "content_base64": "..." } ]
+     *   }
+     *
+     * @param  Request  $request  Request carrying the X-Intake-Token header and body.
+     * @param  string  $ref  The expediente reference.
+     */
+    public function complete(Request $request, string $ref): JsonResponse
+    {
+        if (! $this->authorized($request)) {
+            return response()->json(['error' => 'Unauthorized'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $registration = $this->resolve($ref);
+
+        if ($registration === null) {
+            return response()->json(['error' => 'Expediente no encontrado', 'ref' => $ref], Response::HTTP_NOT_FOUND);
+        }
+
+        $applied = ['fields' => [], 'shareholders' => [], 'documents' => []];
+
+        DB::transaction(function () use ($request, $registration, &$applied): void {
+            $applied['fields'] = $this->applyRegistrationFields($registration, (array) $request->input('registration', []));
+            $applied['shareholders'] = $this->upsertShareholders($registration, (array) $request->input('shareholders', []));
+            $applied['documents'] = $this->storeDocuments($registration, (array) $request->input('documents', []));
+        });
+
+        Log::info('Intake: expediente completed.', [
+            'registration_id' => $registration->id,
+            'client_code' => $registration->singapur_client_code,
+            'applied' => $applied,
+        ]);
+
+        $registration->refresh()->load(['shareholders', 'legalNames', 'documents', 'primaryLegalName']);
+
+        return response()->json([
+            'applied' => $applied,
+            'data' => $this->present($registration),
+        ], Response::HTTP_OK);
+    }
+
+    /**
+     * Update only the registration fields that were provided (non-null).
+     *
+     * @param  Registration  $registration  The expediente to update.
+     * @param  array<string, mixed>  $fields  Whitelisted fields from the request.
+     * @return list<string> Names of the fields that were actually changed.
+     */
+    private function applyRegistrationFields(Registration $registration, array $fields): array
+    {
+        $allowed = [
+            'company_type', 'company_object', 'capital_social',
+            'fiscal_street', 'fiscal_ext_number', 'fiscal_int_number', 'fiscal_neighborhood',
+            'fiscal_municipality', 'fiscal_state', 'fiscal_postal_code',
+        ];
+
+        $updates = [];
+        foreach ($allowed as $field) {
+            if (array_key_exists($field, $fields) && $fields[$field] !== null && $fields[$field] !== '') {
+                $updates[$field] = $fields[$field];
+            }
+        }
+
+        if ($updates !== []) {
+            $registration->update($updates);
+        }
+
+        return array_keys($updates);
+    }
+
+    /**
+     * Upsert shareholders by name: update the matching one, or create it.
+     *
+     * Matching by (case-insensitive) name avoids duplicating the shareholders the team
+     * pre-loaded to schedule the SAT appointment.
+     *
+     * @param  Registration  $registration  The expediente.
+     * @param  array<int, array<string, mixed>>  $shareholders  Shareholder payloads.
+     * @return list<array{name:string, action:string}> What happened to each.
+     */
+    private function upsertShareholders(Registration $registration, array $shareholders): array
+    {
+        $existing = $registration->shareholders()->get();
+        $result = [];
+
+        foreach ($shareholders as $data) {
+            $name = trim((string) ($data['name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+
+            $attrs = array_filter([
+                'nationality' => $data['nationality'] ?? null,
+                'passport_number' => $data['passport_number'] ?? null,
+                'participation_percentage' => $data['participation_percentage'] ?? null,
+                'role' => isset($data['role']) ? ShareholderRoleEnum::tryFrom((string) $data['role']) : null,
+                'email' => $data['email'] ?? null,
+                'is_married' => $data['is_married'] ?? null,
+                'gender' => $data['gender'] ?? null,
+                'birthdate' => $data['birthdate'] ?? null,
+                'birthplace' => $data['birthplace'] ?? null,
+                'civil_status' => $data['civil_status'] ?? null,
+                'tax_id' => $data['tax_id'] ?? null,
+                'address_line' => $data['address_line'] ?? null,
+            ], fn ($v) => $v !== null);
+
+            $match = $existing->first(fn ($s) => mb_strtolower(trim((string) $s->name)) === mb_strtolower($name));
+
+            if ($match !== null) {
+                $match->update($attrs);
+                $result[] = ['name' => $name, 'action' => 'updated'];
+            } else {
+                Shareholder::create(['registration_id' => $registration->id, 'name' => $name] + $attrs);
+                $result[] = ['name' => $name, 'action' => 'created'];
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Store uploaded documents and create their Document records.
+     *
+     * Skips a document whose name already exists on the expediente (idempotent). Files
+     * land on the default disk (R2 in production) under documents/{registration_id}/.
+     *
+     * @param  Registration  $registration  The expediente.
+     * @param  array<int, array<string, mixed>>  $documents  Document payloads.
+     * @return list<array{name:string, type:string, action:string}> What happened to each.
+     */
+    private function storeDocuments(Registration $registration, array $documents): array
+    {
+        $result = [];
+
+        foreach ($documents as $doc) {
+            $name = trim((string) ($doc['name'] ?? ''));
+            $type = DocumentTypeEnum::tryFrom((string) ($doc['type'] ?? '')) ?? DocumentTypeEnum::OTHER;
+            $base64 = (string) ($doc['content_base64'] ?? '');
+
+            if ($name === '' || $base64 === '') {
+                continue;
+            }
+
+            $exists = Document::where('registration_id', $registration->id)->where('name', $name)->exists();
+            if ($exists) {
+                $result[] = ['name' => $name, 'type' => $type->value, 'action' => 'skipped_exists'];
+
+                continue;
+            }
+
+            $binary = base64_decode($base64, strict: true);
+            if ($binary === false) {
+                $result[] = ['name' => $name, 'type' => $type->value, 'action' => 'skipped_bad_base64'];
+
+                continue;
+            }
+
+            $path = "documents/{$registration->id}/".Str::random(8).'_'.$name;
+            Storage::put($path, $binary);
+
+            Document::create([
+                'registration_id' => $registration->id,
+                'type' => $type,
+                'name' => $name,
+                'storage_path' => $path,
+                'stage' => $registration->getRawOriginal('stage'),
+                'shareholder_index' => $doc['shareholder_index'] ?? null,
+                // Notary-approved documents arrive already verified.
+                'verified_at' => now(),
+            ]);
+
+            $result[] = ['name' => $name, 'type' => $type->value, 'action' => 'stored'];
+        }
+
+        return $result;
     }
 
     /**
