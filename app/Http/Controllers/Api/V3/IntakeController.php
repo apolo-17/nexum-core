@@ -87,7 +87,12 @@ class IntakeController extends Controller
      */
     private function present(Registration $registration): array
     {
-        $presentTypes = $registration->documents->pluck('type')->unique()->values();
+        // Read RAW values for every enum-cast field. This inspector is meant for
+        // incomplete or messy expedientes, so an invalid stage/status/type/role value in
+        // the DB must not break the read — accessing the cast enum would throw a ValueError.
+        $presentTypes = $registration->documents
+            ->map(fn ($d) => $d->getRawOriginal('type'))
+            ->filter()->unique()->values();
 
         // The document types a complete expediente is generally expected to carry.
         $expectedTypes = [
@@ -103,8 +108,8 @@ class IntakeController extends Controller
             'client_code' => $registration->singapur_client_code,
             'package_id' => $registration->singapur_package_id,
             'folder_name' => $registration->singapur_folder_name,
-            'stage' => $registration->stage,
-            'status' => $registration->status,
+            'stage' => $registration->getRawOriginal('stage'),
+            'status' => $registration->getRawOriginal('status'),
             'company' => [
                 'denomination' => $registration->primaryLegalName?->name,
                 'company_type' => $registration->company_type,
@@ -126,7 +131,7 @@ class IntakeController extends Controller
                 'nationality' => $s->nationality,
                 'passport_number' => $s->passport_number,
                 'participation_percentage' => $s->participation_percentage,
-                'role' => $s->role,
+                'role' => $s->getRawOriginal('role'),
                 'email' => $s->email,
                 'is_married' => $s->is_married,
                 'tax_id' => $s->tax_id,
@@ -134,10 +139,10 @@ class IntakeController extends Controller
             'legal_names' => $registration->legalNames->map(fn ($n): array => [
                 'name' => $n->name,
                 'priority' => $n->priority,
-                'status' => $n->status,
+                'status' => $n->getRawOriginal('status'),
             ])->all(),
             'documents' => $registration->documents->map(fn ($d): array => [
-                'type' => $d->type,
+                'type' => $d->getRawOriginal('type'),
                 'name' => $d->name,
                 'shareholder_index' => $d->shareholder_index,
                 'has_file' => filled($d->storage_path),
