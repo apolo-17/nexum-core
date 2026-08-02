@@ -178,6 +178,34 @@ class IntakeControllerTest extends TestCase
     }
 
     #[Test]
+    public function complete_advances_the_pipeline_stage_forward_only(): void
+    {
+        $registration = Registration::factory()->create([
+            'singapur_client_code' => '000300',
+            'stage' => 'data_received',
+            'status' => 'active',
+        ]);
+
+        // Advance a constituted expediente to "Domicilio fiscal".
+        $this->withHeader('X-Intake-Token', 'intake-secret')
+            ->postJson('/api/v3/intake/000300/complete', ['advance_to_stage' => 'tax_address'])
+            ->assertOk()
+            ->assertJsonPath('applied.stage.to', 'tax_address');
+
+        $registration->refresh();
+        $this->assertSame('tax_address', $registration->getRawOriginal('stage'));
+        // Each hop recorded as an immutable system transition (performed_by null).
+        $this->assertSame(6, $registration->stageTransitions()->count());
+        $this->assertNull($registration->stageTransitions()->latest('id')->first()->performed_by);
+
+        // Re-running with an earlier target never reverses.
+        $this->withHeader('X-Intake-Token', 'intake-secret')
+            ->postJson('/api/v3/intake/000300/complete', ['advance_to_stage' => 'legal_name'])
+            ->assertOk();
+        $this->assertSame('tax_address', $registration->refresh()->getRawOriginal('stage'));
+    }
+
+    #[Test]
     public function complete_is_idempotent_for_documents(): void
     {
         \Illuminate\Support\Facades\Storage::fake(config('filesystems.default'));

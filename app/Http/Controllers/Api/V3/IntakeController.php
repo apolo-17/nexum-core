@@ -11,6 +11,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Document;
 use App\Models\Registration;
 use App\Models\Shareholder;
+use App\Services\Registration\StageTransitionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -162,7 +163,7 @@ class IntakeController extends Controller
             return response()->json(['error' => 'Expediente no encontrado', 'ref' => $ref], Response::HTTP_NOT_FOUND);
         }
 
-        $applied = ['fields' => [], 'denomination' => [], 'shareholders' => [], 'documents' => []];
+        $applied = ['fields' => [], 'denomination' => [], 'shareholders' => [], 'documents' => [], 'stage' => []];
 
         // "replace" wipes the pre-loaded shareholders and inserts the acta list verbatim.
         // The team seeded placeholder socios (sometimes with names in Chinese characters) just
@@ -177,6 +178,7 @@ class IntakeController extends Controller
                 ? $this->replaceShareholders($registration, (array) $request->input('shareholders', []))
                 : $this->upsertShareholders($registration, (array) $request->input('shareholders', []));
             $applied['documents'] = $this->storeDocuments($registration, (array) $request->input('documents', []));
+            $applied['stage'] = $this->advanceStage($registration, (string) $request->input('advance_to_stage', ''));
         });
 
         Log::info('Intake: expediente completed.', [
@@ -191,6 +193,43 @@ class IntakeController extends Controller
             'applied' => $applied,
             'data' => $this->present($registration),
         ], Response::HTTP_OK);
+    }
+
+    /**
+     * Advance the expediente's pipeline stage to a target, if requested.
+     *
+     * Reflects that a manually-completed expediente arrived already constituted: e.g. an acta
+     * signed + denomination approved should sit at "Domicilio fiscal", not "Datos recibidos".
+     * Forward-only and audited (each hop is a system StageTransition). No-op for an empty or
+     * unknown target, or when already at/after it.
+     *
+     * @param  Registration  $registration  The expediente.
+     * @param  string  $target  The target stage value (RegistrationStageEnum), or '' to skip.
+     * @return array<string, mixed> The hops applied (or a skip note).
+     */
+    private function advanceStage(Registration $registration, string $target): array
+    {
+        if ($target === '') {
+            return [];
+        }
+
+        $targetStage = RegistrationStageEnum::tryFrom($target);
+        if ($targetStage === null) {
+            return ['skipped' => 'unknown_stage', 'given' => $target];
+        }
+
+        try {
+            $hops = app(StageTransitionService::class)->jumpTo(
+                $registration,
+                $targetStage,
+                null,
+                'Intake: expediente completado por el equipo (ya constituido).',
+            );
+        } catch (\RuntimeException $e) {
+            return ['skipped' => 'not_advanceable', 'reason' => $e->getMessage()];
+        }
+
+        return ['to' => $targetStage->value, 'hops' => $hops];
     }
 
     /**
@@ -483,6 +522,7 @@ class IntakeController extends Controller
             'package_id' => $registration->singapur_package_id,
             'folder_name' => $registration->singapur_folder_name,
             'stage' => $registration->getRawOriginal('stage'),
+            'stage_label' => (RegistrationStageEnum::tryFrom((string) $registration->getRawOriginal('stage'))?->label()),
             'status' => $registration->getRawOriginal('status'),
             'company' => [
                 'denomination' => $registration->primaryLegalName?->name,
