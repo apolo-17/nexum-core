@@ -34,6 +34,76 @@ use Symfony\Component\HttpFoundation\Response;
 class IntakeController extends Controller
 {
     /**
+     * List every expediente with a compact summary, to review what they all carry.
+     *
+     * Useful when some folders only bring shareholder documents: the denomination and
+     * the shareholder names identify which company each set of documents belongs to.
+     *
+     * @param  Request  $request  Request carrying the X-Intake-Token header.
+     */
+    public function index(Request $request): JsonResponse
+    {
+        if (! $this->authorized($request)) {
+            return response()->json(['error' => 'Unauthorized'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $registrations = Registration::query()
+            ->with(['shareholders', 'primaryLegalName', 'documents'])
+            ->orderBy('singapur_client_code')
+            ->get();
+
+        $data = $registrations->map(fn (Registration $r): array => [
+            'client_code' => $r->singapur_client_code,
+            'id' => $r->id,
+            'denomination' => $r->primaryLegalName?->name,
+            'company_type' => $r->company_type,
+            'stage' => $r->getRawOriginal('stage'),
+            'has_object' => filled($r->company_object),
+            'has_capital' => filled($r->capital_social),
+            'has_fiscal_address' => filled($r->fiscal_street),
+            'shareholders' => $r->shareholders->map(fn ($s): array => [
+                'name' => $s->name,
+                'participation_percentage' => $s->participation_percentage,
+                'role' => $s->getRawOriginal('role'),
+            ])->all(),
+            'documents' => $r->documents->map(fn ($d) => $d->getRawOriginal('type'))->filter()->unique()->values()->all(),
+        ])->all();
+
+        return response()->json(['count' => count($data), 'data' => $data], Response::HTTP_OK);
+    }
+
+    /**
+     * List the soldados (potential legal representatives) registered in production.
+     *
+     * The legal representatives named in each company's acta must already exist here as
+     * soldados to be assignable to that company's SAT appointment. This lets us match the
+     * acta's legal reps against who is actually in the system.
+     *
+     * @param  Request  $request  Request carrying the X-Intake-Token header.
+     */
+    public function soldados(Request $request): JsonResponse
+    {
+        if (! $this->authorized($request)) {
+            return response()->json(['error' => 'Unauthorized'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $soldados = \App\Models\Soldado::query()->orderBy('name')->get();
+
+        $data = $soldados->map(fn ($s): array => [
+            'id' => $s->id,
+            'name' => $s->name,
+            'rfc' => $s->rfc,
+            'curp' => $s->curp,
+            'email' => $s->email,
+            'phone' => $s->phone,
+            'is_active' => (bool) $s->is_active,
+            'available_as_legal_representative' => (bool) $s->available_as_legal_representative,
+        ])->all();
+
+        return response()->json(['count' => count($data), 'data' => $data], Response::HTTP_OK);
+    }
+
+    /**
      * Return the full current state of an expediente (production), so the operator and
      * the assistant can see what exists and what is missing before completing it.
      *

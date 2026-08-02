@@ -62,6 +62,8 @@ Route::prefix('v3')->group(function () {
 
     // Intake manual de expedientes — completar los que llegaron incompletos del relay.
     // Protegido con token dedicado (X-Intake-Token), solo del equipo.
+    Route::get('intake', [IntakeController::class, 'index']);
+    Route::get('intake/soldados', [IntakeController::class, 'soldados']);
     Route::get('intake/{ref}', [IntakeController::class, 'show']);
     Route::post('intake/{ref}/complete', [IntakeController::class, 'complete']);
 
