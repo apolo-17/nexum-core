@@ -137,6 +137,47 @@ class IntakeControllerTest extends TestCase
     }
 
     #[Test]
+    public function complete_replace_mode_swaps_shareholders_and_fixes_denomination(): void
+    {
+        $registration = Registration::factory()->create(['singapur_client_code' => '000200']);
+        // Placeholder socios seeded with Chinese-character names, to be replaced wholesale.
+        $registration->shareholders()->create(['name' => '童钟玲', 'nationality' => 'China', 'role' => 'shareholder', 'participation_percentage' => 90]);
+        $registration->shareholders()->create(['name' => '黄香珠', 'nationality' => 'China', 'role' => 'shareholder', 'participation_percentage' => 10]);
+        // A denomination in a lingering `wait` status with no CUD.
+        $legalName = $registration->legalNames()->create([
+            'name' => 'YUNMALL MÉXICO', 'priority' => 1, 'status' => 'wait', 'company_type' => 'SRL de CV',
+        ]);
+
+        $payload = [
+            'shareholders_mode' => 'replace',
+            'denomination' => [
+                'status' => 'approved',
+                'clave_unica_denominacion' => 'A202602271840258356',
+                'authorization_timestamp' => '2026-02-27T18:40:25',
+            ],
+            'shareholders' => [
+                ['name' => 'ZHONGLING TONG', 'nationality' => 'China', 'passport_number' => 'ER6916027', 'participation_percentage' => 90, 'role' => 'legal_representative'],
+                ['name' => 'XIANGZHU HUANG', 'nationality' => 'China', 'passport_number' => 'E73303194', 'participation_percentage' => 10, 'role' => 'shareholder'],
+            ],
+        ];
+
+        $this->withHeader('X-Intake-Token', 'intake-secret')
+            ->postJson('/api/v3/intake/000200/complete', $payload)
+            ->assertOk()
+            ->assertJsonPath('applied.shareholders.0.action', 'replaced');
+
+        // Exactly the two romanized socios remain — the Chinese-named placeholders are gone.
+        $names = $registration->shareholders()->pluck('name')->sort()->values()->all();
+        $this->assertSame(['XIANGZHU HUANG', 'ZHONGLING TONG'], $names);
+        $this->assertSame('ER6916027', $registration->shareholders()->where('name', 'ZHONGLING TONG')->first()->passport_number);
+
+        // Denomination corrected: approved + CUD filled.
+        $legalName->refresh();
+        $this->assertSame('approved', $legalName->getRawOriginal('status'));
+        $this->assertSame('A202602271840258356', $legalName->clave_unica_denominacion);
+    }
+
+    #[Test]
     public function complete_is_idempotent_for_documents(): void
     {
         \Illuminate\Support\Facades\Storage::fake(config('filesystems.default'));

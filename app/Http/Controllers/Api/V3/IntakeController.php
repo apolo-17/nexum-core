@@ -162,11 +162,20 @@ class IntakeController extends Controller
             return response()->json(['error' => 'Expediente no encontrado', 'ref' => $ref], Response::HTTP_NOT_FOUND);
         }
 
-        $applied = ['fields' => [], 'shareholders' => [], 'documents' => []];
+        $applied = ['fields' => [], 'denomination' => [], 'shareholders' => [], 'documents' => []];
 
-        DB::transaction(function () use ($request, $registration, &$applied): void {
+        // "replace" wipes the pre-loaded shareholders and inserts the acta list verbatim.
+        // The team seeded placeholder socios (sometimes with names in Chinese characters) just
+        // to schedule the SAT cita; when the notarized acta is at hand we swap them wholesale
+        // for the romanized names + passports the SAT needs, without leaving duplicates.
+        $shareholdersMode = (string) $request->input('shareholders_mode', 'upsert');
+
+        DB::transaction(function () use ($request, $registration, $shareholdersMode, &$applied): void {
             $applied['fields'] = $this->applyRegistrationFields($registration, (array) $request->input('registration', []));
-            $applied['shareholders'] = $this->upsertShareholders($registration, (array) $request->input('shareholders', []));
+            $applied['denomination'] = $this->applyDenomination($registration, (array) $request->input('denomination', []));
+            $applied['shareholders'] = $shareholdersMode === 'replace'
+                ? $this->replaceShareholders($registration, (array) $request->input('shareholders', []))
+                : $this->upsertShareholders($registration, (array) $request->input('shareholders', []));
             $applied['documents'] = $this->storeDocuments($registration, (array) $request->input('documents', []));
         });
 
@@ -211,6 +220,103 @@ class IntakeController extends Controller
         }
 
         return array_keys($updates);
+    }
+
+    /**
+     * Correct the expediente's primary denomination from its SE authorization constancia.
+     *
+     * Only touches the priority-1 legal name (the one assigned to the company). Fills the
+     * clave única (CUD), the authorization timestamp and, when the SE already resolved it,
+     * flips a lingering `wait`/`process` status to `approved`. Never creates a legal name.
+     *
+     * @param  Registration  $registration  The expediente.
+     * @param  array<string, mixed>  $data  { clave_unica_denominacion, authorization_timestamp, status, company_type }
+     * @return array<string, mixed> What was changed (empty if nothing / no primary name).
+     */
+    private function applyDenomination(Registration $registration, array $data): array
+    {
+        if ($data === []) {
+            return [];
+        }
+
+        $legalName = $registration->legalNames()->orderBy('priority')->first();
+        if ($legalName === null) {
+            return ['skipped' => 'no_primary_legal_name'];
+        }
+
+        $updates = [];
+        if (filled($data['clave_unica_denominacion'] ?? null)) {
+            $updates['clave_unica_denominacion'] = (string) $data['clave_unica_denominacion'];
+        }
+        if (filled($data['authorization_timestamp'] ?? null)) {
+            $updates['authorization_timestamp'] = $data['authorization_timestamp'];
+        }
+        if (filled($data['company_type'] ?? null)) {
+            $updates['company_type'] = (string) $data['company_type'];
+        }
+        if (filled($data['status'] ?? null) && \App\Enums\LegalNameStatusEnum::tryFrom((string) $data['status']) !== null) {
+            $updates['status'] = (string) $data['status'];
+        }
+
+        if ($updates !== []) {
+            $legalName->update($updates);
+        }
+
+        return ['name' => $legalName->name, 'changed' => array_keys($updates)];
+    }
+
+    /**
+     * Replace all shareholders with the given list (delete existing, insert fresh).
+     *
+     * Used when the notarized acta supersedes whatever placeholder socios were pre-loaded.
+     * nationality and role are NOT NULL in the schema, so both get safe defaults when the
+     * payload omits them (this intake batch is Chinese-owned e-commerce companies).
+     *
+     * @param  Registration  $registration  The expediente.
+     * @param  array<int, array<string, mixed>>  $shareholders  Shareholder payloads.
+     * @return list<array{name:string, action:string}> What happened to each.
+     */
+    private function replaceShareholders(Registration $registration, array $shareholders): array
+    {
+        if ($shareholders === []) {
+            return [];
+        }
+
+        $registration->shareholders()->delete();
+
+        $result = [];
+        foreach ($shareholders as $data) {
+            $name = trim((string) ($data['name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+
+            $attrs = array_filter([
+                'passport_number' => $data['passport_number'] ?? null,
+                'participation_percentage' => $data['participation_percentage'] ?? null,
+                'email' => $data['email'] ?? null,
+                'is_married' => $data['is_married'] ?? null,
+                'gender' => $data['gender'] ?? null,
+                'birthdate' => $data['birthdate'] ?? null,
+                'birthplace' => $data['birthplace'] ?? null,
+                'civil_status' => $data['civil_status'] ?? null,
+                'tax_id' => $data['tax_id'] ?? null,
+                'address_line' => $data['address_line'] ?? null,
+            ], fn ($v) => $v !== null);
+
+            $role = ShareholderRoleEnum::tryFrom((string) ($data['role'] ?? '')) ?? ShareholderRoleEnum::SHAREHOLDER;
+
+            Shareholder::create([
+                'registration_id' => $registration->id,
+                'name' => $name,
+                'nationality' => $data['nationality'] ?? 'China',
+                'role' => $role,
+            ] + $attrs);
+
+            $result[] = ['name' => $name, 'action' => 'replaced'];
+        }
+
+        return $result;
     }
 
     /**
@@ -408,6 +514,7 @@ class IntakeController extends Controller
                 'name' => $n->name,
                 'priority' => $n->priority,
                 'status' => $n->getRawOriginal('status'),
+                'clave_unica_denominacion' => $n->clave_unica_denominacion,
             ])->all(),
             'documents' => $registration->documents->map(fn ($d): array => [
                 'type' => $d->getRawOriginal('type'),
