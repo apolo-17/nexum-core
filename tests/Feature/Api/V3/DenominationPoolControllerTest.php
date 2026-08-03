@@ -32,18 +32,19 @@ class DenominationPoolControllerTest extends TestCase
     }
 
     #[Test]
-    public function relay_pool_endpoint_requires_the_pool_token(): void
+    public function relay_pool_endpoint_reuses_the_singapur_webhook_secret(): void
     {
-        config(['services.denomination_pool.token' => 'pool-secret']);
+        config(['services.singapur.webhook_secret' => 'nexum-secret']);
         LegalName::create([
             'registration_id' => null, 'name' => 'ALFA CONSULTORES', 'company_type' => 'srl',
             'priority' => 1, 'status' => LegalNameStatusEnum::APPROVED, 'clave_unica_denominacion' => 'A1B2C3',
         ]);
 
         $this->getJson('/api/v3/denominations/pool')->assertUnauthorized();
-        $this->withHeader('X-Pool-Token', 'wrong')->getJson('/api/v3/denominations/pool')->assertUnauthorized();
+        $this->withHeader('X-Nexum-Secret', 'wrong')->getJson('/api/v3/denominations/pool')->assertUnauthorized();
 
-        $this->withHeader('X-Pool-Token', 'pool-secret')
+        // Same credential the relay already uses for the webhook.
+        $this->withHeader('X-Nexum-Secret', 'nexum-secret')
             ->getJson('/api/v3/denominations/pool')
             ->assertOk()
             ->assertJsonPath('data.0.name', 'ALFA CONSULTORES')

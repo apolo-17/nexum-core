@@ -24,6 +24,7 @@ readonly class SingapurSubmissionDTO
      * @param  list<SingapurFileDTO>  $files  File metadata entries from the submission package.
      * @param  SingapurFileDTO|null  $incorporationDeed  Pre-rendered acta sent by China (top-level `incorporation_deed`), already identity-verified and data-extracted on their side. Null when not provided.
      * @param  string|null  $cud  Clave Única del Documento of the SE denomination authorization, captured by China. Maps to the legal name's clave_unica_denominacion so we don't re-key it from the PDF.
+     * @param  string|null  $denominationPoolId  Id of the pool denomination the client picked from our `/denominations/pool` list (relayed by Singapur). When present we claim that exact pre-approved name instead of creating a fresh one.
      */
     public function __construct(
         public string $id,
@@ -38,6 +39,7 @@ readonly class SingapurSubmissionDTO
         public array $files,
         public ?SingapurFileDTO $incorporationDeed = null,
         public ?string $cud = null,
+        public ?string $denominationPoolId = null,
     ) {}
 
     /**

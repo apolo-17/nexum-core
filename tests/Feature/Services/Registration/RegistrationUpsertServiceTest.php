@@ -15,6 +15,7 @@ use App\Models\Registration;
 use App\Models\Shareholder;
 use App\Services\Registration\RegistrationUpsertService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -167,6 +168,33 @@ class RegistrationUpsertServiceTest extends TestCase
         $second = Shareholder::orderBy('created_at')->skip(1)->first();
 
         $this->assertSame(ShareholderRoleEnum::SHAREHOLDER, $second->role);
+    }
+
+    #[Test]
+    public function it_claims_a_pool_denomination_on_ingest_when_the_relay_sends_its_id(): void
+    {
+        Storage::fake('s3');
+
+        // A pre-approved pool name, with its constancia sitting in the pool.
+        $pool = LegalName::create([
+            'registration_id' => null, 'name' => 'BETA GLOBAL', 'company_type' => 'srl',
+            'priority' => 1, 'status' => LegalNameStatusEnum::APPROVED, 'clave_unica_denominacion' => 'A2026CUD',
+        ]);
+        Storage::disk('s3')->put("denominations/pool/constancia_denominacion_{$pool->id}.pdf", '%PDF-1.4 constancia');
+
+        $registration = $this->service->upsert(new SingapurSubmissionDTO(
+            id: 'uuid-pool', registrationNumber: '000500', companyFolderName: '000500_BETA',
+            companyName: 'BETA GLOBAL', companyType: 'srl', language: 'zh',
+            companyObject: null, capitalSocial: null,
+            shareholders: [], files: [], incorporationDeed: null, cud: null,
+            denominationPoolId: $pool->id,
+        ));
+
+        // The exact pool name is bound to this expedient (not a fresh WAIT one)…
+        $this->assertSame($registration->id, $pool->fresh()->registration_id);
+        $this->assertSame(1, $registration->legalNames()->count());
+        // …and its constancia was copied in as the denomination document.
+        $this->assertTrue($registration->documents()->where('type', 'legal_name_authorization')->exists());
     }
 
     #[Test]

@@ -245,6 +245,16 @@ class SingapurSubmissionParserTest extends TestCase
     }
 
     #[Test]
+    public function it_captures_the_pool_denomination_id(): void
+    {
+        $data = $this->sampleSubmission();
+        $data['fields']['denominationPoolId'] = '01hzpoolname000000000000000';
+
+        $this->assertSame('01hzpoolname000000000000000', $this->parser->parse($data)->denominationPoolId);
+        $this->assertNull($this->parser->parse($this->sampleSubmission())->denominationPoolId);
+    }
+
+    #[Test]
     public function it_prefers_the_romanized_name_over_the_raw_chinese_one(): void
     {
         $data = $this->sampleSubmission();

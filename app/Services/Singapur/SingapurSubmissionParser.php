@@ -44,6 +44,9 @@ class SingapurSubmissionParser
             // CUD of the SE denomination authorization, captured by China. Accept it
             // either inside `fields` or at the top level of the submission.
             cud: $fields['cud'] ?? ($data['cud'] ?? null),
+            // Id of the pool denomination the client picked from our /denominations/pool
+            // list. Accepted in `fields` or at the top level.
+            denominationPoolId: $fields['denominationPoolId'] ?? ($data['denomination_pool_id'] ?? null),
         );
     }
 

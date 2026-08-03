@@ -12,6 +12,7 @@ use App\Enums\ShareholderRoleEnum;
 use App\Models\Document;
 use App\Models\LegalName;
 use App\Models\Registration;
+use App\Services\Denomination\ClaimPoolDenominationService;
 use App\Models\Shareholder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -61,7 +62,7 @@ class RegistrationUpsertService
     {
         return DB::transaction(function () use ($dto): Registration {
             $registration = $this->upsertRegistration($dto);
-            $this->upsertInitialLegalName($registration, $dto->companyName, $dto->cud);
+            $this->upsertInitialLegalName($registration, $dto->companyName, $dto->cud, $dto->denominationPoolId);
             $this->syncShareholders($registration, $dto->shareholders);
             $this->createDocumentMetadata($registration, $dto->files);
 
@@ -133,9 +134,41 @@ class RegistrationUpsertService
      * @param  Registration  $registration  Target registration.
      * @param  string  $companyName  Proposed company denomination from the relay.
      * @param  string|null  $cud  SE authorization CUD captured by China, if any.
+     * @param  string|null  $poolId  Id of the pool denomination the client picked, if any.
      */
-    private function upsertInitialLegalName(Registration $registration, string $companyName, ?string $cud = null): void
-    {
+    private function upsertInitialLegalName(
+        Registration $registration,
+        string $companyName,
+        ?string $cud = null,
+        ?string $poolId = null,
+    ): void {
+        // Preferred path: the client picked a name from our pre-approved pool. Claim that
+        // exact denomination (binds it to the expedient and copies the SE constancia in as
+        // a document), instead of creating a fresh WAIT name that would be re-sent to the SE.
+        if (filled($poolId) || filled($cud)) {
+            // Redelivery guard: already claimed for this expedient → nothing to do.
+            $alreadyClaimed = $registration->legalNames()
+                ->where(function ($q) use ($poolId, $cud): void {
+                    if (filled($poolId)) {
+                        $q->orWhere('id', $poolId);
+                    }
+                    if (filled($cud)) {
+                        $q->orWhere('clave_unica_denominacion', $cud);
+                    }
+                })->exists();
+
+            if ($alreadyClaimed) {
+                return;
+            }
+
+            $poolName = $this->resolvePoolDenomination($poolId, $cud);
+            if ($poolName !== null) {
+                app(ClaimPoolDenominationService::class)->claim($poolName, $registration);
+
+                return;
+            }
+        }
+
         if (blank($companyName)) {
             return;
         }
@@ -163,6 +196,34 @@ class RegistrationUpsertService
                 'clave_unica_denominacion' => $existing->clave_unica_denominacion ?: ($cud ?: null),
             ], fn ($v) => $v !== null));
         }
+    }
+
+    /**
+     * Find an available pool denomination by id (preferred) or CUD (fallback).
+     *
+     * Only matches names still in the pool: no expedient assigned and status APPROVED.
+     *
+     * @param  string|null  $poolId  Pool denomination id from the relay.
+     * @param  string|null  $cud  SE authorization CUD from the relay.
+     */
+    private function resolvePoolDenomination(?string $poolId, ?string $cud): ?LegalName
+    {
+        $base = LegalName::query()
+            ->whereNull('registration_id')
+            ->where('status', LegalNameStatusEnum::APPROVED->value);
+
+        if (filled($poolId)) {
+            $byId = (clone $base)->whereKey($poolId)->first();
+            if ($byId !== null) {
+                return $byId;
+            }
+        }
+
+        if (filled($cud)) {
+            return (clone $base)->where('clave_unica_denominacion', $cud)->first();
+        }
+
+        return null;
     }
 
     /**

@@ -23,18 +23,18 @@ use Symfony\Component\HttpFoundation\Response;
 class DenominationPoolController extends Controller
 {
     /**
-     * Same list as available(), but for the China/Singapur front — guarded by a shared
-     * header token (X-Pool-Token) instead of JWT, so their server can read our live pool
-     * and stop maintaining a disconnected local copy of available names.
+     * Same list as available(), but for the China/Singapur front — guarded by the same
+     * shared secret the relay already sends on the webhook (X-Nexum-Secret), so Singapur
+     * reuses one credential and reads our live pool instead of a disconnected local copy.
      *
-     * @param  Request  $request  Request carrying the X-Pool-Token header.
+     * @param  Request  $request  Request carrying the X-Nexum-Secret header.
      */
     public function availableForRelay(Request $request): JsonResponse
     {
-        $token = (string) $request->header('X-Pool-Token');
-        $expected = (string) config('services.denomination_pool.token');
+        $secret = config('services.singapur.webhook_secret');
+        $provided = (string) $request->header('X-Nexum-Secret');
 
-        if ($expected === '' || $token === '' || ! hash_equals($expected, $token)) {
+        if (! is_string($secret) || $secret === '' || ! hash_equals($secret, $provided)) {
             return response()->json(['error' => 'Unauthorized'], Response::HTTP_UNAUTHORIZED);
         }
 
