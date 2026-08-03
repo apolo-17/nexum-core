@@ -101,14 +101,17 @@ class AppointmentsRelationManager extends RelationManager
 
             Select::make('soldado_id')
                 ->label('Soldado que asiste')
-                // Solo los representantes legales (apoderados) del acta de ESTA empresa.
-                // Un soldado que no está en el acta no puede formar esta cita.
+                // Solo los apoderados del acta de ESTA empresa que además tengan lo que
+                // la cita necesita: RFC (identifica al soldado ante el SAT) y correo
+                // (para notificarle). La CURP no la pide el SAT para la cita.
                 ->options(fn ($livewire): array => $livewire->getOwnerRecord()
                     ->legalRepresentatives()
+                    ->whereNotNull('rfc')
+                    ->whereNotNull('email')
                     ->orderBy('name')
                     ->pluck('name', 'soldados.id')
                     ->all())
-                ->helperText('Solo aparecen los apoderados/representantes legales del acta de esta empresa.')
+                ->helperText('Apoderados del acta de esta empresa con RFC y correo (el correo se usa para avisarle al soldado).')
                 ->searchable()
                 ->live(),
 

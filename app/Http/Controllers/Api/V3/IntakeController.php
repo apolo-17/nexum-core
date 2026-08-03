@@ -106,19 +106,15 @@ class IntakeController extends Controller
                 && in_array('private_key', $types, true)
                 && in_array('password', $types, true);
 
-            // Qué le falta para poder ir al SAT como representante legal.
-            $missing = [];
+            // La cita del SAT (RFC) solo necesita RFC (identidad ante el SAT) y correo
+            // (para notificar al soldado). La CURP no la pide el SAT. La FIEL solo hace
+            // falta para la cita de e.firma, no para la de RFC.
+            $missingForCita = [];
             if (blank($s->rfc)) {
-                $missing[] = 'rfc';
-            }
-            if (blank($s->curp)) {
-                $missing[] = 'curp';
-            }
-            if (! $hasFiel) {
-                $missing[] = 'fiel';
+                $missingForCita[] = 'rfc';
             }
             if (blank($s->email)) {
-                $missing[] = 'email';
+                $missingForCita[] = 'email';
             }
 
             return [
@@ -130,9 +126,10 @@ class IntakeController extends Controller
                 'phone' => $s->phone,
                 'is_active' => (bool) $s->is_active,
                 'available_as_legal_representative' => (bool) $s->available_as_legal_representative,
-                'has_fiel' => $hasFiel,
-                'missing' => $missing,
-                'complete' => $missing === [],
+                'has_curp' => filled($s->curp),
+                'has_fiel' => $hasFiel, // requerida solo para la cita de e.firma
+                'missing_for_cita' => $missingForCita,
+                'ready_for_cita' => $missingForCita === [],
             ];
         })->all();
 
