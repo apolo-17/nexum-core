@@ -6,7 +6,6 @@ use App\Enums\AppointmentEventTypeEnum;
 use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
 use App\Models\Appointment;
-use App\Models\AppointmentEmail;
 use App\Models\SatModule;
 use App\Jobs\FormSatAppointmentJob;
 use App\Services\Sat\SatReviewService;
@@ -102,9 +101,15 @@ class AppointmentsRelationManager extends RelationManager
 
             Select::make('soldado_id')
                 ->label('Soldado que asiste')
-                ->relationship('soldado', 'name')
+                // Solo los representantes legales (apoderados) del acta de ESTA empresa.
+                // Un soldado que no está en el acta no puede formar esta cita.
+                ->options(fn ($livewire): array => $livewire->getOwnerRecord()
+                    ->legalRepresentatives()
+                    ->orderBy('name')
+                    ->pluck('name', 'soldados.id')
+                    ->all())
+                ->helperText('Solo aparecen los apoderados/representantes legales del acta de esta empresa.')
                 ->searchable()
-                ->preload()
                 ->live(),
 
             Toggle::make('form_now')
@@ -124,11 +129,8 @@ class AppointmentsRelationManager extends RelationManager
                 ->searchable()
                 ->helperText('Opcional. Si la dejas vacía, el bot elige entre las sucursales de CDMX.'),
 
-            Select::make('email_alias')
-                ->label('Correo del pool usado para formar')
-                ->options(fn (): array => AppointmentEmail::orderBy('address')->pluck('address', 'address')->all())
-                ->searchable()
-                ->helperText('Lo asigna el bot al formar. Solo llénalo si formaste la cita a mano.'),
+            // El correo del pool lo elige el bot solo al formar (assignAlias toma uno libre).
+            // Ya no se escoge a mano aquí.
 
             DateTimePicker::make('formed_at')
                 ->label('Fecha en que se formó (fila virtual)')

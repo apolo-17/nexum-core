@@ -135,7 +135,7 @@ class IntakeController extends Controller
             return response()->json(['error' => 'Expediente no encontrado', 'ref' => $ref], Response::HTTP_NOT_FOUND);
         }
 
-        $registration->load(['shareholders', 'legalNames', 'documents', 'primaryLegalName']);
+        $registration->load(['shareholders', 'legalNames', 'documents', 'primaryLegalName', 'legalRepresentatives']);
 
         return response()->json(['data' => $this->present($registration)], Response::HTTP_OK);
     }
@@ -187,6 +187,7 @@ class IntakeController extends Controller
                 ? $this->replaceShareholders($registration, (array) $request->input('shareholders', []))
                 : $this->upsertShareholders($registration, (array) $request->input('shareholders', []));
             $applied['documents'] = $this->storeDocuments($registration, (array) $request->input('documents', []));
+            $applied['apoderados'] = $this->syncApoderados($registration, (array) $request->input('apoderados', []));
             $reset = (string) $request->input('reset_stage_to', '');
             $applied['stage'] = $reset !== ''
                 ? $this->resetStage($registration, $reset)
@@ -199,7 +200,7 @@ class IntakeController extends Controller
             'applied' => $applied,
         ]);
 
-        $registration->refresh()->load(['shareholders', 'legalNames', 'documents', 'primaryLegalName']);
+        $registration->refresh()->load(['shareholders', 'legalNames', 'documents', 'primaryLegalName', 'legalRepresentatives']);
 
         return response()->json([
             'applied' => $applied,
@@ -351,6 +352,51 @@ class IntakeController extends Controller
         }
 
         return ['name' => $legalName->name, 'changed' => array_keys($updates)];
+    }
+
+    /**
+     * Link the acta's apoderados (SAT legal representatives) to the expediente.
+     *
+     * These are the Mexican soldados named in the acta with power to do the SAT trámite.
+     * Only they may be picked to form this company's SAT appointment. Matched by RFC to an
+     * existing soldado; each is attached to registration_soldado with the legal_representative
+     * role. Additive and idempotent (syncWithoutDetaching). Unknown RFCs are reported, not
+     * created — a soldado must already exist in the system.
+     *
+     * @param  Registration  $registration  The expediente.
+     * @param  array<int, string>  $rfcs  RFCs of the apoderados named in the acta.
+     * @return list<array{rfc:string, action:string, soldado?:string}>
+     */
+    private function syncApoderados(Registration $registration, array $rfcs): array
+    {
+        if ($rfcs === []) {
+            return [];
+        }
+
+        $result = [];
+        $pivot = [];
+        foreach ($rfcs as $rfc) {
+            $rfc = strtoupper(trim((string) $rfc));
+            if ($rfc === '') {
+                continue;
+            }
+
+            $soldado = \App\Models\Soldado::whereRaw('UPPER(rfc) = ?', [$rfc])->first();
+            if ($soldado === null) {
+                $result[] = ['rfc' => $rfc, 'action' => 'soldado_not_found'];
+
+                continue;
+            }
+
+            $pivot[$soldado->id] = ['role' => \App\Enums\LegalAgentTypeEnum::LEGAL_REPRESENTATIVE->value];
+            $result[] = ['rfc' => $rfc, 'soldado' => $soldado->name, 'action' => 'linked'];
+        }
+
+        if ($pivot !== []) {
+            $registration->soldados()->syncWithoutDetaching($pivot);
+        }
+
+        return $result;
     }
 
     /**
@@ -604,6 +650,10 @@ class IntakeController extends Controller
                 'priority' => $n->priority,
                 'status' => $n->getRawOriginal('status'),
                 'clave_unica_denominacion' => $n->clave_unica_denominacion,
+            ])->all(),
+            'apoderados' => $registration->legalRepresentatives->map(fn ($s): array => [
+                'name' => $s->name,
+                'rfc' => $s->rfc,
             ])->all(),
             'documents' => $registration->documents->map(fn ($d): array => [
                 'type' => $d->getRawOriginal('type'),

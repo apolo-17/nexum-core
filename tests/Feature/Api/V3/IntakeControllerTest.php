@@ -229,6 +229,29 @@ class IntakeControllerTest extends TestCase
     }
 
     #[Test]
+    public function complete_links_acta_apoderados_by_rfc(): void
+    {
+        $registration = Registration::factory()->create(['singapur_client_code' => '000400']);
+        $soldado = \App\Models\Soldado::create([
+            'name' => 'Gabriel Ulaje Correa', 'rfc' => 'UACG921001TF2', 'is_active' => true,
+            'available_as_legal_representative' => true,
+        ]);
+
+        $this->withHeader('X-Intake-Token', 'intake-secret')
+            ->postJson('/api/v3/intake/000400/complete', ['apoderados' => ['uacg921001tf2', 'NOEXISTE000000']])
+            ->assertOk()
+            ->assertJsonPath('applied.apoderados.0.action', 'linked')
+            ->assertJsonPath('applied.apoderados.1.action', 'soldado_not_found');
+
+        // The soldado is now an acta legal representative for this expedient.
+        $this->assertTrue($registration->legalRepresentatives()->whereKey($soldado->id)->exists());
+        // Idempotent: re-running does not duplicate the pivot row.
+        $this->withHeader('X-Intake-Token', 'intake-secret')
+            ->postJson('/api/v3/intake/000400/complete', ['apoderados' => ['UACG921001TF2']])->assertOk();
+        $this->assertSame(1, $registration->soldados()->count());
+    }
+
+    #[Test]
     public function complete_is_idempotent_for_documents(): void
     {
         \Illuminate\Support\Facades\Storage::fake(config('filesystems.default'));
