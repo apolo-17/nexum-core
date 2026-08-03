@@ -29,6 +29,7 @@ readonly class SingapurShareholderDTO
      * @param  string|null  $phone  Phone number. Used for DocuSign SMS verification.
      * @param  string|null  $phoneCountryCode  E.164 dialling code, e.g. '+86'.
      * @param  string|null  $taxId  Foreign tax ID (NIF, TIN, etc.). Not applicable for Chinese nationals.
+     * @param  string|null  $passportNumber  Passport number as captured by China (`naturalPassportNumber{i}`). China already collects it, so we keep it instead of re-extracting from the passport image.
      */
     public function __construct(
         public int $index,
@@ -47,5 +48,6 @@ readonly class SingapurShareholderDTO
         public ?string $phone = null,
         public ?string $phoneCountryCode = null,
         public ?string $taxId = null,
+        public ?string $passportNumber = null,
     ) {}
 }

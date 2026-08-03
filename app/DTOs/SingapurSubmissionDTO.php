@@ -23,6 +23,7 @@ readonly class SingapurSubmissionDTO
      * @param  list<SingapurShareholderDTO>  $shareholders  Parsed shareholders ordered by their relay index.
      * @param  list<SingapurFileDTO>  $files  File metadata entries from the submission package.
      * @param  SingapurFileDTO|null  $incorporationDeed  Pre-rendered acta sent by China (top-level `incorporation_deed`), already identity-verified and data-extracted on their side. Null when not provided.
+     * @param  string|null  $cud  Clave Única del Documento of the SE denomination authorization, captured by China. Maps to the legal name's clave_unica_denominacion so we don't re-key it from the PDF.
      */
     public function __construct(
         public string $id,
@@ -36,6 +37,7 @@ readonly class SingapurSubmissionDTO
         public array $shareholders,
         public array $files,
         public ?SingapurFileDTO $incorporationDeed = null,
+        public ?string $cud = null,
     ) {}
 
     /**

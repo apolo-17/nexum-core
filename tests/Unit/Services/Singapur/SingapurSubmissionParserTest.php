@@ -220,6 +220,43 @@ class SingapurSubmissionParserTest extends TestCase
      *
      * @return array<string, mixed>
      */
+    #[Test]
+    public function it_captures_the_passport_number_from_the_relay(): void
+    {
+        $data = $this->sampleSubmission();
+        $data['fields']['naturalPassportNumber1'] = 'EN9908330';
+
+        $dto = $this->parser->parse($data);
+
+        $this->assertSame('EN9908330', $dto->shareholders[0]->passportNumber);
+        // Absent for the second shareholder → null, not a placeholder.
+        $this->assertNull($dto->shareholders[1]->passportNumber);
+    }
+
+    #[Test]
+    public function it_captures_the_denomination_cud(): void
+    {
+        $data = $this->sampleSubmission();
+        $data['fields']['cud'] = 'A202602271840258356';
+
+        $this->assertSame('A202602271840258356', $this->parser->parse($data)->cud);
+        // Absent → null.
+        $this->assertNull($this->parser->parse($this->sampleSubmission())->cud);
+    }
+
+    #[Test]
+    public function it_prefers_the_romanized_name_over_the_raw_chinese_one(): void
+    {
+        $data = $this->sampleSubmission();
+        $data['fields']['naturalShareholderNameEs1'] = 'JIAXIN WU';
+
+        $dto = $this->parser->parse($data);
+
+        // Shareholder 1 has a romanized name → used; shareholder 2 falls back to raw.
+        $this->assertSame('JIAXIN WU', $dto->shareholders[0]->name);
+        $this->assertSame('李锐佳', $dto->shareholders[1]->name);
+    }
+
     private function sampleSubmission(): array
     {
         return [

@@ -170,11 +170,14 @@ class RegistrationUpsertServiceTest extends TestCase
     }
 
     #[Test]
-    public function it_leaves_passport_number_null_since_it_arrives_as_a_document(): void
+    public function it_stores_the_passport_number_from_the_relay_and_null_when_absent(): void
     {
         $this->service->upsert($this->makeSubmissionDTO());
 
-        $this->assertNull(Shareholder::first()->passport_number);
+        // Shareholder 1 carries a passport number from China → persisted.
+        $this->assertSame('EN9908330', Shareholder::where('participation_percentage', 50.0)->orderBy('id')->first()->passport_number);
+        // Shareholder 2 has none → stays null (AnalyzeDocumentJob may fill it later).
+        $this->assertNull(Shareholder::orderByDesc('id')->first()->passport_number);
     }
 
     #[Test]
@@ -304,6 +307,7 @@ class RegistrationUpsertServiceTest extends TestCase
                     email: '上海',
                     participationPercentage: 50.0,
                     isMarried: true,
+                    passportNumber: 'EN9908330',
                 ),
                 new SingapurShareholderDTO(
                     index: 2,

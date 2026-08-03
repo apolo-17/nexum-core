@@ -41,6 +41,9 @@ class SingapurSubmissionParser
             shareholders: $this->parseShareholders($fields, $shareholderCount),
             files: $this->parseFiles($data['files'] ?? []),
             incorporationDeed: $this->parseIncorporationDeed($data),
+            // CUD of the SE denomination authorization, captured by China. Accept it
+            // either inside `fields` or at the top level of the submission.
+            cud: $fields['cud'] ?? ($data['cud'] ?? null),
         );
     }
 
@@ -102,7 +105,12 @@ class SingapurSubmissionParser
             $shareholders[] = new SingapurShareholderDTO(
                 index: $i,
                 type: $type,
-                name: $fields["naturalShareholderName{$i}"] ?? $fields["juridicaShareholderName{$i}"] ?? "Shareholder {$i}",
+                // Prefer the romanized/pinyin name China computes (`name_es`) so the SAT
+                // gets a Latin name; fall back to the raw (often Chinese) form field.
+                name: $fields["naturalShareholderNameEs{$i}"]
+                    ?? $fields["naturalShareholderName{$i}"]
+                    ?? $fields["juridicaShareholderName{$i}"]
+                    ?? "Shareholder {$i}",
                 nationality: $fields["naturalNationality{$i}"] ?? $fields["naturalOtherNationality{$i}"] ?? '',
                 email: $fields["naturalShareholderEmail{$i}"] ?? '',
                 participationPercentage: (float) ($fields["naturalSharePercentage{$i}"] ?? 0),
@@ -114,6 +122,9 @@ class SingapurSubmissionParser
                 phone: $fields["naturalPhone{$i}"] ?? null,
                 phoneCountryCode: $fields["naturalPhoneCountryCode{$i}"] ?? null,
                 taxId: $fields["naturalTaxId{$i}"] ?? null,
+                // China already captures the passport number; keep it instead of
+                // forcing a null and re-extracting it from the passport image.
+                passportNumber: $fields["naturalPassportNumber{$i}"] ?? null,
             );
         }
 

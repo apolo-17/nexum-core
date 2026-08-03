@@ -61,7 +61,7 @@ class RegistrationUpsertService
     {
         return DB::transaction(function () use ($dto): Registration {
             $registration = $this->upsertRegistration($dto);
-            $this->upsertInitialLegalName($registration, $dto->companyName);
+            $this->upsertInitialLegalName($registration, $dto->companyName, $dto->cud);
             $this->syncShareholders($registration, $dto->shareholders);
             $this->createDocumentMetadata($registration, $dto->files);
 
@@ -132,8 +132,9 @@ class RegistrationUpsertService
      *
      * @param  Registration  $registration  Target registration.
      * @param  string  $companyName  Proposed company denomination from the relay.
+     * @param  string|null  $cud  SE authorization CUD captured by China, if any.
      */
-    private function upsertInitialLegalName(Registration $registration, string $companyName): void
+    private function upsertInitialLegalName(Registration $registration, string $companyName, ?string $cud = null): void
     {
         if (blank($companyName)) {
             return;
@@ -148,6 +149,7 @@ class RegistrationUpsertService
                 'name' => $companyName,
                 'priority' => 1,
                 'status' => LegalNameStatusEnum::WAIT,
+                'clave_unica_denominacion' => $cud ?: null,
             ]);
 
             return;
@@ -155,7 +157,11 @@ class RegistrationUpsertService
 
         // Only update if the notary team has not advanced it to a locked state.
         if ($existing->isEditable()) {
-            $existing->update(['name' => $companyName]);
+            $existing->update(array_filter([
+                'name' => $companyName,
+                // Backfill the CUD when China provides it and we don't have one yet.
+                'clave_unica_denominacion' => $existing->clave_unica_denominacion ?: ($cud ?: null),
+            ], fn ($v) => $v !== null));
         }
     }
 
@@ -208,9 +214,9 @@ class RegistrationUpsertService
             'phone' => $dto->phone,
             'phone_country_code' => $dto->phoneCountryCode,
             'tax_id' => $dto->taxId,
-            // Passport number is not in the relay; filled manually by the notary
-            // team or extracted automatically from the passport via Claude vision.
-            'passport_number' => null,
+            // China captures the passport number, so keep it. When absent it stays
+            // null and AnalyzeDocumentJob still extracts it from the passport image.
+            'passport_number' => $dto->passportNumber,
         ]);
     }
 
