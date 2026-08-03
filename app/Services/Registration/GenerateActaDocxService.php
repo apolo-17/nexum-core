@@ -75,6 +75,14 @@ class GenerateActaDocxService
         // Each block contains "${socio_anchor}" which resolves to "-FIRMA1", "-FIRMA2", etc.
         $processor->cloneBlock('signaturePage', 0, true, false, $dataPartners);
 
+        // Apoderados block — one clone per soldado named in the acta as legal
+        // representative (power to do the SAT trámite). No-op when the template has no
+        // ${apoderados} block yet, or when there are no apoderados.
+        $dataApoderados = $this->buildApoderadosData($data);
+        if ($dataApoderados !== []) {
+            $processor->cloneBlock('apoderados', 0, true, false, $dataApoderados);
+        }
+
         // Persist temp file locally, upload to R2, then clean up.
         $filename = 'acta_'.$registration->singapur_client_code.'_'.now()->format('Ymd_His').'.docx';
         $tempDir = storage_path('app/temp');
@@ -150,6 +158,29 @@ class GenerateActaDocxService
             'total_shares' => $this->formatShares($capitalSocial),
             'value_shares' => $this->formatCapitalValue($capitalSocial),
         ];
+    }
+
+    /**
+     * Build the per-apoderado arrays for the ${apoderados} cloneBlock.
+     *
+     * Each element is one clone with the placeholders the template block expects:
+     * ${apoderado_indice}, ${apoderado_nombre}, ${apoderado_rfc}, ${apoderado_curp},
+     * ${apoderado_correo}. Data comes from ActaPreparationService's apoderados block.
+     *
+     * @param  array<string, mixed>  $data  Compiled template_data from ACTA_DRAFT.
+     * @return array<int, array<string, string>>
+     */
+    private function buildApoderadosData(array $data): array
+    {
+        $apoderados = array_values($data['apoderados'] ?? []);
+
+        return array_map(fn (array $a, int $idx): array => [
+            'apoderado_indice' => (string) ($idx + 1),
+            'apoderado_nombre' => (string) ($a['apoderado_nombre'] ?? ''),
+            'apoderado_rfc' => (string) ($a['apoderado_rfc'] ?? ''),
+            'apoderado_curp' => (string) ($a['apoderado_curp'] ?? ''),
+            'apoderado_correo' => (string) ($a['apoderado_correo'] ?? ''),
+        ], $apoderados, array_keys($apoderados));
     }
 
     /**

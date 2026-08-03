@@ -75,6 +75,7 @@ class ActaPreparationService
             'shareholders',
             'documents',
             'legalNames',
+            'legalRepresentatives',
         ]);
 
         // Pre-load all DocumentAnalysis records for this registration's documents
@@ -127,6 +128,12 @@ class ActaPreparationService
             'numero_socios' => count($socios),
 
             // ----------------------------------------------------------------
+            // Apoderados (soldados con poder para el trámite ante el SAT)
+            // ----------------------------------------------------------------
+            'apoderados' => $this->compileApoderados($registration),
+            'numero_apoderados' => $registration->legalRepresentatives->count(),
+
+            // ----------------------------------------------------------------
             // Metadata for auditing
             // ----------------------------------------------------------------
             'compiled_at' => now()->toIso8601String(),
@@ -134,6 +141,36 @@ class ActaPreparationService
             'registration_id' => $registration->id,
             'singapur_client_code' => $registration->singapur_client_code,
         ];
+    }
+
+    // -------------------------------------------------------------------------
+    // Private — apoderados (legal representatives) compilation
+    // -------------------------------------------------------------------------
+
+    /**
+     * Compile the apoderados block: the soldados named in the acta as legal
+     * representatives, with power to do the SAT trámite (e.firma / RFC).
+     *
+     * Sourced from the registration_soldado pivot (role legal_representative),
+     * populated from the acta. Only name + RFC are strictly required for the acta;
+     * CURP and email are included when available.
+     *
+     * @param  Registration  $registration  The expedient to compile apoderados for.
+     * @return list<array<string, string>>
+     */
+    private function compileApoderados(Registration $registration): array
+    {
+        return $registration->legalRepresentatives
+            ->sortBy('name')
+            ->values()
+            ->map(fn ($soldado): array => [
+                // mb_strtoupper para respetar acentos de nombres mexicanos (Ramírez → RAMÍREZ).
+                'apoderado_nombre' => mb_strtoupper((string) $soldado->name, 'UTF-8'),
+                'apoderado_rfc' => (string) ($soldado->rfc ?? ''),
+                'apoderado_curp' => (string) ($soldado->curp ?? ''),
+                'apoderado_correo' => (string) ($soldado->email ?? ''),
+            ])
+            ->all();
     }
 
     // -------------------------------------------------------------------------
