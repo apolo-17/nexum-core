@@ -23,6 +23,25 @@ use Symfony\Component\HttpFoundation\Response;
 class DenominationPoolController extends Controller
 {
     /**
+     * Same list as available(), but for the China/Singapur front — guarded by a shared
+     * header token (X-Pool-Token) instead of JWT, so their server can read our live pool
+     * and stop maintaining a disconnected local copy of available names.
+     *
+     * @param  Request  $request  Request carrying the X-Pool-Token header.
+     */
+    public function availableForRelay(Request $request): JsonResponse
+    {
+        $token = (string) $request->header('X-Pool-Token');
+        $expected = (string) config('services.denomination_pool.token');
+
+        if ($expected === '' || $token === '' || ! hash_equals($expected, $token)) {
+            return response()->json(['error' => 'Unauthorized'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        return $this->available();
+    }
+
+    /**
      * List the approved pool denominations that are still available to claim.
      *
      * Available means: no registration assigned and status APPROVED.

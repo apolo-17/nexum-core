@@ -64,6 +64,13 @@ return [
         'token' => env('INTAKE_API_TOKEN'),
     ],
 
+    // Denomination pool — token so the China/Singapur front can read our available
+    // approved names (instead of keeping a disconnected local list). Generate with:
+    // openssl rand -hex 32.
+    'denomination_pool' => [
+        'token' => env('DENOMINATION_POOL_TOKEN'),
+    ],
+
     // Anthropic Claude API — used by DocumentAnalysisService for KYC document vision extraction.
     'anthropic' => [
         'api_key' => env('ANTHROPIC_API_KEY'),

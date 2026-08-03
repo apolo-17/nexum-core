@@ -62,6 +62,10 @@ Route::prefix('v3')->group(function () {
 
     // Intake manual de expedientes — completar los que llegaron incompletos del relay.
     // Protegido con token dedicado (X-Intake-Token), solo del equipo.
+    // Denomination pool for the China/Singapur front — token-guarded (X-Pool-Token) so
+    // their server reads our live available names instead of a disconnected local list.
+    Route::get('denominations/pool', [DenominationPoolController::class, 'availableForRelay']);
+
     Route::get('intake', [IntakeController::class, 'index']);
     Route::get('intake/soldados', [IntakeController::class, 'soldados']);
     Route::get('intake/{ref}', [IntakeController::class, 'show']);

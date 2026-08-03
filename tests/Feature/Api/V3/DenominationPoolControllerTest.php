@@ -32,6 +32,25 @@ class DenominationPoolControllerTest extends TestCase
     }
 
     #[Test]
+    public function relay_pool_endpoint_requires_the_pool_token(): void
+    {
+        config(['services.denomination_pool.token' => 'pool-secret']);
+        LegalName::create([
+            'registration_id' => null, 'name' => 'ALFA CONSULTORES', 'company_type' => 'srl',
+            'priority' => 1, 'status' => LegalNameStatusEnum::APPROVED, 'clave_unica_denominacion' => 'A1B2C3',
+        ]);
+
+        $this->getJson('/api/v3/denominations/pool')->assertUnauthorized();
+        $this->withHeader('X-Pool-Token', 'wrong')->getJson('/api/v3/denominations/pool')->assertUnauthorized();
+
+        $this->withHeader('X-Pool-Token', 'pool-secret')
+            ->getJson('/api/v3/denominations/pool')
+            ->assertOk()
+            ->assertJsonPath('data.0.name', 'ALFA CONSULTORES')
+            ->assertJsonPath('data.0.folio', 'A1B2C3');
+    }
+
+    #[Test]
     public function available_lists_only_approved_pool_names(): void
     {
         $approvedPool = LegalName::create([
