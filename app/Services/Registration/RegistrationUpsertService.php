@@ -142,40 +142,34 @@ class RegistrationUpsertService
         ?string $cud = null,
         ?string $poolId = null,
     ): void {
+        /** @var LegalName|null $existing */
+        $existing = $registration->legalNames()->where('priority', 1)->first();
+
+        // If the priority-1 name is already locked (SUBMITTING/PROCESS/APPROVED — e.g. a
+        // pool name claimed on a previous delivery, or notary work), leave it untouched.
+        if ($existing !== null && ! $existing->isEditable()) {
+            return;
+        }
+
         // Preferred path: the client picked a name from our pre-approved pool. Claim that
-        // exact denomination (binds it to the expedient and copies the SE constancia in as
-        // a document), instead of creating a fresh WAIT name that would be re-sent to the SE.
-        if (filled($poolId) || filled($cud)) {
-            // Redelivery guard: already claimed for this expedient → nothing to do.
-            $alreadyClaimed = $registration->legalNames()
-                ->where(function ($q) use ($poolId, $cud): void {
-                    if (filled($poolId)) {
-                        $q->orWhere('id', $poolId);
-                    }
-                    if (filled($cud)) {
-                        $q->orWhere('clave_unica_denominacion', $cud);
-                    }
-                })->exists();
+        // exact denomination (binds it to the expedient and copies the SE constancia in as a
+        // document) instead of creating a fresh WAIT name that would be re-sent to the SE.
+        // Match by pool id, then CUD, then the exact name — so even if China only sends the
+        // name, an approved pool name is still recognized.
+        $poolName = $this->resolvePoolDenomination($poolId, $cud, $companyName);
+        if ($poolName !== null) {
+            // Drop any stale editable WAIT name before claiming, to avoid two priority-1 rows.
+            $existing?->delete();
+            app(ClaimPoolDenominationService::class)->claim($poolName, $registration);
 
-            if ($alreadyClaimed) {
-                return;
-            }
-
-            $poolName = $this->resolvePoolDenomination($poolId, $cud);
-            if ($poolName !== null) {
-                app(ClaimPoolDenominationService::class)->claim($poolName, $registration);
-
-                return;
-            }
+            return;
         }
 
         if (blank($companyName)) {
             return;
         }
 
-        /** @var LegalName|null $existing */
-        $existing = $registration->legalNames()->where('priority', 1)->first();
-
+        // Fallback: a plain WAIT denomination that still needs SE authorization.
         if ($existing === null) {
             LegalName::create([
                 'registration_id' => $registration->id,
@@ -188,25 +182,23 @@ class RegistrationUpsertService
             return;
         }
 
-        // Only update if the notary team has not advanced it to a locked state.
-        if ($existing->isEditable()) {
-            $existing->update(array_filter([
-                'name' => $companyName,
-                // Backfill the CUD when China provides it and we don't have one yet.
-                'clave_unica_denominacion' => $existing->clave_unica_denominacion ?: ($cud ?: null),
-            ], fn ($v) => $v !== null));
-        }
+        $existing->update(array_filter([
+            'name' => $companyName,
+            // Backfill the CUD when China provides it and we don't have one yet.
+            'clave_unica_denominacion' => $existing->clave_unica_denominacion ?: ($cud ?: null),
+        ], fn ($v) => $v !== null));
     }
 
     /**
-     * Find an available pool denomination by id (preferred) or CUD (fallback).
+     * Find an available pool denomination by id (preferred), then CUD, then exact name.
      *
      * Only matches names still in the pool: no expedient assigned and status APPROVED.
      *
      * @param  string|null  $poolId  Pool denomination id from the relay.
      * @param  string|null  $cud  SE authorization CUD from the relay.
+     * @param  string|null  $companyName  Denomination name from the relay.
      */
-    private function resolvePoolDenomination(?string $poolId, ?string $cud): ?LegalName
+    private function resolvePoolDenomination(?string $poolId, ?string $cud, ?string $companyName = null): ?LegalName
     {
         $base = LegalName::query()
             ->whereNull('registration_id')
@@ -220,7 +212,16 @@ class RegistrationUpsertService
         }
 
         if (filled($cud)) {
-            return (clone $base)->where('clave_unica_denominacion', $cud)->first();
+            $byCud = (clone $base)->where('clave_unica_denominacion', $cud)->first();
+            if ($byCud !== null) {
+                return $byCud;
+            }
+        }
+
+        if (filled($companyName)) {
+            return (clone $base)
+                ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower(trim($companyName))])
+                ->first();
         }
 
         return null;

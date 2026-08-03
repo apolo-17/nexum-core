@@ -198,6 +198,30 @@ class RegistrationUpsertServiceTest extends TestCase
     }
 
     #[Test]
+    public function it_claims_a_pool_denomination_by_name_when_no_id_is_sent(): void
+    {
+        Storage::fake('s3');
+
+        $pool = LegalName::create([
+            'registration_id' => null, 'name' => 'GAMMA MARKET MX', 'company_type' => 'srl',
+            'priority' => 1, 'status' => LegalNameStatusEnum::APPROVED, 'clave_unica_denominacion' => 'A2026GAMMA',
+        ]);
+        Storage::disk('s3')->put("denominations/pool/constancia_denominacion_{$pool->id}.pdf", '%PDF constancia');
+
+        // Only the name travels (no id, no CUD) — Nexum still recognizes the approved name.
+        $registration = $this->service->upsert(new SingapurSubmissionDTO(
+            id: 'uuid-name', registrationNumber: '000501', companyFolderName: '000501_GAMMA',
+            companyName: 'GAMMA MARKET MX', companyType: 'srl', language: 'zh',
+            companyObject: null, capitalSocial: null,
+            shareholders: [], files: [], incorporationDeed: null, cud: null, denominationPoolId: null,
+        ));
+
+        $this->assertSame($registration->id, $pool->fresh()->registration_id);
+        $this->assertSame(1, $registration->legalNames()->count());
+        $this->assertTrue($registration->documents()->where('type', 'legal_name_authorization')->exists());
+    }
+
+    #[Test]
     public function it_stores_the_passport_number_from_the_relay_and_null_when_absent(): void
     {
         $this->service->upsert($this->makeSubmissionDTO());
