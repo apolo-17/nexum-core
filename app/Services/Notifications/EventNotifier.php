@@ -37,4 +37,18 @@ class EventNotifier
 
         NotificationFacade::send($recipients, $notification);
     }
+
+    /**
+     * Return true when the event is enabled and has at least one recipient.
+     *
+     * Lets a caller skip expensive work (an API call, a heavy report) that would
+     * be discarded by notify() anyway. Callers that build a notification cheaply
+     * should just call notify() unconditionally.
+     *
+     * @param  NotificationEventEnum  $event  The event about to be dispatched.
+     */
+    public function hasRecipients(NotificationEventEnum $event): bool
+    {
+        return NotificationSetting::recipientsFor($event)->isNotEmpty();
+    }
 }

@@ -58,6 +58,13 @@ enum NotificationEventEnum: string
     case SAT_APPOINTMENT_FAILED = 'sat_appointment_failed';
 
     /**
+     * The daily 8:00 digest with the state of every active expedient (how long
+     * each has been stuck, which ones are overdue, what moved yesterday).
+     * Unlike the other events this one is time-based, not triggered by the domain.
+     */
+    case DAILY_DIGEST = 'daily_digest';
+
+    /**
      * Return a human-readable Spanish label for display in the settings UI.
      */
     public function label(): string
@@ -70,6 +77,7 @@ enum NotificationEventEnum: string
             self::SAT_APPOINTMENT_FORMED => 'Cita del SAT formada (fila virtual)',
             self::SAT_APPOINTMENT_SCHEDULED => 'Cita del SAT con fecha y hora',
             self::SAT_APPOINTMENT_FAILED => 'Error con una cita del SAT',
+            self::DAILY_DIGEST => 'Reporte diario de expedientes',
         };
     }
 
@@ -93,6 +101,9 @@ enum NotificationEventEnum: string
                 .'cita. Al soldado se le notifica aparte; este aviso es para el equipo.',
             self::SAT_APPOINTMENT_FAILED => 'Avisa cuando el bot no pudo formar o revisar una '
                 .'cita del SAT (la cita se queda como está y se reintenta).',
+            self::DAILY_DIGEST => 'Envía cada mañana a las 8:00 (lunes a viernes) el estado de '
+                .'los expedientes activos: cuáles están atrasados, cuánto llevan en su etapa y '
+                .'qué se movió el día anterior.',
         };
     }
 }

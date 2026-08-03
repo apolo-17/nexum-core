@@ -97,18 +97,44 @@ class IntakeController extends Controller
             return response()->json(['error' => 'Unauthorized'], Response::HTTP_UNAUTHORIZED);
         }
 
-        $soldados = \App\Models\Soldado::query()->orderBy('name')->get();
+        $soldados = \App\Models\Soldado::query()->with('credentials')->orderBy('name')->get();
 
-        $data = $soldados->map(fn ($s): array => [
-            'id' => $s->id,
-            'name' => $s->name,
-            'rfc' => $s->rfc,
-            'curp' => $s->curp,
-            'email' => $s->email,
-            'phone' => $s->phone,
-            'is_active' => (bool) $s->is_active,
-            'available_as_legal_representative' => (bool) $s->available_as_legal_representative,
-        ])->all();
+        $data = $soldados->map(function ($s): array {
+            // FIEL/e.firma completa = tiene los tres: certificado, llave privada y contraseña.
+            $types = $s->credentials->pluck('type')->all();
+            $hasFiel = in_array('certificate', $types, true)
+                && in_array('private_key', $types, true)
+                && in_array('password', $types, true);
+
+            // Qué le falta para poder ir al SAT como representante legal.
+            $missing = [];
+            if (blank($s->rfc)) {
+                $missing[] = 'rfc';
+            }
+            if (blank($s->curp)) {
+                $missing[] = 'curp';
+            }
+            if (! $hasFiel) {
+                $missing[] = 'fiel';
+            }
+            if (blank($s->email)) {
+                $missing[] = 'email';
+            }
+
+            return [
+                'id' => $s->id,
+                'name' => $s->name,
+                'rfc' => $s->rfc,
+                'curp' => $s->curp,
+                'email' => $s->email,
+                'phone' => $s->phone,
+                'is_active' => (bool) $s->is_active,
+                'available_as_legal_representative' => (bool) $s->available_as_legal_representative,
+                'has_fiel' => $hasFiel,
+                'missing' => $missing,
+                'complete' => $missing === [],
+            ];
+        })->all();
 
         return response()->json(['count' => count($data), 'data' => $data], Response::HTTP_OK);
     }

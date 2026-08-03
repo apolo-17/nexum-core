@@ -64,6 +64,51 @@ enum RegistrationStageEnum: string
     }
 
     /**
+     * Days a registration may sit in this stage before the daily digest flags it
+     * as needing attention (amber).
+     *
+     * Each stage gets its own threshold because they are not comparable: an acta
+     * draft is internal notary work measured in days, while a denomination waits
+     * on the SE and a signature waits on shareholders in China. A single global
+     * number would produce constant false alarms on the third-party stages.
+     */
+    public function slaWarningDays(): int
+    {
+        return match ($this) {
+            self::DATA_RECEIVED => 2,
+            self::IDENTITY_VALIDATION => 5,
+            self::LEGAL_NAME => 7,
+            self::ACTA_PREPARATION => 3,
+            self::PARTNER_SIGNATURE => 7,
+            self::INCORPORATION => 5,
+            self::TAX_ADDRESS => 5,
+            self::SAT_REGISTRATION => 7,
+            self::EFIRMA_APPOINTMENT => 7,
+            self::COMPLETED => PHP_INT_MAX,
+        };
+    }
+
+    /**
+     * Days in this stage after which the daily digest reports the registration as
+     * overdue (red) and counts it in the subject line.
+     */
+    public function slaOverdueDays(): int
+    {
+        return match ($this) {
+            self::DATA_RECEIVED => 4,
+            self::IDENTITY_VALIDATION => 10,
+            self::LEGAL_NAME => 15,
+            self::ACTA_PREPARATION => 7,
+            self::PARTNER_SIGNATURE => 14,
+            self::INCORPORATION => 10,
+            self::TAX_ADDRESS => 10,
+            self::SAT_REGISTRATION => 15,
+            self::EFIRMA_APPOINTMENT => 15,
+            self::COMPLETED => PHP_INT_MAX,
+        };
+    }
+
+    /**
      * Return the ordered list of all active stages for state machine validation.
      *
      * @return array<int, self>
