@@ -32,6 +32,7 @@ class DatabaseSeeder extends Seeder
             // Catalog of soldados (legal representatives / commissaries) + sample
             // assignments. Runs after the demo companies so it can attach to real actas.
             $this->call(SoldadosSeeder::class);
+            $this->call(SatModuleSeeder::class);
         }
     }
 }
