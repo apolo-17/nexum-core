@@ -2,34 +2,24 @@
 
 namespace App\Filament\Widgets;
 
-use App\Enums\RegistrationStatusEnum;
-use App\Models\Registration;
-use App\Models\Task;
+use App\Enums\AppointmentStatusEnum;
+use App\Enums\AppointmentTypeEnum;
+use App\Enums\LegalNameStatusEnum;
+use App\Models\Appointment;
+use App\Models\LegalName;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Illuminate\Support\Facades\Auth;
 
 /**
- * KPI overview widget for the super_admin role.
- *
- * Shows system-wide metrics: total active, on-hold, completed, and cancelled
- * expedients, plus overdue tasks and upcoming e.firma appointments.
- * Only visible to users with the super_admin role.
+ * KPI overview for the super_admin role, focused on the SAT/denomination operation:
+ * how many pool names are free, how many citas wait for a date, what is coming up
+ * (split RFC vs e.firma), and how long it takes on average to land a cita.
  */
 class AdminStatsOverview extends StatsOverviewWidget
 {
-    /**
-     * Sort before Filament built-in widgets (AccountWidget = -2).
-     */
     protected static ?int $sort = -10;
 
-    /**
-     * Visible to super_admin users and to users who have no role yet (initial setup).
-     *
-     * Falls back to true when Spatie roles are not yet seeded so the dashboard is
-     * not a blank page on a fresh deployment. Once roles are seeded, only super_admin
-     * will see this widget — notario and asistente_notario have their own widgets.
-     */
     public static function canView(): bool
     {
         $user = Auth::user();
@@ -39,63 +29,71 @@ class AdminStatsOverview extends StatsOverviewWidget
         }
 
         try {
-            // Show for super_admin and for accounts with no role yet (fresh setup).
             return $user->hasRole('super_admin') || $user->roles->isEmpty();
         } catch (\Throwable) {
-            // If Spatie is not configured yet, show to all authenticated admin users.
             return true;
         }
     }
 
     /**
-     * Build the stat cards for the admin dashboard.
-     *
-     * Queries are intentionally simple counts — no N+1 risk,
-     * each stat fires a single indexed query against status or stage.
-     *
      * @return array<int, Stat>
      */
     protected function getStats(): array
     {
-        $active = Registration::where('status', RegistrationStatusEnum::ACTIVE)->count();
-        $onHold = Registration::where('status', RegistrationStatusEnum::ON_HOLD)->count();
-        $completed = Registration::where('status', RegistrationStatusEnum::COMPLETED)->count();
-        $cancelled = Registration::where('status', RegistrationStatusEnum::CANCELLED)->count();
-
-        $overdueCount = Task::whereNull('completed_at')
-            ->whereNotNull('due_date')
-            ->where('due_date', '<', today())
+        // 1. Denominaciones libres en el pool (aprobadas y sin empresa asignada).
+        $poolFree = LegalName::query()
+            ->whereNull('registration_id')
+            ->where('status', LegalNameStatusEnum::APPROVED->value)
             ->count();
 
-        $efirmaUpcoming = Registration::where('status', RegistrationStatusEnum::ACTIVE)
-            ->whereNotNull('efirma_appointment_at')
-            ->whereBetween('efirma_appointment_at', [now()->startOfDay(), now()->addDays(7)->endOfDay()])
+        // 2. Citas ya formadas que esperan que el SAT les asigne fecha.
+        $pendingDate = Appointment::where('status', AppointmentStatusEnum::FORMED->value)->count();
+
+        // 3. Próximas a asistir (agendadas, con fecha futura), separadas por tipo.
+        $upcoming = fn (AppointmentTypeEnum $type): int => Appointment::query()
+            ->where('status', AppointmentStatusEnum::SCHEDULED->value)
+            ->where('type', $type->value)
+            ->where('scheduled_at', '>=', now())
             ->count();
+
+        $upcomingRfc = $upcoming(AppointmentTypeEnum::RFC);
+        $upcomingFiel = $upcoming(AppointmentTypeEnum::FIEL);
+
+        // 4. Tiempo promedio para conseguir cita: de formarla a la fecha asignada.
+        $avgDays = Appointment::query()
+            ->where('status', AppointmentStatusEnum::SCHEDULED->value)
+            ->whereNotNull('formed_at')
+            ->whereNotNull('scheduled_at')
+            ->get(['formed_at', 'scheduled_at'])
+            ->avg(fn (Appointment $a): float => $a->formed_at->diffInHours($a->scheduled_at) / 24);
+
+        $avgLabel = $avgDays !== null ? number_format((float) $avgDays, 1).' días' : '—';
 
         return [
-            Stat::make('Activos', $active)
-                ->description('En proceso')
-                ->color('primary'),
+            Stat::make('Denominaciones libres', $poolFree)
+                ->description('Disponibles en el pool')
+                ->descriptionIcon('heroicon-m-tag')
+                ->color($poolFree > 0 ? 'primary' : 'warning'),
 
-            Stat::make('En pausa', $onHold)
-                ->description('Requieren seguimiento')
-                ->color($onHold > 0 ? 'warning' : 'gray'),
+            Stat::make('Citas sin fecha', $pendingDate)
+                ->description('Formadas, esperando fecha del SAT')
+                ->descriptionIcon('heroicon-m-clock')
+                ->color($pendingDate > 0 ? 'warning' : 'gray'),
 
-            Stat::make('Completados', $completed)
-                ->description('Empresa operativa')
-                ->color('success'),
-
-            Stat::make('Cancelados', $cancelled)
-                ->description('Sin continuar')
-                ->color($cancelled > 0 ? 'danger' : 'gray'),
-
-            Stat::make('Tareas vencidas', $overdueCount)
-                ->description('Acción inmediata requerida')
-                ->color($overdueCount > 0 ? 'danger' : 'success'),
-
-            Stat::make('Citas e.firma (7 días)', $efirmaUpcoming)
-                ->description('Próximas')
+            Stat::make('Próximas · Registro RFC', $upcomingRfc)
+                ->description('Con fecha, por asistir')
+                ->descriptionIcon('heroicon-m-identification')
                 ->color('info'),
+
+            Stat::make('Próximas · e.firma (FIEL)', $upcomingFiel)
+                ->description('Con fecha, por asistir')
+                ->descriptionIcon('heroicon-m-key')
+                ->color('info'),
+
+            Stat::make('Tiempo prom. de cita', $avgLabel)
+                ->description('De formar a la fecha asignada')
+                ->descriptionIcon('heroicon-m-calendar-days')
+                ->color('success'),
         ];
     }
 }
