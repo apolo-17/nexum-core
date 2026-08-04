@@ -242,15 +242,6 @@ class DailyDigestService
             ];
         }
 
-        // 6. Nobody owns the expedient.
-        if ($registration->assigned_notario_id === null) {
-            $issues[] = [
-                'severity' => 'warning',
-                'reason' => 'Sin notario asignado',
-                'days' => $daysInStage,
-            ];
-        }
-
         return $issues;
     }
 
