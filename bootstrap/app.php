@@ -1,5 +1,6 @@
 <?php
 
+use App\Console\Commands\SendDailyDigestCommand;
 use App\Console\Commands\SubmitDenominationsToMuaCommand;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
@@ -26,6 +27,17 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // mua:poll is disabled — the MUA bot notifies us via webhook callback (POST /api/v3/webhook/mua-bot)
         // when the SE resolves a denomination. Re-enable here if a polling fallback is ever needed.
+
+        // Daily expedient digest, 8:00 Mexico City, weekdays only — Monday's edition
+        // covers the weekend. This is the environment's only scheduled task, which
+        // keeps it compatible with Scale to Zero: Laravel Cloud wakes the App cluster
+        // once a day for it instead of keeping it awake continuously.
+        $schedule->command(SendDailyDigestCommand::class)
+            ->weekdays()
+            ->at('08:00')
+            ->timezone('America/Mexico_City')
+            ->onOneServer()
+            ->withoutOverlapping();
     })
     ->withMiddleware(function (Middleware $middleware): void {
         //
