@@ -2,10 +2,12 @@
 
 namespace App\Notifications;
 
+use App\Enums\DocumentTypeEnum;
 use App\Filament\Resources\MisCitasResource;
 use App\Models\Appointment;
 use App\Models\SatModule;
 use App\Models\User;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -93,16 +95,24 @@ class SatAppointmentScheduledNotification extends Notification implements Should
             );
         }
 
+        // Descargas: acuse de la cita y comprobante de domicilio (desde el sistema).
+        $acuseUrl = $this->tempUrl($this->appointment->acknowledgment_path);
+        $comprobanteUrl = $this->comprobanteUrl();
+
         // Checklist — feedback provided by the team.
         $mail->line('---')
-            ->line('Necesitarás los siguientes documentos:')
-            ->line('1) Cita del SAT (adjuntar si es posible)')
-            ->line('2) Comprobante de domicilio (adjuntar si es posible)')
+            ->line('Necesitarás los siguientes documentos (descárgalos del sistema):')
+            ->line($acuseUrl !== null
+                ? "1) Acuse de la cita del SAT — [descargar aquí]({$acuseUrl})"
+                : '1) Acuse de la cita del SAT (te lo compartiremos)')
+            ->line($comprobanteUrl !== null
+                ? "2) Comprobante de domicilio — [descargar aquí]({$comprobanteUrl})"
+                : '2) Comprobante de domicilio (te lo compartiremos)')
             ->line('3) Tu INE o pasaporte')
             ->line('4) Recoge el Acta Constitutiva correspondiente')
             ->line('5) USB para la FIEL (opcional para el RFC)')
             ->line('**Preséntate 10 minutos antes** con:')
-            ->line('1) Comprobante de la cita del SAT')
+            ->line('1) Acuse de la cita del SAT')
             ->line('2) El Acta Constitutiva (recoger en oficinas)');
 
         return $mail->salutation('Backend Bridge');
@@ -118,6 +128,41 @@ class SatAppointmentScheduledNotification extends Notification implements Should
             'body' => "Tu {$type} del SAT quedó agendada para el {$when}.",
             'url' => MisCitasResource::getUrl('index'),
         ];
+    }
+
+    /**
+     * Temporary signed download URL for a stored file (14 days), so an email-only soldado
+     * can download without logging in. Null when there is no file or the disk cannot sign.
+     */
+    private function tempUrl(?string $path): ?string
+    {
+        if (blank($path)) {
+            return null;
+        }
+
+        try {
+            $disk = Storage::disk(config('filesystems.default'));
+
+            return $disk->exists($path)
+                ? $disk->temporaryUrl($path, now()->addDays(14))
+                : null;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Download URL for the expediente's Mexican proof-of-address document, if uploaded.
+     */
+    private function comprobanteUrl(): ?string
+    {
+        $doc = $this->appointment->registration?->documents()
+            ->where('type', DocumentTypeEnum::PROOF_OF_ADDRESS_MX->value)
+            ->whereNotNull('storage_path')
+            ->latest()
+            ->first();
+
+        return $this->tempUrl($doc?->storage_path);
     }
 
     /**

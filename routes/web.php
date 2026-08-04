@@ -47,6 +47,12 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () 
         [AppointmentAcknowledgmentDownloadController::class, 'download']
     )->name('appointments.acknowledgment.download');
 
+    // SAT appointment documents (acuse + comprobante de domicilio) as a single ZIP.
+    Route::get(
+        'appointments/{appointment}/documents',
+        [\App\Http\Controllers\Admin\AppointmentDocumentsDownloadController::class, 'download']
+    )->name('appointments.documents.download');
+
     // Soldado INE (credencial de elector) images, served inline so they can be
     // embedded in the soldado detail view. Private files, gated to the notary team.
     Route::get(

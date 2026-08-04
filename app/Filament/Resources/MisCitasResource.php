@@ -116,12 +116,13 @@ class MisCitasResource extends Resource
                     ->placeholder('—'),
 
                 TextColumn::make('acknowledgment_path')
-                    ->label('Acuse')
+                    ->label('Documentos')
                     ->badge()
-                    ->state(fn (Appointment $record): string => filled($record->acknowledgment_path) ? 'Descargar' : '—')
-                    ->color(fn (Appointment $record): string => filled($record->acknowledgment_path) ? 'success' : 'gray')
-                    ->url(fn (Appointment $record): ?string => filled($record->acknowledgment_path)
-                        ? route('admin.appointments.acknowledgment.download', ['appointment' => $record])
+                    // Un solo botón descarga acuse + comprobante de domicilio (ZIP).
+                    ->state(fn (Appointment $record): string => self::hasDownloadableDocs($record) ? 'Descargar' : '—')
+                    ->color(fn (Appointment $record): string => self::hasDownloadableDocs($record) ? 'success' : 'gray')
+                    ->url(fn (Appointment $record): ?string => self::hasDownloadableDocs($record)
+                        ? route('admin.appointments.documents.download', ['appointment' => $record])
                         : null)
                     ->openUrlInNewTab(),
             ])
@@ -139,6 +140,21 @@ class MisCitasResource extends Resource
      *
      * @return array<string, PageRegistration>
      */
+    /**
+     * Whether the cita has anything to download: the acuse or the comprobante de domicilio.
+     */
+    private static function hasDownloadableDocs(Appointment $record): bool
+    {
+        if (filled($record->acknowledgment_path)) {
+            return true;
+        }
+
+        return (bool) $record->registration?->documents()
+            ->where('type', \App\Enums\DocumentTypeEnum::PROOF_OF_ADDRESS_MX->value)
+            ->whereNotNull('storage_path')
+            ->exists();
+    }
+
     public static function getPages(): array
     {
         return [
