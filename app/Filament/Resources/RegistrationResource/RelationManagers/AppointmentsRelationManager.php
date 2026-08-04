@@ -5,15 +5,12 @@ namespace App\Filament\Resources\RegistrationResource\RelationManagers;
 use App\Enums\AppointmentEventTypeEnum;
 use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
+use App\Jobs\FormSatAppointmentJob;
 use App\Models\Appointment;
 use App\Models\SatModule;
-use App\Jobs\FormSatAppointmentJob;
 use App\Services\Sat\SatReviewService;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
-use Filament\Infolists\Components\TextEntry as InfoTextEntry;
-use Filament\Infolists\Components\ViewEntry;
-use Filament\Notifications\Notification;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
@@ -24,9 +21,12 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
-use Filament\Schemas\Components\Utilities\Get;
+use Filament\Infolists\Components\TextEntry as InfoTextEntry;
+use Filament\Infolists\Components\ViewEntry;
+use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\BadgeColumn;
 use Filament\Tables\Columns\TextColumn;
@@ -115,16 +115,8 @@ class AppointmentsRelationManager extends RelationManager
                 ->searchable()
                 ->live(),
 
-            Toggle::make('form_now')
-                ->label('Formar en la fila virtual al guardar')
-                ->helperText('El bot lo formará en segundo plano en cuanto guardes; te avisamos por correo. '
-                    .'Si lo apagas, después lo formas con el botón "Formar con el bot".')
-                ->default(true)
-                ->inline(false)
-                // Solo tiene sentido si hay soldado y la cita está por formar.
-                ->visible(fn (Get $get): bool => filled($get('soldado_id'))
-                    && ($get('status') ?? AppointmentStatusEnum::PENDING_FORMING->value)
-                        === AppointmentStatusEnum::PENDING_FORMING->value),
+            // Sin toggle: al guardar una cita "por formar" con soldado, se manda a formar
+            // automáticamente (ver autoDispatchForming). El equipo no tiene que hacer nada.
 
             Select::make('preferred_module')
                 ->label('Sucursal del SAT donde formar')
@@ -232,142 +224,142 @@ class AppointmentsRelationManager extends RelationManager
             ->poll('5s')
             ->actions([
                 ActionGroup::make([
-                ViewAction::make()
-                    ->label('Ver detalle')
-                    ->icon('heroicon-o-eye')
-                    ->modalHeading(fn (Appointment $record): string => 'Cita '.$record->type->label())
-                    ->modalWidth('4xl')
-                    ->schema([
-                        Section::make('La cita')
-                            ->columns(3)
-                            ->schema([
-                                InfoTextEntry::make('type')->label('Trámite')
-                                    ->state(fn (Appointment $r): string => $r->type->label()),
-                                InfoTextEntry::make('status')->label('Estado')->badge()
-                                    ->state(fn (Appointment $r): string => $r->status->label())
-                                    ->color(fn (Appointment $r): string => $r->status->color()),
-                                InfoTextEntry::make('scheduled_at')->label('Fecha asignada por el SAT')
-                                    ->dateTime('d/m/Y H:i', self::TIMEZONE)
-                                    ->placeholder('El SAT aún no asigna fecha'),
-                                InfoTextEntry::make('office')->label('Sucursal')
-                                    ->state(fn (Appointment $r): string => self::officeName($r))
-                                    ->placeholder('—')->columnSpan(2),
-                                InfoTextEntry::make('preferred_module')->label('Sucursal pedida')
-                                    ->state(fn (Appointment $r): ?string => $r->preferred_module
-                                        ? (SatModule::where('sat_id', $r->preferred_module)->value('name')
-                                            ?? (string) $r->preferred_module)
-                                        : null)
-                                    ->placeholder('La elige el bot'),
-                                InfoTextEntry::make('email_alias')->label('Correo del pool')
-                                    ->placeholder('Sin asignar')
-                                    ->helperText('Ahí llega el código que el bot lee en cada revisión.'),
-                                InfoTextEntry::make('formed_at')->label('Formada')
-                                    ->dateTime('d/m/Y H:i', self::TIMEZONE)->placeholder('—'),
-                                InfoTextEntry::make('last_review_at')->label('Última revisión del bot')
-                                    ->dateTime('d/m/Y H:i', self::TIMEZONE)->placeholder('Sin revisar'),
-                            ]),
+                    ViewAction::make()
+                        ->label('Ver detalle')
+                        ->icon('heroicon-o-eye')
+                        ->modalHeading(fn (Appointment $record): string => 'Cita '.$record->type->label())
+                        ->modalWidth('4xl')
+                        ->schema([
+                            Section::make('La cita')
+                                ->columns(3)
+                                ->schema([
+                                    InfoTextEntry::make('type')->label('Trámite')
+                                        ->state(fn (Appointment $r): string => $r->type->label()),
+                                    InfoTextEntry::make('status')->label('Estado')->badge()
+                                        ->state(fn (Appointment $r): string => $r->status->label())
+                                        ->color(fn (Appointment $r): string => $r->status->color()),
+                                    InfoTextEntry::make('scheduled_at')->label('Fecha asignada por el SAT')
+                                        ->dateTime('d/m/Y H:i', self::TIMEZONE)
+                                        ->placeholder('El SAT aún no asigna fecha'),
+                                    InfoTextEntry::make('office')->label('Sucursal')
+                                        ->state(fn (Appointment $r): string => self::officeName($r))
+                                        ->placeholder('—')->columnSpan(2),
+                                    InfoTextEntry::make('preferred_module')->label('Sucursal pedida')
+                                        ->state(fn (Appointment $r): ?string => $r->preferred_module
+                                            ? (SatModule::where('sat_id', $r->preferred_module)->value('name')
+                                                ?? (string) $r->preferred_module)
+                                            : null)
+                                        ->placeholder('La elige el bot'),
+                                    InfoTextEntry::make('email_alias')->label('Correo del pool')
+                                        ->placeholder('Sin asignar')
+                                        ->helperText('Ahí llega el código que el bot lee en cada revisión.'),
+                                    InfoTextEntry::make('formed_at')->label('Formada')
+                                        ->dateTime('d/m/Y H:i', self::TIMEZONE)->placeholder('—'),
+                                    InfoTextEntry::make('last_review_at')->label('Última revisión del bot')
+                                        ->dateTime('d/m/Y H:i', self::TIMEZONE)->placeholder('Sin revisar'),
+                                ]),
 
-                        Section::make('Soldado que asiste')
-                            ->columns(3)
-                            ->schema([
-                                InfoTextEntry::make('soldado.name')->label('Nombre')->placeholder('Sin asignar'),
-                                InfoTextEntry::make('soldado.rfc')->label('RFC')
-                                    ->placeholder('⚠️ Sin RFC')
-                                    ->helperText('El SAT identifica la cita de inscripción con este RFC.'),
-                                InfoTextEntry::make('soldado.curp')->label('CURP')->placeholder('—'),
-                                InfoTextEntry::make('soldado.email')->label('Correo')->placeholder('—')
-                                    ->copyable(),
-                                InfoTextEntry::make('soldado.phone')->label('Teléfono')->placeholder('—'),
-                            ]),
+                            Section::make('Soldado que asiste')
+                                ->columns(3)
+                                ->schema([
+                                    InfoTextEntry::make('soldado.name')->label('Nombre')->placeholder('Sin asignar'),
+                                    InfoTextEntry::make('soldado.rfc')->label('RFC')
+                                        ->placeholder('⚠️ Sin RFC')
+                                        ->helperText('El SAT identifica la cita de inscripción con este RFC.'),
+                                    InfoTextEntry::make('soldado.curp')->label('CURP')->placeholder('—'),
+                                    InfoTextEntry::make('soldado.email')->label('Correo')->placeholder('—')
+                                        ->copyable(),
+                                    InfoTextEntry::make('soldado.phone')->label('Teléfono')->placeholder('—'),
+                                ]),
 
-                        Section::make('Acuse')
-                            ->schema([
-                                InfoTextEntry::make('acknowledgment_path')->hiddenLabel()
-                                    ->placeholder('Todavía no hay acuse. Llega cuando el SAT asigna la cita.'),
-                            ]),
+                            Section::make('Acuse')
+                                ->schema([
+                                    InfoTextEntry::make('acknowledgment_path')->hiddenLabel()
+                                        ->placeholder('Todavía no hay acuse. Llega cuando el SAT asigna la cita.'),
+                                ]),
 
-                        Section::make('Historial')
-                            ->description('Cada paso del bot sobre esta cita, del más reciente al más viejo.')
-                            ->poll('15s')
-                            ->schema([
-                                ViewEntry::make('events')
-                                    ->hiddenLabel()
-                                    ->view('filament.infolists.appointment-timeline'),
-                            ]),
-                    ]),
+                            Section::make('Historial')
+                                ->description('Cada paso del bot sobre esta cita, del más reciente al más viejo.')
+                                ->poll('15s')
+                                ->schema([
+                                    ViewEntry::make('events')
+                                        ->hiddenLabel()
+                                        ->view('filament.infolists.appointment-timeline'),
+                                ]),
+                        ]),
 
-                Action::make('sendToBot')
-                    ->label('Formar con el bot')
-                    ->icon('heroicon-o-paper-airplane')
-                    ->color('primary')
-                    ->visible(fn (Appointment $record): bool => $record->status === AppointmentStatusEnum::PENDING_FORMING
-                        && $record->soldado_id !== null)
-                    ->requiresConfirmation()
-                    ->modalDescription('El bot formará la cita en la fila virtual del SAT en segundo plano. '
-                        .'Puedes cerrar esto; el resultado llega por correo y verás la cita como "Formada".')
-                    ->action(function (Appointment $record): void {
-                        // Segundo plano: el modal cierra al instante, el bot trabaja en la cola.
-                        FormSatAppointmentJob::dispatch($record->id);
+                    Action::make('sendToBot')
+                        ->label('Formar con el bot')
+                        ->icon('heroicon-o-paper-airplane')
+                        ->color('primary')
+                        ->visible(fn (Appointment $record): bool => $record->status === AppointmentStatusEnum::PENDING_FORMING
+                            && $record->soldado_id !== null)
+                        ->requiresConfirmation()
+                        ->modalDescription('El bot formará la cita en la fila virtual del SAT en segundo plano. '
+                            .'Puedes cerrar esto; el resultado llega por correo y verás la cita como "Formada".')
+                        ->action(function (Appointment $record): void {
+                            // Segundo plano: el modal cierra al instante, el bot trabaja en la cola.
+                            FormSatAppointmentJob::dispatch($record->id);
 
-                        Notification::make()
-                            ->title('Enviada a formar')
-                            ->body('El bot la está formando en segundo plano. Te avisamos por correo cuando quede lista.')
-                            ->success()
-                            ->send();
-                    }),
+                            Notification::make()
+                                ->title('Enviada a formar')
+                                ->body('El bot la está formando en segundo plano. Te avisamos por correo cuando quede lista.')
+                                ->success()
+                                ->send();
+                        }),
 
-                Action::make('reviewNow')
-                    ->label('Revisar status ahora')
-                    ->icon('heroicon-o-arrow-path')
-                    ->color('info')
-                    ->visible(fn (Appointment $record): bool => $record->status === AppointmentStatusEnum::FORMED)
-                    ->modalHeading('Revisar el status en el SAT')
-                    ->modalDescription('Voy a consultar el SAT en vivo para ver si ya te asignaron fecha. '
-                        .'Tarda unos segundos.')
-                    ->modalSubmitActionLabel('Revisar ahora')
-                    ->action(function (Appointment $record): void {
-                        $result = app(SatReviewService::class)->reviewNow($record);
-                        $record->refresh();
+                    Action::make('reviewNow')
+                        ->label('Revisar status ahora')
+                        ->icon('heroicon-o-arrow-path')
+                        ->color('info')
+                        ->visible(fn (Appointment $record): bool => $record->status === AppointmentStatusEnum::FORMED)
+                        ->modalHeading('Revisar el status en el SAT')
+                        ->modalDescription('Voy a consultar el SAT en vivo para ver si ya te asignaron fecha. '
+                            .'Tarda unos segundos.')
+                        ->modalSubmitActionLabel('Revisar ahora')
+                        ->action(function (Appointment $record): void {
+                            $result = app(SatReviewService::class)->reviewNow($record);
+                            $record->refresh();
 
-                        Notification::make()
-                            ->title(match ($result['status'] ?? 'error') {
-                                'scheduled' => '¡Ya tienes fecha!',
-                                'in_review' => 'Sigue en espera',
-                                default => 'No se pudo revisar',
-                            })
-                            ->body($result['message'] ?? 'Sin detalle.')
-                            ->status(match ($result['status'] ?? 'error') {
-                                'scheduled' => 'success',
-                                'in_review' => 'info',
-                                default => 'danger',
-                            })
-                            ->send();
-                    }),
+                            Notification::make()
+                                ->title(match ($result['status'] ?? 'error') {
+                                    'scheduled' => '¡Ya tienes fecha!',
+                                    'in_review' => 'Sigue en espera',
+                                    default => 'No se pudo revisar',
+                                })
+                                ->body($result['message'] ?? 'Sin detalle.')
+                                ->status(match ($result['status'] ?? 'error') {
+                                    'scheduled' => 'success',
+                                    'in_review' => 'info',
+                                    default => 'danger',
+                                })
+                                ->send();
+                        }),
 
-                Action::make('markFormed')
-                    ->label('Marcar formada (a mano)')
-                    ->icon('heroicon-o-check-circle')
-                    ->color('warning')
-                    ->visible(fn (Appointment $record): bool => $record->status === AppointmentStatusEnum::PENDING_FORMING)
-                    ->requiresConfirmation()
-                    ->modalDescription('Úsalo solo si TÚ formaste la cita en el portal del SAT. Captura también '
-                        .'el correo del pool que usaste, o el bot no podrá leer el código.')
-                    ->action(function (Appointment $record): void {
-                        $record->update([
-                            'status' => AppointmentStatusEnum::FORMED,
-                            'formed_at' => now(),
-                        ]);
-                        $record->recordEvent(
-                            AppointmentEventTypeEnum::MARKED_MANUALLY,
-                            'Alguien del equipo la marcó formada a mano; el bot la revisa desde aquí.',
-                            ['email_alias' => $record->email_alias],
-                            'user',
-                        );
-                    }),
+                    Action::make('markFormed')
+                        ->label('Marcar formada (a mano)')
+                        ->icon('heroicon-o-check-circle')
+                        ->color('warning')
+                        ->visible(fn (Appointment $record): bool => $record->status === AppointmentStatusEnum::PENDING_FORMING)
+                        ->requiresConfirmation()
+                        ->modalDescription('Úsalo solo si TÚ formaste la cita en el portal del SAT. Captura también '
+                            .'el correo del pool que usaste, o el bot no podrá leer el código.')
+                        ->action(function (Appointment $record): void {
+                            $record->update([
+                                'status' => AppointmentStatusEnum::FORMED,
+                                'formed_at' => now(),
+                            ]);
+                            $record->recordEvent(
+                                AppointmentEventTypeEnum::MARKED_MANUALLY,
+                                'Alguien del equipo la marcó formada a mano; el bot la revisa desde aquí.',
+                                ['email_alias' => $record->email_alias],
+                                'user',
+                            );
+                        }),
 
-                EditAction::make()->label('Editar')->modalHeading('Editar cita')
-                    ->after(fn (Appointment $record, array $data) => self::maybeDispatchForming($record, $data)),
-                DeleteAction::make()->label('Eliminar'),
+                    EditAction::make()->label('Editar')->modalHeading('Editar cita')
+                        ->after(fn (Appointment $record) => self::autoDispatchForming($record)),
+                    DeleteAction::make()->label('Eliminar'),
                 ])
                     // Un solo botón "⋮" agrupa todas las acciones para que la tabla no se
                     // rompa ni tenga scroll lateral; despliega las acciones escondidas.
@@ -379,26 +371,25 @@ class AppointmentsRelationManager extends RelationManager
             ])
             ->headerActions([
                 CreateAction::make()->label('Agregar cita')
-                    ->after(fn (Appointment $record, array $data) => self::maybeDispatchForming($record, $data)),
+                    ->after(fn (Appointment $record) => self::autoDispatchForming($record)),
             ]);
     }
 
     /**
-     * Send the appointment to be formed if the user asked for it when saving.
+     * Send the appointment to be formed automatically whenever it is saved with a soldado.
      *
-     * The "Formar al guardar" toggle (form_now) is not a DB column — it only signals
-     * intent here. Fires only for a pending_forming appointment that already has a
-     * soldado, so the bot has who to queue.
+     * No toggle: assigning a soldado to a pending_forming appointment always dispatches the
+     * forming, so the team never has to remember the manual button. Guarded to a
+     * pending_forming appointment that already has a soldado, so the bot has who to queue;
+     * FormSatAppointmentJob re-checks the status, so a re-save never re-forms a formed one.
+     * If the bot is asleep and the immediate push misses, the bot's own /run cycle also
+     * forms pending_forming appointments, so it is never lost.
      *
      * @param  Appointment  $record  The appointment just saved.
-     * @param  array<string, mixed>  $data  The submitted form data (carries form_now).
      */
-    private static function maybeDispatchForming(Appointment $record, array $data): void
+    private static function autoDispatchForming(Appointment $record): void
     {
-        $wantsForming = (bool) ($data['form_now'] ?? false);
-
-        if (! $wantsForming
-            || $record->status !== AppointmentStatusEnum::PENDING_FORMING
+        if ($record->status !== AppointmentStatusEnum::PENDING_FORMING
             || $record->soldado_id === null) {
             return;
         }
