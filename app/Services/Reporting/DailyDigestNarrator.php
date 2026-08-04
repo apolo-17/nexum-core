@@ -140,6 +140,8 @@ class DailyDigestNarrator
               la Secretaría de Economía, el SAT, los socios en China, o el propio equipo).
             - Si no hay nada atrasado, dilo con claridad y en una sola frase. No inventes
               urgencia que no existe.
+            - Identifica cada expediente por el nombre de la empresa, tal como viene en el
+              JSON. Nunca cites códigos ni números de expediente.
             - Las prioridades deben ser acciones concretas sobre expedientes reales del JSON,
               no consejos genéricos.
 
@@ -195,7 +197,6 @@ class DailyDigestNarrator
             'corte_anterior' => $digest['since']->locale('es')->isoFormat('dddd D [de] MMMM'),
             'totales' => $digest['totals'],
             'requieren_atencion' => array_map(fn (array $a): array => [
-                'codigo' => $a['code'],
                 'empresa' => $a['company'],
                 'severidad' => $a['severity'] === 'overdue' ? 'atrasado' : 'aviso',
                 'motivo' => $a['reason'],
@@ -203,7 +204,6 @@ class DailyDigestNarrator
             ], $digest['alerts']['items']),
             'atenciones_no_listadas' => $digest['alerts']['overflow'],
             'mas_antiguos_en_su_etapa' => array_map(fn (array $r): array => [
-                'codigo' => $r['code'],
                 'empresa' => $r['company'],
                 'etapa' => $r['stage']->label(),
                 'dias_en_etapa' => $r['days_in_stage'],

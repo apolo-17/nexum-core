@@ -125,7 +125,11 @@ class DailyDigestService
 
         return [
             'code' => $registration->singapur_client_code ?? '—',
-            'company' => $registration->primaryLegalName?->name ?? 'Sin denominación',
+            // The report identifies expedients by company name. Codes are noise for
+            // the reader — except before a denomination exists, where the code is the
+            // only handle the expedient has.
+            'company' => $registration->primaryLegalName?->name
+                ?? 'Expediente '.($registration->singapur_client_code ?? 'sin código'),
             'stage' => $stage,
             'days_in_stage' => $daysInStage,
             'days_total' => $daysTotal,
@@ -408,7 +412,8 @@ class DailyDigestService
             ->get()
             ->map(fn (StageTransition $t): array => [
                 'code' => $t->registration?->singapur_client_code ?? '—',
-                'company' => $t->registration?->primaryLegalName?->name ?? 'Sin denominación',
+                'company' => $t->registration?->primaryLegalName?->name
+                    ?? 'Expediente '.($t->registration?->singapur_client_code ?? 'sin código'),
                 'to' => $t->to_stage->label(),
             ])
             ->all();
