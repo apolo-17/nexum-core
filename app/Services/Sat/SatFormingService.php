@@ -179,25 +179,10 @@ class SatFormingService
      */
     private function assignAlias(Appointment $appointment): ?string
     {
-        if (filled($appointment->email_alias)) {
-            return $appointment->email_alias;
-        }
-
-        return DB::transaction(function () use ($appointment): ?string {
-            $email = AppointmentEmail::where('is_free', true)
-                ->lockForUpdate()
-                ->orderBy('address')
-                ->first();
-
-            if ($email === null) {
-                return null;
-            }
-
-            $email->update(['is_free' => false]);
-            $appointment->update(['email_alias' => $email->address]);
-
-            return $email->address;
-        });
+        // A pool address in use by another still-active cita (formed, or scheduled with a
+        // future date) must never be reused — that is the DONGHAI/LI BAO collision. The
+        // rule lives in AppointmentEmail::claimFor, which also reassigns a stale alias.
+        return AppointmentEmail::claimFor($appointment);
     }
 
     /**

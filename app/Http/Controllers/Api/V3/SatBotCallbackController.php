@@ -252,8 +252,10 @@ class SatBotCallbackController extends Controller
 
         $appointment->update($attributes);
 
-        // Free the pool email for reuse (keep email_alias on the appointment as a record).
-        $this->releaseAlias($appointment);
+        // NO liberar el correo aquí. La cita ya tiene fecha pero AÚN NO PASA — el soldado
+        // recibirá avisos/token en ese buzón hasta el día de la cita. El correo se libera
+        // solo cuando la fecha pasa (lo calcula AppointmentEmail::claimFor en vivo). Liberar
+        // aquí era el bug: dejaba el correo reutilizable mientras la cita seguía pendiente.
 
         $this->notifySoldado($appointment);
 

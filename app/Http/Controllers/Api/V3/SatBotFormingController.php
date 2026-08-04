@@ -119,29 +119,18 @@ class SatBotFormingController extends Controller
      */
     private function assignAlias(Appointment $appointment): ?string
     {
-        if (filled($appointment->email_alias)) {
-            return $appointment->email_alias;
-        }
+        // Never reuse an address that is on another still-active cita (formed, or scheduled
+        // with a future date) — it frees on its own when that cita's date passes. Rule in
+        // AppointmentEmail::claimFor, which also reassigns a stale/colliding alias.
+        $alias = AppointmentEmail::claimFor($appointment);
 
-        return DB::transaction(function () use ($appointment): ?string {
-            $email = AppointmentEmail::where('is_free', true)
-                ->lockForUpdate()
-                ->orderBy('address')
-                ->first();
-
-            if ($email === null) {
-                return null;
-            }
-
-            $email->update(['is_free' => false]);
-            $appointment->update(['email_alias' => $email->address]);
-
+        if ($alias !== null) {
             Log::info('SAT bot forming: pool address assigned.', [
                 'appointment_id' => $appointment->id,
-                'email_alias' => $email->address,
+                'email_alias' => $alias,
             ]);
+        }
 
-            return $email->address;
-        });
+        return $alias;
     }
 }
