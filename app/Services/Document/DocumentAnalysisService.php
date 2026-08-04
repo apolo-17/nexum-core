@@ -154,6 +154,7 @@ class DocumentAnalysisService
 
                 Required JSON structure:
                 {
+                  "full_name": "full name in Latin letters exactly as printed (romanized), or null",
                   "document_number": "string or null",
                   "gender": "M or F or null",
                   "nationality": "string (country name in English) or null",
@@ -304,6 +305,7 @@ class DocumentAnalysisService
 
         // Map extracted fields to their respective columns.
         if (! $hasError) {
+            $data['full_name'] = $extracted['full_name'] ?? null;
             $data['document_number'] = $extracted['document_number'] ?? null;
             $data['gender'] = $extracted['gender'] ?? null;
             $data['nationality'] = $extracted['nationality'] ?? null;

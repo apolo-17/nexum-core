@@ -26,6 +26,7 @@ class DocumentAnalysis extends Model
     protected $fillable = [
         'document_id',
         'analyzed',
+        'full_name',
         'document_number',
         'gender',
         'nationality',

@@ -261,8 +261,9 @@ class ActaPreparationService
             : $civilStatus;
 
         return [
-            // Identity
-            'socio_nombre' => strtoupper($shareholder->name),
+            // Identity — prefer the romanized name Claude read from the passport; fall back
+            // to the relay name (often Chinese) when no passport was analysed.
+            'socio_nombre' => mb_strtoupper((string) ($identityAnalysis?->full_name ?: $shareholder->name), 'UTF-8'),
             'socio_nacionalidad' => $nationality,
             'socio_sexo' => $gender,
             'socio_estado_nacimiento' => $birthplace,
