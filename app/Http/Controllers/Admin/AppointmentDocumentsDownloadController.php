@@ -56,17 +56,48 @@ class AppointmentDocumentsDownloadController extends Controller
             abort(Response::HTTP_INTERNAL_SERVER_ERROR, 'No se pudo generar el archivo.');
         }
 
+        // Stream each file from storage (R2 in prod) to a local temp file, then add it
+        // by path. addFromString + Storage::get would load the ENTIRE file into a PHP
+        // string (twice — the string plus the zip buffer), spiking RAM on the 1 GB
+        // instance. stream_copy_to_stream copies in fixed-size chunks (flat memory),
+        // and addFile reads from disk lazily at close() time.
+        $tempFiles = [];
+
         foreach ($files as $name => $path) {
             try {
-                if (Storage::exists($path)) {
-                    $zip->addFromString($name, (string) Storage::get($path));
+                if (! Storage::exists($path)) {
+                    continue;
                 }
+
+                $source = Storage::readStream($path);
+
+                if ($source === null) {
+                    continue;
+                }
+
+                $tmp = tempnam(sys_get_temp_dir(), 'cita_doc_');
+                $dest = fopen($tmp, 'wb');
+                stream_copy_to_stream($source, $dest);
+                fclose($dest);
+
+                if (is_resource($source)) {
+                    fclose($source);
+                }
+
+                // addFile reads the temp file when close() runs, so keep it until then.
+                $zip->addFile($tmp, $name);
+                $tempFiles[] = $tmp;
             } catch (\Throwable) {
                 // Skip a file that cannot be read; the rest still download.
             }
         }
 
         $zip->close();
+
+        // Safe to remove the temp sources now that the zip has been written.
+        foreach ($tempFiles as $tmp) {
+            @unlink($tmp);
+        }
 
         $company = $appointment->registration?->primaryLegalName?->name ?? 'cita';
         $filename = 'Documentos cita SAT - '.$company.'.zip';
