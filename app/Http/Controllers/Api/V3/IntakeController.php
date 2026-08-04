@@ -38,6 +38,58 @@ class IntakeController extends Controller
     private const INTAKE_ADVANCE_REASON = 'Intake: expediente completado por el equipo (ya constituido).';
 
     /**
+     * Resend the "cita agendada" email to every soldado who has a scheduled cita.
+     *
+     * Used after improving the email template (address, calendar, checklist) so the
+     * soldados receive the updated version. Sends synchronously (notifyNow) so delivery
+     * is immediate. Only scheduled citas with a soldado + email are included.
+     *
+     * @param  Request  $request  Request carrying the X-Intake-Token header.
+     */
+    public function resendCitaEmails(Request $request): JsonResponse
+    {
+        if (! $this->authorized($request)) {
+            return response()->json(['error' => 'Unauthorized'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $appointments = \App\Models\Appointment::query()
+            ->where('status', \App\Enums\AppointmentStatusEnum::SCHEDULED->value)
+            ->whereNotNull('soldado_id')
+            ->with(['soldado', 'registration.primaryLegalName'])
+            ->get();
+
+        $sent = [];
+        foreach ($appointments as $appointment) {
+            $soldado = $appointment->soldado;
+            if ($soldado === null || blank($soldado->email)) {
+                $sent[] = ['company' => $appointment->registration?->primaryLegalName?->name, 'action' => 'skipped_no_email'];
+
+                continue;
+            }
+
+            $notification = new \App\Notifications\SatAppointmentScheduledNotification($appointment);
+
+            if ($soldado->user !== null) {
+                $soldado->user->notifyNow($notification);
+            } else {
+                \Illuminate\Support\Facades\Notification::route('mail', $soldado->email)->notifyNow($notification);
+            }
+
+            $sent[] = [
+                'soldado' => $soldado->name,
+                'email' => $soldado->email,
+                'company' => $appointment->registration?->primaryLegalName?->name,
+                'when' => $appointment->scheduled_at?->format('d/m/Y H:i'),
+                'action' => 'sent',
+            ];
+        }
+
+        Log::info('Intake: reenvío de emails de cita a soldados.', ['count' => count($sent)]);
+
+        return response()->json(['count' => count($sent), 'sent' => $sent], Response::HTTP_OK);
+    }
+
+    /**
      * List every expediente with a compact summary, to review what they all carry.
      *
      * Useful when some folders only bring shareholder documents: the denomination and

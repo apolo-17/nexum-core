@@ -66,6 +66,9 @@ Route::prefix('v3')->group(function () {
     // their server reads our live available names instead of a disconnected local list.
     Route::get('denominations/pool', [DenominationPoolController::class, 'availableForRelay']);
 
+    // Reenviar el email de cita agendada a todos los soldados (token X-Intake-Token).
+    Route::post('intake/resend-cita-emails', [IntakeController::class, 'resendCitaEmails']);
+
     Route::get('intake', [IntakeController::class, 'index']);
     Route::get('intake/soldados', [IntakeController::class, 'soldados']);
     Route::get('intake/{ref}', [IntakeController::class, 'show']);
