@@ -70,10 +70,10 @@ Hay {{ $digest['alerts']['overflow'] }} avisos más que no caben en este correo.
 ## Los más viejos en su etapa
 
 <x-mail::table>
-| Expediente                            | Etapa                        | En etapa | Total | Responsable         |
-|:--------------------------------------|:-----------------------------|---------:|------:|:--------------------|
+| Expediente                            | Etapa                        | En etapa | Total |
+|:--------------------------------------|:-----------------------------|---------:|------:|
 @foreach ($digest['oldest'] as $row)
-| {{ $clean($row['code']) }} · {{ $clean($row['company']) }} | {{ $row['stage']->label() }} | {{ $row['days_in_stage'] }} d | {{ $row['days_total'] }} d | {{ $clean($row['owner'] ?? 'Sin asignar') }} |
+| {{ $clean($row['code']) }} · {{ $clean($row['company']) }} | {{ $row['stage']->label() }} | {{ $row['days_in_stage'] }} d | {{ $row['days_total'] }} d |
 @endforeach
 </x-mail::table>
 

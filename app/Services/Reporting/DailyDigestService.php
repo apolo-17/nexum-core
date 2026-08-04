@@ -89,7 +89,6 @@ class DailyDigestService
             ->with([
                 'primaryLegalName',
                 'legalNames',
-                'notario',
                 'shareholders',
                 'documents',
                 'appointments',
@@ -128,7 +127,6 @@ class DailyDigestService
             'code' => $registration->singapur_client_code ?? '—',
             'company' => $registration->primaryLegalName?->name ?? 'Sin denominación',
             'stage' => $stage,
-            'owner' => $registration->notario?->name,
             'days_in_stage' => $daysInStage,
             'days_total' => $daysTotal,
             'severity' => $severity,

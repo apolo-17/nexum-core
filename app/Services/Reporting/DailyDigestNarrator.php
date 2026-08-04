@@ -208,7 +208,6 @@ class DailyDigestNarrator
                 'etapa' => $r['stage']->label(),
                 'dias_en_etapa' => $r['days_in_stage'],
                 'dias_totales' => $r['days_total'],
-                'responsable' => $r['owner'] ?? 'sin asignar',
             ], $digest['oldest']),
             'distribucion_por_etapa' => $digest['distribution'],
             'movimientos_desde_el_corte_anterior' => $digest['movements'],
