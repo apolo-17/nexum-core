@@ -273,9 +273,59 @@ class SatBotCallbackController extends Controller
         // Y al equipo, para que sepan que ya hay fecha sin revisar el panel.
         $this->notifyTeam(NotificationEventEnum::SAT_APPOINTMENT_SCHEDULED, $appointment, 'scheduled');
 
+        $this->flagSoldadoOverlap($appointment);
+
         Log::info('SAT bot callback: appointment scheduled.', [
             'appointment_id' => $appointment->id,
             'scheduled_at' => $appointment->scheduled_at?->toDateTimeString(),
+        ]);
+    }
+
+    /**
+     * Detect and flag when the same soldado ends up with two citas too close in time.
+     *
+     * A soldado cannot attend two SAT citas at once. The SAT assigns the slot, so we can't
+     * prevent it up front — but when a scheduled cita lands within 2 hours of another cita
+     * of the SAME soldado, we record it on the timeline and alert the team so they can
+     * reassign one of them (only they can, per the acta's apoderados).
+     *
+     * @param  Appointment  $appointment  The just-scheduled appointment.
+     */
+    private function flagSoldadoOverlap(Appointment $appointment): void
+    {
+        if ($appointment->soldado_id === null || $appointment->scheduled_at === null) {
+            return;
+        }
+
+        $conflict = Appointment::query()
+            ->whereKeyNot($appointment->id)
+            ->where('soldado_id', $appointment->soldado_id)
+            ->where('status', AppointmentStatusEnum::SCHEDULED->value)
+            ->whereNotNull('scheduled_at')
+            ->whereBetween('scheduled_at', [
+                $appointment->scheduled_at->copy()->subHours(2),
+                $appointment->scheduled_at->copy()->addHours(2),
+            ])
+            ->first();
+
+        if ($conflict === null) {
+            return;
+        }
+
+        $appointment->recordEvent(
+            AppointmentEventTypeEnum::SCHEDULED,
+            '⚠️ Traslape: este soldado tiene otra cita ('.($conflict->registration?->primaryLegalName?->name ?? $conflict->id)
+                .') el '.($conflict->scheduled_at?->format('d/m/Y H:i') ?? '—').'. No puede ir a las dos — reasigna una.',
+            ['conflict_appointment_id' => $conflict->id, 'conflict_at' => $conflict->scheduled_at?->toDateTimeString()],
+        );
+
+        $this->notifyTeam(NotificationEventEnum::SAT_APPOINTMENT_FAILED, $appointment, 'failed',
+            'Traslape de soldado: mismo soldado con dos citas a menos de 2 horas. Reasigna una.');
+
+        Log::warning('SAT bot callback: soldado overlap detected.', [
+            'appointment_id' => $appointment->id,
+            'conflict_appointment_id' => $conflict->id,
+            'soldado_id' => $appointment->soldado_id,
         ]);
     }
 
