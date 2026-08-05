@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\AppointmentEventTypeEnum;
 use App\Enums\AppointmentStatusEnum;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -98,9 +99,21 @@ class AppointmentEmail extends Model
 
             $offLimits = array_values(array_unique([...$blocked, ...$coolingDown]));
 
+            // Self-heal: if this cita is still pending to form and its LAST forming attempt
+            // failed, the address it used is burned at the SAT (reusing it repeats the
+            // error_on_correo_repetido). Retire it — cooldown + off-limits — so this claim
+            // hands out a fresh address in a single re-form, without waiting for the failure
+            // callback to detach it.
+            $current = $appointment->email_alias;
+            if (filled($current) && self::currentAliasIsBurned($appointment)) {
+                self::query()->where('address', $current)->update(['last_used_at' => now()]);
+                $offLimits[] = $current;
+                $appointment->update(['email_alias' => null]);
+                $current = null;
+            }
+
             // Keep the address already on this appointment, but only if nothing else is
             // holding or cooling it down (that is the DONGHAI/LI BAO collision).
-            $current = $appointment->email_alias;
             if (filled($current) && ! in_array($current, $offLimits, true)) {
                 return $current;
             }
@@ -120,6 +133,35 @@ class AppointmentEmail extends Model
 
             return $email->address;
         });
+    }
+
+    /**
+     * True when the appointment's current alias was burned by a failed forming.
+     *
+     * The cita must still be pending to form, and its newest FAILED event must be at or
+     * after its newest FORM_DISPATCHED event — i.e., the last thing that happened to the
+     * forming was a failure (e.g. error_on_correo_repetido), so the SAT still holds that
+     * address and reusing it would fail again.
+     */
+    protected static function currentAliasIsBurned(Appointment $appointment): bool
+    {
+        if ($appointment->status !== AppointmentStatusEnum::PENDING_FORMING) {
+            return false;
+        }
+
+        $lastFailure = $appointment->events()
+            ->where('type', AppointmentEventTypeEnum::FAILED->value)
+            ->max('created_at');
+
+        if ($lastFailure === null) {
+            return false;
+        }
+
+        $lastDispatch = $appointment->events()
+            ->where('type', AppointmentEventTypeEnum::FORM_DISPATCHED->value)
+            ->max('created_at');
+
+        return $lastDispatch === null || $lastFailure >= $lastDispatch;
     }
 
     /**
