@@ -202,6 +202,15 @@ class SatBotCallbackController extends Controller
 
         $appointment->update($attributes);
 
+        // El correo ya quedó registrado en el SAT (fila virtual): arranca su cooldown. No
+        // hay fecha aún, así que el reloj corre desde ahora (se afina a scheduled_at cuando
+        // el SAT asigne la cita, en processScheduled).
+        if (filled($appointment->email_alias)) {
+            AppointmentEmail::query()
+                ->where('address', $appointment->email_alias)
+                ->update(['last_used_at' => now()]);
+        }
+
         $appointment->recordEvent(
             AppointmentEventTypeEnum::FORMED,
             'El bot formó la cita en la fila virtual'
@@ -252,10 +261,16 @@ class SatBotCallbackController extends Controller
 
         $appointment->update($attributes);
 
-        // NO liberar el correo aquí. La cita ya tiene fecha pero AÚN NO PASA — el soldado
-        // recibirá avisos/token en ese buzón hasta el día de la cita. El correo se libera
-        // solo cuando la fecha pasa (lo calcula AppointmentEmail::claimFor en vivo). Liberar
-        // aquí era el bug: dejaba el correo reutilizable mientras la cita seguía pendiente.
+        // NO liberar el correo aquí. La cita ya tiene fecha pero AÚN NO PASA. Afinamos el
+        // reloj de cooldown a la fecha de la cita: el correo sigue quemado en el SAT hasta el
+        // día de la cita y se libera 24h después (claimFor lo respeta por last_used_at). El
+        // check por appointment ($blocked) lo cubre mientras la fecha sea futura; last_used_at
+        // sostiene el cooldown durante las 24h posteriores.
+        if (filled($appointment->email_alias) && $appointment->scheduled_at !== null) {
+            AppointmentEmail::query()
+                ->where('address', $appointment->email_alias)
+                ->update(['last_used_at' => $appointment->scheduled_at]);
+        }
 
         $this->notifySoldado($appointment);
 

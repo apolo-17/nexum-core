@@ -153,7 +153,14 @@ class AppointmentEmail extends Model
                 return null;
             }
 
-            $email->update(['is_free' => false, 'last_used_at' => now()]);
+            // Reserve it by marking it not-free and stamping it onto the appointment. We do
+            // NOT set last_used_at here: assigning is not using it at the SAT. The cooldown
+            // clock starts only when the cita is actually formed/scheduled at the SAT, or the
+            // forming fails (see processFormed/processScheduled/releaseBurnedAlias) — otherwise
+            // a preview or a dispatch that never reaches the SAT would burn the address.
+            // While the cita is pending/formed, the address is reserved through the
+            // appointment-based $blocked check above, not through last_used_at.
+            $email->update(['is_free' => false]);
             $appointment->update(['email_alias' => $email->address]);
 
             return $email->address;
