@@ -114,7 +114,12 @@ class AppointmentEmail extends Model
                 ->pluck('email_alias')
                 ->all();
 
-            $offLimits = array_values(array_unique([...$blocked, ...$coolingDown, ...$siblingAliases]));
+            // Addresses another LIVE cita is holding — never hand these to a different cita.
+            $heldByOthers = array_values(array_unique([...$blocked, ...$siblingAliases]));
+
+            // Full off-limits set for picking a FRESH address: also excludes anything cooling
+            // down (used to form in the last 24h) so we never grab a burned mailbox.
+            $offLimits = array_values(array_unique([...$heldByOthers, ...$coolingDown]));
 
             // Self-heal: if this cita is still pending to form and its LAST forming attempt
             // failed, the address it used is burned at the SAT (reusing it repeats the
@@ -129,9 +134,12 @@ class AppointmentEmail extends Model
                 $current = null;
             }
 
-            // Keep the address already on this appointment, but only if nothing else is
-            // holding or cooling it down (that is the DONGHAI/LI BAO collision).
-            if (filled($current) && ! in_array($current, $offLimits, true)) {
+            // Keep the address already on this appointment as long as no OTHER live cita is
+            // holding it (the DONGHAI/LI BAO collision). We deliberately ignore its own
+            // cooldown here: claimFor stamps last_used_at when it assigns, so the cita's own
+            // address always looks "cooling down" — evicting on that would rotate a fresh
+            // mailbox on every re-form and drain the pool.
+            if (filled($current) && ! in_array($current, $heldByOthers, true)) {
                 return $current;
             }
 
