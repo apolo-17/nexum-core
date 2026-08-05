@@ -75,7 +75,7 @@ class AppointmentEmail extends Model
             $blocked = Appointment::query()
                 ->whereKeyNot($appointment->getKey())
                 ->whereNotNull('email_alias')
-                ->where(function ($q): void {
+                ->where(function ($q) use ($cutoff): void {
                     $q->whereIn('status', [
                         AppointmentStatusEnum::PENDING_FORMING->value,
                         AppointmentStatusEnum::FORMED->value,

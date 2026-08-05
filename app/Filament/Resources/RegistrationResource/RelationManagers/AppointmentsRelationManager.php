@@ -512,6 +512,17 @@ class AppointmentsRelationManager extends RelationManager
                                 report($th);
                             }
 
+                            // Avisa al soldado para que NO se presente (solo si ya tenía fecha).
+                            if ($record->soldado !== null && $record->scheduled_at !== null) {
+                                try {
+                                    $record->soldado->notify(
+                                        new \App\Notifications\SatAppointmentCancelledNotification($record, $reason ?: null),
+                                    );
+                                } catch (\Throwable $th) {
+                                    report($th);
+                                }
+                            }
+
                             Notification::make()->title('Cita cancelada')->success()->send();
                         }),
 
