@@ -376,6 +376,14 @@ class SatBotCallbackController extends Controller
             ['phase' => $phase, 'reason' => $reason],
         );
 
+        // Si el fallo fue al FORMAR, el correo ya quedó registrado (quemado) en el SAT —
+        // reintentar con el mismo da error_on_correo_repetido. Lo soltamos: el reintento
+        // pedirá uno fresco y el quemado queda en cooldown 24h (AppointmentEmail::claimFor).
+        // En fallos al REVISAR no se toca: la cita sigue formada en ese buzón.
+        if ($phase === 'formar') {
+            AppointmentEmail::releaseBurnedAlias($appointment);
+        }
+
         $this->notifyTeam(NotificationEventEnum::SAT_APPOINTMENT_FAILED, $appointment, 'failed', $reason);
 
         Log::warning('SAT bot callback: step failed.', [

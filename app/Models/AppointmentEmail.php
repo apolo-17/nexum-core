@@ -27,6 +27,7 @@ class AppointmentEmail extends Model
     protected $fillable = [
         'address',
         'is_free',
+        'last_used_at',
         'notes',
     ];
 
@@ -39,6 +40,7 @@ class AppointmentEmail extends Model
     {
         return [
             'is_free' => 'boolean',
+            'last_used_at' => 'datetime',
         ];
     }
 
@@ -61,6 +63,14 @@ class AppointmentEmail extends Model
     public static function claimFor(Appointment $appointment): ?string
     {
         return DB::transaction(function () use ($appointment): ?string {
+            // The SAT keeps an address "in use" for about a day AFTER the cita — reusing it
+            // sooner is rejected with error_on_correo_repetido. So an address only frees 24h
+            // past its cita date, regardless of whether the cita succeeded or failed.
+            $cutoff = now()->subHours(24);
+
+            // Addresses sitting on ANOTHER appointment that is still active OR whose cita was
+            // less than 24h ago. Pending/formed have no date yet (actively forming); scheduled
+            // is blocked until 24h after its date.
             $blocked = Appointment::query()
                 ->whereKeyNot($appointment->getKey())
                 ->whereNotNull('email_alias')
@@ -68,23 +78,35 @@ class AppointmentEmail extends Model
                     $q->whereIn('status', [
                         AppointmentStatusEnum::PENDING_FORMING->value,
                         AppointmentStatusEnum::FORMED->value,
-                    ])->orWhere(function ($q2): void {
-                        $q2->where('status', AppointmentStatusEnum::SCHEDULED->value)
-                            ->where('scheduled_at', '>=', now());
+                    ])->orWhere(function ($q2) use ($cutoff): void {
+                        $q2->whereNotNull('scheduled_at')
+                            ->where('scheduled_at', '>=', $cutoff);
                     });
                 })
                 ->pluck('email_alias')
                 ->all();
 
-            // Keep the address already on this appointment, but only if no other active
-            // cita is holding it (that is exactly the DONGHAI/LI BAO collision).
+            // Addresses used to form in the last 24h — burned at the SAT even if the forming
+            // failed and the appointment no longer carries the alias (see the failure path,
+            // which clears email_alias so the retry claims a fresh address instead of the
+            // burned one). last_used_at is the cooldown clock.
+            $coolingDown = self::query()
+                ->whereNotNull('last_used_at')
+                ->where('last_used_at', '>=', $cutoff)
+                ->pluck('address')
+                ->all();
+
+            $offLimits = array_values(array_unique([...$blocked, ...$coolingDown]));
+
+            // Keep the address already on this appointment, but only if nothing else is
+            // holding or cooling it down (that is the DONGHAI/LI BAO collision).
             $current = $appointment->email_alias;
-            if (filled($current) && ! in_array($current, $blocked, true)) {
+            if (filled($current) && ! in_array($current, $offLimits, true)) {
                 return $current;
             }
 
             $email = self::query()
-                ->whereNotIn('address', $blocked)
+                ->whereNotIn('address', $offLimits)
                 ->orderBy('address')
                 ->lockForUpdate()
                 ->first();
@@ -93,11 +115,31 @@ class AppointmentEmail extends Model
                 return null;
             }
 
-            $email->update(['is_free' => false]);
+            $email->update(['is_free' => false, 'last_used_at' => now()]);
             $appointment->update(['email_alias' => $email->address]);
 
             return $email->address;
         });
+    }
+
+    /**
+     * Free the alias a failed forming was using so the retry claims a FRESH address.
+     *
+     * The address it was on is burned at the SAT (error_on_correo_repetido on reuse), so we
+     * do NOT hand it back — last_used_at keeps it on cooldown for 24h — we only detach it
+     * from the appointment. Call this from the /callback failure path.
+     */
+    public static function releaseBurnedAlias(Appointment $appointment): void
+    {
+        $alias = $appointment->email_alias;
+
+        if (blank($alias)) {
+            return;
+        }
+
+        // Stamp the cooldown clock (in case it was formed out-of-band) and detach.
+        self::query()->where('address', $alias)->update(['last_used_at' => now()]);
+        $appointment->update(['email_alias' => null]);
     }
 
     /**
