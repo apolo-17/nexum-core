@@ -47,6 +47,11 @@ enum AppointmentStatusEnum: string
     case NO_SHOW = 'no_show';
 
     /**
+     * The cita was cancelled by the team (won't happen; frees the pipeline).
+     */
+    case CANCELLED = 'cancelled';
+
+    /**
      * Human-readable Spanish label for the dashboard.
      */
     public function label(): string
@@ -58,6 +63,7 @@ enum AppointmentStatusEnum: string
             self::ATTENDED => 'Asistió (completada)',
             self::REJECTED => 'Rechazada',
             self::NO_SHOW => 'No asistió',
+            self::CANCELLED => 'Cancelada',
         };
     }
 
@@ -73,6 +79,7 @@ enum AppointmentStatusEnum: string
             self::ATTENDED => 'success',
             self::REJECTED => 'danger',
             self::NO_SHOW => 'danger',
+            self::CANCELLED => 'gray',
         };
     }
 
@@ -81,7 +88,7 @@ enum AppointmentStatusEnum: string
      */
     public function isTerminal(): bool
     {
-        return in_array($this, [self::SCHEDULED, self::ATTENDED, self::REJECTED, self::NO_SHOW], true);
+        return in_array($this, [self::SCHEDULED, self::ATTENDED, self::REJECTED, self::NO_SHOW, self::CANCELLED], true);
     }
 
     /**

@@ -97,7 +97,24 @@ class AppointmentEmail extends Model
                 ->pluck('address')
                 ->all();
 
-            $offLimits = array_values(array_unique([...$blocked, ...$coolingDown]));
+            // A cita must not reuse the mailbox of another LIVE cita of the SAME expediente:
+            // the e.firma cita has to go on a different address than the RFC cita used, even
+            // once that address is out of cooldown. (Cancelled/rejected/no-show siblings do
+            // not reserve their address.)
+            $siblingAliases = Appointment::query()
+                ->where('registration_id', $appointment->registration_id)
+                ->whereKeyNot($appointment->getKey())
+                ->whereNotNull('email_alias')
+                ->whereIn('status', [
+                    AppointmentStatusEnum::PENDING_FORMING->value,
+                    AppointmentStatusEnum::FORMED->value,
+                    AppointmentStatusEnum::SCHEDULED->value,
+                    AppointmentStatusEnum::ATTENDED->value,
+                ])
+                ->pluck('email_alias')
+                ->all();
+
+            $offLimits = array_values(array_unique([...$blocked, ...$coolingDown, ...$siblingAliases]));
 
             // Self-heal: if this cita is still pending to form and its LAST forming attempt
             // failed, the address it used is burned at the SAT (reusing it repeats the

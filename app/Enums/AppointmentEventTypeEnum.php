@@ -53,6 +53,11 @@ enum AppointmentEventTypeEnum: string
     case NO_SHOW = 'no_show';
 
     /**
+     * The team cancelled the cita.
+     */
+    case CANCELLED = 'cancelled';
+
+    /**
      * Someone on the team marked it formed by hand, without the bot.
      */
     case MARKED_MANUALLY = 'marked_manually';
@@ -68,9 +73,11 @@ enum AppointmentEventTypeEnum: string
             self::FORMED => 'Formada en la fila virtual',
             self::REVIEWED => 'Revisada, aún sin lugar',
             self::SCHEDULED => 'El SAT asignó fecha y hora',
+            self::ATTENDED => 'El soldado asistió; trámite exitoso',
             self::FAILED => 'Error del bot',
             self::REJECTED => 'Rechazada por el SAT',
             self::NO_SHOW => 'No se presentó',
+            self::CANCELLED => 'Cita cancelada',
             self::MARKED_MANUALLY => 'Marcada formada a mano',
         };
     }
@@ -86,9 +93,11 @@ enum AppointmentEventTypeEnum: string
             self::FORMED => 'heroicon-o-queue-list',
             self::REVIEWED => 'heroicon-o-arrow-path',
             self::SCHEDULED => 'heroicon-o-calendar-days',
+            self::ATTENDED => 'heroicon-o-check-badge',
             self::FAILED => 'heroicon-o-exclamation-triangle',
             self::REJECTED => 'heroicon-o-x-circle',
             self::NO_SHOW => 'heroicon-o-user-minus',
+            self::CANCELLED => 'heroicon-o-no-symbol',
             self::MARKED_MANUALLY => 'heroicon-o-hand-raised',
         };
     }
@@ -99,10 +108,10 @@ enum AppointmentEventTypeEnum: string
     public function color(): string
     {
         return match ($this) {
-            self::SCHEDULED, self::FORMED => 'success',
+            self::SCHEDULED, self::FORMED, self::ATTENDED => 'success',
             self::FAILED, self::REJECTED, self::NO_SHOW => 'danger',
             self::FORM_DISPATCHED, self::MARKED_MANUALLY => 'warning',
-            self::CREATED, self::REVIEWED => 'gray',
+            self::CREATED, self::REVIEWED, self::CANCELLED => 'gray',
         };
     }
 }

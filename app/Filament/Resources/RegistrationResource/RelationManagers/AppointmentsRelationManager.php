@@ -463,6 +463,47 @@ class AppointmentsRelationManager extends RelationManager
                             Notification::make()->title('Marcada como no asistió')->warning()->send();
                         }),
 
+                    Action::make('cancel')
+                        ->label('Cancelar cita')
+                        ->icon('heroicon-o-no-symbol')
+                        ->color('danger')
+                        // Se puede cancelar mientras esté viva (por formar, formada o agendada);
+                        // no si ya se completó o ya está en un estado terminal.
+                        ->visible(fn (Appointment $record): bool => in_array($record->status, [
+                            AppointmentStatusEnum::PENDING_FORMING,
+                            AppointmentStatusEnum::FORMED,
+                            AppointmentStatusEnum::SCHEDULED,
+                        ], true))
+                        ->requiresConfirmation()
+                        ->modalHeading('Cancelar cita del SAT')
+                        ->modalDescription('La cita se marca como cancelada y deja de darse seguimiento. El correo del pool queda en enfriamiento 24h (el SAT lo sigue teniendo registrado).')
+                        ->form([
+                            Textarea::make('reason')
+                                ->label('Motivo (opcional)')
+                                ->rows(2),
+                        ])
+                        ->action(function (Appointment $record, array $data): void {
+                            $reason = trim((string) ($data['reason'] ?? ''));
+
+                            // El correo quedó registrado en el SAT — no lo reciclamos de
+                            // inmediato: cooldown 24h (claimFor lo respeta por last_used_at).
+                            if (filled($record->email_alias)) {
+                                \App\Models\AppointmentEmail::query()
+                                    ->where('address', $record->email_alias)
+                                    ->update(['last_used_at' => now()]);
+                            }
+
+                            $record->update(['status' => AppointmentStatusEnum::CANCELLED]);
+                            $record->recordEvent(
+                                AppointmentEventTypeEnum::CANCELLED,
+                                'Cita cancelada por el equipo'.($reason !== '' ? ": {$reason}" : '.'),
+                                ['reason' => $reason],
+                                'user',
+                            );
+
+                            Notification::make()->title('Cita cancelada')->success()->send();
+                        }),
+
                     EditAction::make()->label('Editar')->modalHeading('Editar cita')
                         ->after(fn (Appointment $record) => self::autoDispatchForming($record)),
                     DeleteAction::make()->label('Eliminar'),
