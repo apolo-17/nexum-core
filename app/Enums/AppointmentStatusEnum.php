@@ -25,9 +25,16 @@ enum AppointmentStatusEnum: string
     case FORMED = 'formed';
 
     /**
-     * The SAT assigned a date/time/branch. Acuse available.
+     * The SAT assigned a date/time/branch. Acuse available. Still pending attendance.
      */
     case SCHEDULED = 'scheduled';
+
+    /**
+     * The soldado attended and the trámite was successful (RFC obtained, or e.firma issued).
+     * An RFC cita marked attended unlocks the e.firma cita; a fiel cita marked attended
+     * finishes the SAT flow.
+     */
+    case ATTENDED = 'attended';
 
     /**
      * The SAT rejected it (a new appointment must be formed).
@@ -48,6 +55,7 @@ enum AppointmentStatusEnum: string
             self::PENDING_FORMING => 'Por formar',
             self::FORMED => 'Formada (por revisar)',
             self::SCHEDULED => 'Agendada',
+            self::ATTENDED => 'Asistió (completada)',
             self::REJECTED => 'Rechazada',
             self::NO_SHOW => 'No asistió',
         };
@@ -61,18 +69,19 @@ enum AppointmentStatusEnum: string
         return match ($this) {
             self::PENDING_FORMING => 'gray',
             self::FORMED => 'warning',
-            self::SCHEDULED => 'success',
+            self::SCHEDULED => 'info',
+            self::ATTENDED => 'success',
             self::REJECTED => 'danger',
             self::NO_SHOW => 'danger',
         };
     }
 
     /**
-     * True when the appointment reached a terminal state.
+     * True when the appointment reached a terminal state (no more bot review).
      */
     public function isTerminal(): bool
     {
-        return in_array($this, [self::SCHEDULED, self::REJECTED, self::NO_SHOW], true);
+        return in_array($this, [self::SCHEDULED, self::ATTENDED, self::REJECTED, self::NO_SHOW], true);
     }
 
     /**

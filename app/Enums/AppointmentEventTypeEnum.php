@@ -35,6 +35,7 @@ enum AppointmentEventTypeEnum: string
      * The SAT assigned a date and time (`scheduled` callback).
      */
     case SCHEDULED = 'scheduled';
+    case ATTENDED = 'attended';
 
     /**
      * The bot could not form or review it (`failed` callback).

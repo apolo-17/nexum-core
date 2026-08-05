@@ -49,6 +49,14 @@ class AdminStatsOverview extends StatsOverviewWidget
         // 2. Citas ya formadas que esperan que el SAT les asigne fecha.
         $pendingDate = Appointment::where('status', AppointmentStatusEnum::FORMED->value)->count();
 
+        // Citas agendadas cuya fecha YA pasó y siguen sin resultado — hay que marcar
+        // asistió / rechazada / no asistió.
+        $toMark = Appointment::query()
+            ->where('status', AppointmentStatusEnum::SCHEDULED->value)
+            ->whereNotNull('scheduled_at')
+            ->where('scheduled_at', '<', now())
+            ->count();
+
         // 3. Próximas a asistir (agendadas, con fecha futura), separadas por tipo.
         $upcoming = fn (AppointmentTypeEnum $type): int => Appointment::query()
             ->where('status', AppointmentStatusEnum::SCHEDULED->value)
@@ -79,6 +87,11 @@ class AdminStatsOverview extends StatsOverviewWidget
                 ->description('Formadas, esperando fecha del SAT')
                 ->descriptionIcon('heroicon-m-clock')
                 ->color($pendingDate > 0 ? 'warning' : 'gray'),
+
+            Stat::make('Por marcar resultado', $toMark)
+                ->description('Ya pasó la cita — marca asistió/rechazada')
+                ->descriptionIcon('heroicon-m-flag')
+                ->color($toMark > 0 ? 'warning' : 'gray'),
 
             Stat::make('Próximas · Registro RFC', $upcomingRfc)
                 ->description('Con fecha, por asistir')

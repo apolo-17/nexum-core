@@ -357,6 +357,66 @@ class AppointmentsRelationManager extends RelationManager
                             );
                         }),
 
+                    Action::make('markAttended')
+                        ->label('Asistió (completada)')
+                        ->icon('heroicon-o-check-badge')
+                        ->color('success')
+                        ->visible(fn (Appointment $record): bool => $record->status === AppointmentStatusEnum::SCHEDULED)
+                        ->requiresConfirmation()
+                        ->modalDescription('El soldado asistió y el trámite salió bien. Si es la cita de RFC, se crea automáticamente la de e.firma (por formar).')
+                        ->action(function (Appointment $record): void {
+                            $record->update(['status' => AppointmentStatusEnum::ATTENDED]);
+                            $record->recordEvent(AppointmentEventTypeEnum::ATTENDED, 'El soldado asistió; trámite exitoso.', [], 'user');
+
+                            // Cita de RFC completada → habilita la de e.firma (FIEL).
+                            if ($record->type === AppointmentTypeEnum::FIEL) {
+                                Notification::make()->title('e.firma completada — flujo del SAT terminado')->success()->send();
+
+                                return;
+                            }
+
+                            $hasFiel = $record->registration?->appointments()
+                                ->where('type', AppointmentTypeEnum::FIEL->value)->exists();
+
+                            if (! $hasFiel) {
+                                $record->registration?->appointments()->create([
+                                    'type' => AppointmentTypeEnum::FIEL->value,
+                                    'status' => AppointmentStatusEnum::PENDING_FORMING->value,
+                                    'soldado_id' => $record->soldado_id,
+                                ]);
+                                Notification::make()->title('RFC obtenido')
+                                    ->body('Creé la cita de e.firma (por formar). Fórmala cuando quieras.')->success()->send();
+                            } else {
+                                Notification::make()->title('RFC obtenido')->success()->send();
+                            }
+                        }),
+
+                    Action::make('markRejected')
+                        ->label('Rechazada por el SAT')
+                        ->icon('heroicon-o-x-circle')
+                        ->color('danger')
+                        ->visible(fn (Appointment $record): bool => $record->status === AppointmentStatusEnum::SCHEDULED)
+                        ->requiresConfirmation()
+                        ->modalDescription('El SAT rechazó el trámite. Luego saca una nueva cita de RFC con "Agregar cita".')
+                        ->action(function (Appointment $record): void {
+                            $record->update(['status' => AppointmentStatusEnum::REJECTED]);
+                            $record->recordEvent(AppointmentEventTypeEnum::REJECTED, 'El SAT rechazó el trámite en la cita.', [], 'user');
+                            Notification::make()->title('Marcada como rechazada')
+                                ->body('Saca una nueva cita de RFC con "Agregar cita".')->warning()->send();
+                        }),
+
+                    Action::make('markNoShow')
+                        ->label('No asistió')
+                        ->icon('heroicon-o-exclamation-triangle')
+                        ->color('danger')
+                        ->visible(fn (Appointment $record): bool => $record->status === AppointmentStatusEnum::SCHEDULED)
+                        ->requiresConfirmation()
+                        ->action(function (Appointment $record): void {
+                            $record->update(['status' => AppointmentStatusEnum::NO_SHOW]);
+                            $record->recordEvent(AppointmentEventTypeEnum::NO_SHOW, 'El soldado no asistió a la cita.', [], 'user');
+                            Notification::make()->title('Marcada como no asistió')->warning()->send();
+                        }),
+
                     EditAction::make()->label('Editar')->modalHeading('Editar cita')
                         ->after(fn (Appointment $record) => self::autoDispatchForming($record)),
                     DeleteAction::make()->label('Eliminar'),
