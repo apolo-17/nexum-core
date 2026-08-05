@@ -485,12 +485,19 @@ class AppointmentsRelationManager extends RelationManager
                         ->action(function (Appointment $record, array $data): void {
                             $reason = trim((string) ($data['reason'] ?? ''));
 
-                            // El correo quedó registrado en el SAT — no lo reciclamos de
-                            // inmediato: cooldown 24h (claimFor lo respeta por last_used_at).
+                            // El correo quedó registrado en el SAT y NO cancelamos allá (no hay
+                            // endpoint), así que sigue quemado hasta la fecha de la cita. Si la
+                            // cita tenía fecha futura, mantenemos el cooldown hasta esa fecha;
+                            // si no tenía fecha, 24h desde ahora. claimFor lo respeta por
+                            // last_used_at (se libera 24h después de ese sello).
                             if (filled($record->email_alias)) {
+                                $burnedUntil = $record->scheduled_at !== null && $record->scheduled_at->isFuture()
+                                    ? $record->scheduled_at
+                                    : now();
+
                                 \App\Models\AppointmentEmail::query()
                                     ->where('address', $record->email_alias)
-                                    ->update(['last_used_at' => now()]);
+                                    ->update(['last_used_at' => $burnedUntil]);
                             }
 
                             $record->update(['status' => AppointmentStatusEnum::CANCELLED]);
