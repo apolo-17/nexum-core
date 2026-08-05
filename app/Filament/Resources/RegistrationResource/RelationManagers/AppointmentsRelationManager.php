@@ -501,6 +501,17 @@ class AppointmentsRelationManager extends RelationManager
                                 'user',
                             );
 
+                            // Avisa al equipo (correo + campana), sin romper la cancelación si
+                            // el correo falla. Llega a quien active "Cita del SAT cancelada".
+                            try {
+                                app(\App\Services\Notifications\EventNotifier::class)->notify(
+                                    \App\Enums\NotificationEventEnum::SAT_APPOINTMENT_CANCELLED,
+                                    new \App\Notifications\SatAppointmentStatusNotification($record, 'cancelled', $reason ?: null),
+                                );
+                            } catch (\Throwable $th) {
+                                report($th);
+                            }
+
                             Notification::make()->title('Cita cancelada')->success()->send();
                         }),
 

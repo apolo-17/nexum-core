@@ -37,8 +37,8 @@ class SatAppointmentStatusNotification extends Notification implements ShouldQue
 
     /**
      * @param  Appointment  $appointment  The appointment the bot reported on.
-     * @param  string  $outcome  One of: formed, scheduled, failed.
-     * @param  string|null  $reason  Failure detail, when the outcome is a failure.
+     * @param  string  $outcome  One of: formed, scheduled, failed, cancelled.
+     * @param  string|null  $reason  Failure detail or cancellation reason, when relevant.
      */
     public function __construct(
         private readonly Appointment $appointment,
@@ -110,6 +110,10 @@ class SatAppointmentStatusNotification extends Notification implements ShouldQue
                 ->line('**El SAT ya asignó fecha y hora.**')
                 ->line('**Cita:** '.($this->appointment->scheduled_at?->format('d/m/Y H:i') ?? 'sin fecha'))
                 ->line('Ya se le avisó al soldado.'),
+            'cancelled' => $mail
+                ->line('**La cita fue cancelada por el equipo.**')
+                ->line('**Motivo:** '.($this->reason ?: 'sin especificar'))
+                ->line('Se dejó de dar seguimiento a esta cita.'),
             default => $mail
                 ->line('**El bot no pudo completar el trámite.**')
                 ->line('**Motivo:** '.($this->reason ?: 'sin detalle'))
@@ -127,6 +131,7 @@ class SatAppointmentStatusNotification extends Notification implements ShouldQue
         return match ($this->outcome) {
             'formed' => "Cita SAT formada — {$company}",
             'scheduled' => "Cita SAT con fecha — {$company}",
+            'cancelled' => "Cita SAT cancelada — {$company}",
             default => "Error con la cita SAT — {$company}",
         };
     }
