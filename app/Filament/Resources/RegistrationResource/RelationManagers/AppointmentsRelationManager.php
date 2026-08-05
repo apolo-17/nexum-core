@@ -362,19 +362,53 @@ class AppointmentsRelationManager extends RelationManager
                         ->icon('heroicon-o-check-badge')
                         ->color('success')
                         ->visible(fn (Appointment $record): bool => $record->status === AppointmentStatusEnum::SCHEDULED)
-                        ->requiresConfirmation()
-                        ->modalDescription('El soldado asistió y el trámite salió bien. Si es la cita de RFC, se crea automáticamente la de e.firma (por formar).')
-                        ->action(function (Appointment $record): void {
+                        ->modalHeading('Marcar cita como completada')
+                        ->modalDescription('El soldado asistió y el trámite salió bien.')
+                        // En la cita de RFC se captura el RFC de persona moral que obtuvo la
+                        // empresa: con él se forma la cita de e.firma (el solicitante ya es la
+                        // empresa, no el soldado). La CSF es opcional.
+                        ->form(fn (Appointment $record): array => $record->type === AppointmentTypeEnum::RFC ? [
+                            TextInput::make('company_rfc')
+                                ->label('RFC de la empresa (persona moral)')
+                                ->helperText('El RFC que obtuvo la empresa en esta cita. Con él se formará la cita de e.firma.')
+                                ->required()
+                                ->maxLength(13)
+                                ->default($record->registration?->rfc),
+                            FileUpload::make('csf_document')
+                                ->label('Constancia de Situación Fiscal (CSF) — opcional')
+                                ->disk(config('filesystems.default'))
+                                ->directory('documents/csf')
+                                ->acceptedFileTypes(['application/pdf']),
+                        ] : [])
+                        ->action(function (Appointment $record, array $data): void {
+                            // Cita de RFC: guardar el RFC de la empresa (+ CSF si se subió).
+                            if ($record->type === AppointmentTypeEnum::RFC) {
+                                if (filled($data['company_rfc'] ?? null)) {
+                                    $record->registration?->update(['rfc' => strtoupper(trim((string) $data['company_rfc']))]);
+                                }
+                                if (filled($data['csf_document'] ?? null)) {
+                                    \App\Models\Document::create([
+                                        'registration_id' => $record->registration_id,
+                                        'type' => \App\Enums\DocumentTypeEnum::CSF,
+                                        'name' => basename((string) $data['csf_document']),
+                                        'storage_path' => $data['csf_document'],
+                                        'stage' => $record->registration?->getRawOriginal('stage'),
+                                        'verified_at' => now(),
+                                    ]);
+                                }
+                            }
+
                             $record->update(['status' => AppointmentStatusEnum::ATTENDED]);
                             $record->recordEvent(AppointmentEventTypeEnum::ATTENDED, 'El soldado asistió; trámite exitoso.', [], 'user');
 
-                            // Cita de RFC completada → habilita la de e.firma (FIEL).
+                            // Cita de e.firma completada → fin del flujo del SAT.
                             if ($record->type === AppointmentTypeEnum::FIEL) {
                                 Notification::make()->title('e.firma completada — flujo del SAT terminado')->success()->send();
 
                                 return;
                             }
 
+                            // Cita de RFC completada → crea la de e.firma (se formará con el RFC).
                             $hasFiel = $record->registration?->appointments()
                                 ->where('type', AppointmentTypeEnum::FIEL->value)->exists();
 
@@ -384,10 +418,10 @@ class AppointmentsRelationManager extends RelationManager
                                     'status' => AppointmentStatusEnum::PENDING_FORMING->value,
                                     'soldado_id' => $record->soldado_id,
                                 ]);
-                                Notification::make()->title('RFC obtenido')
-                                    ->body('Creé la cita de e.firma (por formar). Fórmala cuando quieras.')->success()->send();
+                                Notification::make()->title('RFC guardado — cita de e.firma creada')
+                                    ->body('La cita de e.firma (por formar) se formará con el RFC de la empresa. Fórmala cuando quieras.')->success()->send();
                             } else {
-                                Notification::make()->title('RFC obtenido')->success()->send();
+                                Notification::make()->title('RFC guardado')->success()->send();
                             }
                         }),
 
