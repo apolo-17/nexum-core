@@ -374,24 +374,36 @@ class AppointmentsRelationManager extends RelationManager
                                 ->required()
                                 ->maxLength(13)
                                 ->default($record->registration?->rfc),
-                            FileUpload::make('csf_document')
-                                ->label('Constancia de Situación Fiscal (CSF) — opcional')
+                            FileUpload::make('rfc_evidence')
+                                ->label('Evidencia del RFC (CSF y/o fotos) — opcional')
+                                ->helperText('Sube la Constancia de Situación Fiscal y/o fotos del RFC. Quedan en Documentos del expediente.')
+                                ->multiple()
                                 ->disk(config('filesystems.default'))
-                                ->directory('documents/csf')
-                                ->acceptedFileTypes(['application/pdf']),
+                                ->directory('documents/rfc-evidence')
+                                ->acceptedFileTypes(['application/pdf', 'image/jpeg', 'image/png', 'image/heic', 'image/webp']),
                         ] : [])
                         ->action(function (Appointment $record, array $data): void {
-                            // Cita de RFC: guardar el RFC de la empresa (+ CSF si se subió).
+                            // Cita de RFC: guardar el RFC de la empresa (+ evidencia si se subió).
                             if ($record->type === AppointmentTypeEnum::RFC) {
                                 if (filled($data['company_rfc'] ?? null)) {
                                     $record->registration?->update(['rfc' => strtoupper(trim((string) $data['company_rfc']))]);
                                 }
-                                if (filled($data['csf_document'] ?? null)) {
+
+                                foreach ((array) ($data['rfc_evidence'] ?? []) as $path) {
+                                    if (blank($path)) {
+                                        continue;
+                                    }
+
+                                    $isPdf = str_ends_with(strtolower((string) $path), '.pdf');
+
                                     \App\Models\Document::create([
                                         'registration_id' => $record->registration_id,
-                                        'type' => \App\Enums\DocumentTypeEnum::CSF,
-                                        'name' => basename((string) $data['csf_document']),
-                                        'storage_path' => $data['csf_document'],
+                                        // La CSF (PDF) como CSF; las fotos como documento del RFC.
+                                        'type' => $isPdf
+                                            ? \App\Enums\DocumentTypeEnum::CSF
+                                            : \App\Enums\DocumentTypeEnum::RFC_DOCUMENT,
+                                        'name' => basename((string) $path),
+                                        'storage_path' => $path,
                                         'stage' => $record->registration?->getRawOriginal('stage'),
                                         'verified_at' => now(),
                                     ]);
