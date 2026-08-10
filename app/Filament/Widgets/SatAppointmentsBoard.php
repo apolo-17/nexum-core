@@ -78,7 +78,9 @@ class SatAppointmentsBoard extends TableWidget
 
                 TextColumn::make('scheduled_at')
                     ->label('Fecha de la cita')
-                    ->dateTime('d/m/Y H:i', AppointmentDetail::TIMEZONE)
+                    // scheduled_at ya viene en hora local de CDMX (wall-clock del acuse del
+                    // SAT); NO reconvertir zona o se muestra 6h antes.
+                    ->dateTime('d/m/Y H:i')
                     ->placeholder('Sin fecha')
                     ->sortable(),
 

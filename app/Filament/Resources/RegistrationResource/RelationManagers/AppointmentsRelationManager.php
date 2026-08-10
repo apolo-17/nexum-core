@@ -239,7 +239,8 @@ class AppointmentsRelationManager extends RelationManager
                                         ->state(fn (Appointment $r): string => $r->status->label())
                                         ->color(fn (Appointment $r): string => $r->status->color()),
                                     InfoTextEntry::make('scheduled_at')->label('Fecha asignada por el SAT')
-                                        ->dateTime('d/m/Y H:i', self::TIMEZONE)
+                                        // scheduled_at ya está en hora local de CDMX (acuse del SAT); no reconvertir.
+                                        ->dateTime('d/m/Y H:i')
                                         ->placeholder('El SAT aún no asigna fecha'),
                                     InfoTextEntry::make('office')->label('Sucursal')
                                         ->state(fn (Appointment $r): string => self::officeName($r))

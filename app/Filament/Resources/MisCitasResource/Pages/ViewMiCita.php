@@ -48,7 +48,8 @@ class ViewMiCita extends ViewRecord
                         ->state(fn (Appointment $r): string => $r->status->label())
                         ->color(fn (Appointment $r): string => $r->status->color()),
                     TextEntry::make('scheduled_at')->label('Fecha y hora')
-                        ->dateTime('d/m/Y H:i', self::TIMEZONE)
+                        // scheduled_at ya está en hora local de CDMX (acuse del SAT); no reconvertir.
+                        ->dateTime('d/m/Y H:i')
                         ->placeholder('El SAT aún no asigna fecha'),
                     TextEntry::make('office')->label('Sucursal del SAT')->placeholder('—'),
                 ]),
