@@ -5,9 +5,17 @@ namespace App\Filament\Resources\RegistrationResource\RelationManagers;
 use App\Enums\AppointmentEventTypeEnum;
 use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
+use App\Enums\DocumentTypeEnum;
+use App\Enums\NotificationEventEnum;
 use App\Jobs\FormSatAppointmentJob;
 use App\Models\Appointment;
+use App\Models\AppointmentEmail;
+use App\Models\Document;
 use App\Models\SatModule;
+use App\Notifications\SatAppointmentCancelledNotification;
+use App\Notifications\SatAppointmentStatusNotification;
+use App\Services\Notifications\EventNotifier;
+use App\Services\Registration\SatShareholderRelationService;
 use App\Services\Sat\SatReviewService;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
@@ -26,12 +34,12 @@ use Filament\Infolists\Components\ViewEntry;
 use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Components\Section;
-use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\BadgeColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Manages the SAT appointments (RFC and FIEL) for a company.
@@ -289,6 +297,54 @@ class AppointmentsRelationManager extends RelationManager
                                 ]),
                         ]),
 
+                    // Relación de socios (.xlsx) que el SAT exige en la cita de inscripción
+                    // de persona moral (requisito 2 del acuse). Solo aplica a la cita de RFC.
+                    // Previsualiza los datos que el SAT coteja contra el acta, genera el
+                    // archivo y lo deja listo para descargar y llevar en la USB.
+                    Action::make('generateSatRelation')
+                        ->label('Relación de socios (.xlsx)')
+                        ->icon('heroicon-o-table-cells')
+                        ->color('info')
+                        ->visible(fn (Appointment $record): bool => $record->type === AppointmentTypeEnum::RFC
+                            && $record->registration !== null
+                            && $record->registration->shareholders()->exists())
+                        ->modalHeading('Relación de socios para el SAT')
+                        ->modalDescription('Revisa los datos que el SAT cotejará contra el acta. '
+                            .'Al confirmar se genera el .xlsx para descargar y llevar en la USB.')
+                        ->modalWidth('5xl')
+                        ->modalContent(fn (Appointment $record) => view('filament.sat-relation.preview-modal', [
+                            'relation' => resolve(SatShareholderRelationService::class)->compile($record->registration),
+                        ]))
+                        ->modalSubmitActionLabel('Generar y descargar .xlsx')
+                        ->action(function (Appointment $record): void {
+                            try {
+                                $document = resolve(SatShareholderRelationService::class)
+                                    ->generate($record->registration);
+
+                                $downloadUrl = Storage::disk('s3')->temporaryUrl(
+                                    $document->storage_path,
+                                    now()->addMinutes(15),
+                                );
+
+                                Notification::make()
+                                    ->title('Relación de socios generada')
+                                    ->body('El archivo .xlsx fue creado. '
+                                        .'<a href="'.e($downloadUrl).'" target="_blank" '
+                                        .'style="text-decoration:underline;font-weight:600;">'
+                                        .'Descargar ahora</a> (el enlace expira en 15 minutos). '
+                                        .'También queda en el ZIP de documentos de la cita.')
+                                    ->success()
+                                    ->persistent()
+                                    ->send();
+                            } catch (\Throwable $e) {
+                                Notification::make()
+                                    ->title('Error al generar la relación de socios')
+                                    ->body($e->getMessage())
+                                    ->danger()
+                                    ->send();
+                            }
+                        }),
+
                     Action::make('sendToBot')
                         ->label('Formar con el bot')
                         ->icon('heroicon-o-paper-airplane')
@@ -397,12 +453,12 @@ class AppointmentsRelationManager extends RelationManager
 
                                     $isPdf = str_ends_with(strtolower((string) $path), '.pdf');
 
-                                    \App\Models\Document::create([
+                                    Document::create([
                                         'registration_id' => $record->registration_id,
                                         // La CSF (PDF) como CSF; las fotos como documento del RFC.
                                         'type' => $isPdf
-                                            ? \App\Enums\DocumentTypeEnum::CSF
-                                            : \App\Enums\DocumentTypeEnum::RFC_DOCUMENT,
+                                            ? DocumentTypeEnum::CSF
+                                            : DocumentTypeEnum::RFC_DOCUMENT,
                                         'name' => basename((string) $path),
                                         'storage_path' => $path,
                                         'stage' => $record->registration?->getRawOriginal('stage'),
@@ -496,7 +552,7 @@ class AppointmentsRelationManager extends RelationManager
                                     ? $record->scheduled_at
                                     : now();
 
-                                \App\Models\AppointmentEmail::query()
+                                AppointmentEmail::query()
                                     ->where('address', $record->email_alias)
                                     ->update(['last_used_at' => $burnedUntil]);
                             }
@@ -512,9 +568,9 @@ class AppointmentsRelationManager extends RelationManager
                             // Avisa al equipo (correo + campana), sin romper la cancelación si
                             // el correo falla. Llega a quien active "Cita del SAT cancelada".
                             try {
-                                app(\App\Services\Notifications\EventNotifier::class)->notify(
-                                    \App\Enums\NotificationEventEnum::SAT_APPOINTMENT_CANCELLED,
-                                    new \App\Notifications\SatAppointmentStatusNotification($record, 'cancelled', $reason ?: null),
+                                app(EventNotifier::class)->notify(
+                                    NotificationEventEnum::SAT_APPOINTMENT_CANCELLED,
+                                    new SatAppointmentStatusNotification($record, 'cancelled', $reason ?: null),
                                 );
                             } catch (\Throwable $th) {
                                 report($th);
@@ -524,7 +580,7 @@ class AppointmentsRelationManager extends RelationManager
                             if ($record->soldado !== null && $record->scheduled_at !== null) {
                                 try {
                                     $record->soldado->notify(
-                                        new \App\Notifications\SatAppointmentCancelledNotification($record, $reason ?: null),
+                                        new SatAppointmentCancelledNotification($record, $reason ?: null),
                                     );
                                 } catch (\Throwable $th) {
                                     report($th);

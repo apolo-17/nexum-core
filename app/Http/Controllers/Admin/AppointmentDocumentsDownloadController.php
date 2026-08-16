@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\AppointmentTypeEnum;
 use App\Enums\DocumentTypeEnum;
 use App\Http\Controllers\Controller;
 use App\Models\Appointment;
@@ -43,6 +44,20 @@ class AppointmentDocumentsDownloadController extends Controller
 
         if ($comprobante !== null) {
             $files['comprobante_domicilio.pdf'] = $comprobante->storage_path;
+        }
+
+        // Relación de socios (.xlsx) — required by the SAT for the RFC (persona moral)
+        // appointment. Bundled so the soldado carries it alongside the acuse.
+        if ($appointment->type === AppointmentTypeEnum::RFC) {
+            $relacion = $appointment->registration?->documents()
+                ->where('type', DocumentTypeEnum::SAT_SHAREHOLDER_RELATION->value)
+                ->whereNotNull('storage_path')
+                ->latest()
+                ->first();
+
+            if ($relacion !== null) {
+                $files['relacion_socios_sat.xlsx'] = $relacion->storage_path;
+            }
         }
 
         if ($files === []) {

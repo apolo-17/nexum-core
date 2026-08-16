@@ -100,6 +100,9 @@ enum DocumentTypeEnum: string
     /** Public Registry of Property inscription boleta (Boleta de inscripción del RPP). */
     case RPP_REGISTRATION = 'rpp_registration';
 
+    /** Relación de socios en formato .xlsx exigida por el SAT en la cita de inscripción de persona moral (req. 2 del acuse). */
+    case SAT_SHAREHOLDER_RELATION = 'sat_shareholder_relation';
+
     /** Any other document not covered by the types above. */
     case OTHER = 'other';
 
@@ -129,6 +132,7 @@ enum DocumentTypeEnum: string
             self::LEGAL_NAME_AUTHORIZATION => 'Constancia de denominación social (SE)',
             self::BENEFICIAL_OWNER => 'Beneficiario controlador (KYC)',
             self::RPP_REGISTRATION => 'Boleta de inscripción (RPP)',
+            self::SAT_SHAREHOLDER_RELATION => 'Relación de socios (SAT .xlsx)',
             self::OTHER => 'Otro',
         };
     }
