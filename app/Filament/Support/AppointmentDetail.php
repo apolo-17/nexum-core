@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Support;
 
+use App\Enums\AppointmentTypeEnum;
 use App\Enums\DocumentTypeEnum;
 use App\Models\Appointment;
 use App\Models\Document;
@@ -107,6 +108,25 @@ class AppointmentDetail
                                     : null)
                                 ->openUrlInNewTab(),
                         ),
+
+                    // Relación de socios (.xlsx) — solo en la cita de RFC (inscripción PM).
+                    // Se descarga individual, igual que el acuse y el comprobante.
+                    TextEntry::make('relacion')->hiddenLabel()
+                        ->visible(fn (Appointment $r): bool => $r->type === AppointmentTypeEnum::RFC)
+                        ->state(fn (Appointment $r): string => self::relationDocument($r) !== null
+                            ? 'Relación de socios (.xlsx)'
+                            : 'Relación de socios — genérala en la cita')
+                        ->badge()
+                        ->color(fn (Appointment $r): string => self::relationDocument($r) !== null ? 'success' : 'gray')
+                        ->suffixAction(
+                            Action::make('descargarRelacion')
+                                ->icon('heroicon-o-arrow-down-tray')
+                                ->visible(fn (Appointment $r): bool => self::relationDocument($r) !== null)
+                                ->url(fn (Appointment $r): ?string => ($doc = self::relationDocument($r)) !== null
+                                    ? route('admin.documents.relay-download', ['document' => $doc])
+                                    : null)
+                                ->openUrlInNewTab(),
+                        ),
                 ]),
 
             Section::make('Historial')
@@ -175,6 +195,19 @@ class AppointmentDetail
     {
         return $appointment->registration?->documents()
             ->where('type', DocumentTypeEnum::PROOF_OF_ADDRESS_MX->value)
+            ->latest()
+            ->first();
+    }
+
+    /**
+     * The SAT shareholder relation (.xlsx) generated for this expedient, if any.
+     *
+     * @param  Appointment  $appointment  The appointment whose company is checked.
+     */
+    public static function relationDocument(Appointment $appointment): ?Document
+    {
+        return $appointment->registration?->documents()
+            ->where('type', DocumentTypeEnum::SAT_SHAREHOLDER_RELATION->value)
             ->latest()
             ->first();
     }
