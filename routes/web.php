@@ -23,6 +23,9 @@ Route::middleware(EnsureCanViewApiDocs::class)
     ->name('scramble.docs.ui');
 
 // Admin panel routes — protected by Filament's standard session auth.
+// Ruta 'login' que espera el middleware `auth` al redirigir sin sesión → login de Filament.
+Route::get('login', fn () => redirect()->route('filament.admin.auth.login'))->name('login');
+
 // Flujo móvil del soldado tras su cita (front limpio, sin el panel).
 Route::middleware(['auth'])->get('/mi-cita', MiCita::class)->name('mi-cita');
 
