@@ -204,8 +204,42 @@ class DocumentAnalysisService
                 - return ONLY the JSON object, nothing else
                 PROMPT,
 
+            DocumentTypeEnum::CSF => <<<'PROMPT'
+                You are a document data extraction assistant. This is a Mexican tax document "Constancia de Situación Fiscal" (CSF) / "Cédula de Identificación Fiscal" issued by the SAT. Extract the following fields and return ONLY a valid JSON object with no additional text or explanation.
+
+                Required JSON structure:
+                {
+                  "rfc": "the RFC exactly as printed (12 characters for a company / persona moral, 13 for persona física), uppercase, letters and digits only, or null",
+                  "razon_social": "Denominación / Razón Social exactly as printed, or null",
+                  "regimen_capital": "Régimen Capital as printed, or null",
+                  "codigo_postal": "Código Postal (5 digits) or null"
+                }
+
+                Rules:
+                - rfc must be UPPERCASE, no spaces, letters and digits only; read it carefully (do not confuse O/0, I/1, S/5, B/8)
+                - the RFC usually appears next to the label "RFC:" and also inside the barcode text at the top
+                - if a field is not visible or not present, use null
+                - return ONLY the JSON object, nothing else
+                PROMPT,
+
             default => '{"error": "unsupported document type"}',
         };
+    }
+
+    /**
+     * Extract fields from a raw image/PDF without persisting anything.
+     *
+     * Used by the soldado's mobile flow: the CSF photo is analysed on upload so the RFC
+     * can be verified BEFORE it is stored. Returns the parsed JSON (e.g. rfc, razon_social).
+     *
+     * @param  string  $base64  Base64-encoded file contents.
+     * @param  string  $mediaType  MIME type (image/jpeg, image/png, application/pdf, ...).
+     * @param  DocumentTypeEnum  $type  Document type whose extraction prompt to use.
+     * @return array<string, mixed> The extracted fields.
+     */
+    public function extractFields(string $base64, string $mediaType, DocumentTypeEnum $type): array
+    {
+        return $this->callClaudeApi($base64, $mediaType, $this->buildPrompt($type));
     }
 
     /**

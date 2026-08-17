@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\CompanyCredentialDownloadController;
 use App\Http\Controllers\Admin\DocumentRelayDownloadController;
 use App\Http\Controllers\Admin\SoldadoIneDownloadController;
 use App\Http\Middleware\EnsureCanViewApiDocs;
+use App\Livewire\MiCita;
 use Illuminate\Support\Facades\Route;
 
 // Public bilingual (ES/EN) marketing landing page. Static, self-contained HTML in
@@ -22,6 +23,9 @@ Route::middleware(EnsureCanViewApiDocs::class)
     ->name('scramble.docs.ui');
 
 // Admin panel routes — protected by Filament's standard session auth.
+// Flujo móvil del soldado tras su cita (front limpio, sin el panel).
+Route::middleware(['auth'])->get('/mi-cita', MiCita::class)->name('mi-cita');
+
 Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () {
     Route::get(
         'documents/{document}/relay-download',

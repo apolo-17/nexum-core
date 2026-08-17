@@ -45,6 +45,7 @@ enum DocumentTypeEnum: string
             self::KYC_PROOF_OF_ADDRESS,
             self::KYC_MARRIAGE_CERTIFICATE,
             self::KYC_SPOUSE_PASSPORT,
+            self::CSF,
         ], strict: true);
     }
 
