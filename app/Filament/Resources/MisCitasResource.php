@@ -115,11 +115,6 @@ class MisCitasResource extends Resource
                     ->formatStateUsing(fn (AppointmentStatusEnum $state): string => $state->label())
                     ->color(fn (AppointmentStatusEnum $state): string => $state->color()),
 
-                IconColumn::make('scheduled')
-                    ->label('Agendada')
-                    ->boolean()
-                    ->state(fn (Appointment $record): bool => $record->isScheduled()),
-
                 TextColumn::make('scheduled_at')
                     ->label('Fecha')
                     ->dateTime('d/m/Y H:i')
