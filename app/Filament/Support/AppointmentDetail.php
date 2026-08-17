@@ -110,22 +110,36 @@ class AppointmentDetail
                         ),
 
                     // Relación de socios (.xlsx) — solo en la cita de RFC (inscripción PM).
-                    // Se descarga individual, igual que el acuse y el comprobante.
+                    // Un clic: genera con los datos del expediente y descarga (sin ZIP).
                     TextEntry::make('relacion')->hiddenLabel()
                         ->visible(fn (Appointment $r): bool => $r->type === AppointmentTypeEnum::RFC)
                         ->state(fn (Appointment $r): string => self::relationDocument($r) !== null
                             ? 'Relación de socios (.xlsx)'
-                            : 'Relación de socios — genérala en la cita')
+                            : 'Relación de socios — genera y descarga →')
                         ->badge()
-                        ->color(fn (Appointment $r): string => self::relationDocument($r) !== null ? 'success' : 'gray')
+                        ->color(fn (Appointment $r): string => self::relationDocument($r) !== null ? 'success' : 'info')
                         ->suffixAction(
-                            Action::make('descargarRelacion')
+                            Action::make('generarDescargarRelacion')
                                 ->icon('heroicon-o-arrow-down-tray')
-                                ->visible(fn (Appointment $r): bool => self::relationDocument($r) !== null)
-                                ->url(fn (Appointment $r): ?string => ($doc = self::relationDocument($r)) !== null
-                                    ? route('admin.documents.relay-download', ['document' => $doc])
-                                    : null)
-                                ->openUrlInNewTab(),
+                                ->tooltip('Generar y descargar la relación de socios (.xlsx)')
+                                ->visible(fn (Appointment $r): bool => (bool) $r->registration?->shareholders()->exists())
+                                ->action(function (Appointment $r) {
+                                    try {
+                                        $document = resolve(\App\Services\Registration\SatShareholderRelationService::class)
+                                            ->generate($r->registration);
+                                    } catch (\Throwable $e) {
+                                        \Filament\Notifications\Notification::make()
+                                            ->title('Error al generar la relación de socios')
+                                            ->body($e->getMessage())
+                                            ->danger()
+                                            ->send();
+
+                                        return null;
+                                    }
+
+                                    // Descarga real (Content-Disposition: attachment).
+                                    return redirect()->route('admin.documents.relay-download', ['document' => $document]);
+                                }),
                         ),
                 ]),
 

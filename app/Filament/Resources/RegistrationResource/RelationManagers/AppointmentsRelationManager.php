@@ -316,33 +316,29 @@ class AppointmentsRelationManager extends RelationManager
                             'relation' => resolve(SatShareholderRelationService::class)->compile($record->registration),
                         ]))
                         ->modalSubmitActionLabel('Generar y descargar .xlsx')
-                        ->action(function (Appointment $record): void {
+                        ->action(function (Appointment $record) {
                             try {
                                 $document = resolve(SatShareholderRelationService::class)
                                     ->generate($record->registration);
-
-                                $downloadUrl = Storage::disk('s3')->temporaryUrl(
-                                    $document->storage_path,
-                                    now()->addMinutes(15),
-                                );
-
-                                Notification::make()
-                                    ->title('Relación de socios generada')
-                                    ->body('El archivo .xlsx fue creado. '
-                                        .'<a href="'.e($downloadUrl).'" target="_blank" '
-                                        .'style="text-decoration:underline;font-weight:600;">'
-                                        .'Descargar ahora</a> (el enlace expira en 15 minutos). '
-                                        .'También queda en el ZIP de documentos de la cita.')
-                                    ->success()
-                                    ->persistent()
-                                    ->send();
                             } catch (\Throwable $e) {
                                 Notification::make()
                                     ->title('Error al generar la relación de socios')
                                     ->body($e->getMessage())
                                     ->danger()
                                     ->send();
+
+                                return null;
                             }
+
+                            Notification::make()
+                                ->title('Relación de socios generada')
+                                ->body('Se está descargando el .xlsx. También queda en Documentos, en el detalle de la cita y en el ZIP.')
+                                ->success()
+                                ->send();
+
+                            // Descarga real: la ruta sirve el archivo con
+                            // Content-Disposition: attachment (el navegador lo baja solo).
+                            return redirect()->route('admin.documents.relay-download', ['document' => $document]);
                         }),
 
                     Action::make('sendToBot')
