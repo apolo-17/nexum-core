@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Notifications\AccountInvitationNotification;
 use Closure;
 use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
@@ -347,6 +348,7 @@ class SoldadoResource extends Resource
                     ->state(fn (Soldado $record): bool => $record->user_id !== null),
             ])
             ->actions([
+                ActionGroup::make([
                 Action::make('grantAccess')
                     ->label('Dar acceso')
                     ->icon('heroicon-o-envelope')
@@ -378,7 +380,7 @@ class SoldadoResource extends Resource
                     ->color('info')
                     ->visible(fn (Soldado $record): bool => $record->user_id !== null)
                     ->requiresConfirmation()
-                    ->modalDescription('Se enviará un nuevo correo con un enlace vigente por 60 minutos para que el soldado defina su contraseña. El enlace anterior dejará de funcionar.')
+                    ->modalDescription('Se enviará un nuevo correo con un enlace vigente por 24 horas para que el soldado defina su contraseña. El enlace anterior dejará de funcionar.')
                     ->action(function (Soldado $record): void {
                         try {
                             self::grantAccess($record);
@@ -405,6 +407,13 @@ class SoldadoResource extends Resource
                 ViewAction::make(),
                 EditAction::make(),
                 DeleteAction::make(),
+                ])
+                    // Un solo botón "⋮" agrupa todas las acciones (como las otras tablas).
+                    ->label('Acciones')
+                    ->icon('heroicon-m-ellipsis-vertical')
+                    ->tooltip('Acciones')
+                    ->button()
+                    ->hiddenLabel(),
             ]);
     }
 
