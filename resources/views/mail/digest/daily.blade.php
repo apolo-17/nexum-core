@@ -48,6 +48,18 @@ Buenos días. Este es el resumen diario del estado de los expedientes de constit
 </x-mail::panel>
 @endif
 
+@if (! empty($digest['citas_nuevas']))
+## Citas conseguidas 🎉
+
+Citas que el SAT agendó desde el corte anterior:
+
+| Empresa | Soldado | Trámite | Fecha de la cita | Se consiguió en |
+|---------|---------|---------|------------------|-----------------|
+@foreach ($digest['citas_nuevas'] as $c)
+| {{ $clean($c['company']) }} | {{ $clean($c['soldado']) }} | {{ $c['tipo'] }} | {{ $c['fecha'] }} | {{ $c['dias'] !== null ? $c['dias'].' día'.($c['dias'] === 1 ? '' : 's') : '—' }} |
+@endforeach
+
+@endif
 ## Requieren atención
 
 @if ($digest['alerts']['items'] === [])

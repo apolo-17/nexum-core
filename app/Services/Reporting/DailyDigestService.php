@@ -62,7 +62,44 @@ class DailyDigestService
             'oldest' => $this->oldest($rows),
             'distribution' => $this->distribution($rows),
             'movements' => $this->movements($asOf),
+            'citas_nuevas' => $this->newAppointments($asOf),
         ];
+    }
+
+    /**
+     * Citas que el SAT agendó desde el corte anterior: empresa, soldado, trámite, fecha de
+     * la cita y cuánto tardó en conseguirse (de que se formó a que el SAT le dio fecha).
+     *
+     * @param  CarbonImmutable  $asOf  Cut-off timestamp.
+     * @return array<int, array<string, mixed>>
+     */
+    private function newAppointments(CarbonImmutable $asOf): array
+    {
+        return \App\Models\AppointmentEvent::query()
+            ->where('type', \App\Enums\AppointmentEventTypeEnum::SCHEDULED->value)
+            ->where('created_at', '>=', $this->previousBusinessDay($asOf))
+            ->where('created_at', '<', $asOf)
+            ->with(['appointment.registration.primaryLegalName', 'appointment.soldado'])
+            ->orderBy('created_at')
+            ->get()
+            ->filter(fn (\App\Models\AppointmentEvent $e): bool => $e->appointment !== null)
+            ->map(function (\App\Models\AppointmentEvent $e): array {
+                $a = $e->appointment;
+                $dias = $a->formed_at !== null
+                    ? max(0, (int) round($a->formed_at->diffInHours($e->created_at) / 24))
+                    : null;
+
+                return [
+                    'company' => $a->registration?->primaryLegalName?->name
+                        ?? 'Expediente '.($a->registration?->singapur_client_code ?? '—'),
+                    'soldado' => $a->soldado?->name ?? '—',
+                    'tipo' => $a->type->label(),
+                    'fecha' => $a->scheduled_at?->format('d/m/Y H:i') ?? '—',
+                    'dias' => $dias,
+                ];
+            })
+            ->values()
+            ->all();
     }
 
     // -------------------------------------------------------------------------
