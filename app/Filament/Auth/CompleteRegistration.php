@@ -96,7 +96,12 @@ class CompleteRegistration extends ResetPassword
 
         $soldado = $this->getSoldado();
 
-        if ($soldado !== null) {
+        // Los datos y documentos solo se piden en la PRIMERA activación (soldado que aún no
+        // verifica su correo). Si ya se registró antes, esto es solo restablecer contraseña
+        // → se pide únicamente la contraseña nueva (saveSoldadoProfile conserva sus datos).
+        $yaRegistrado = $soldado?->user?->email_verified_at !== null;
+
+        if ($soldado !== null && ! $yaRegistrado) {
             $components[] = Section::make('Tus datos')
                 ->description('Completa tu información para terminar tu registro.')
                 ->columns(2)
