@@ -41,8 +41,18 @@ class User extends Authenticatable implements FilamentUser, JWTSubject
         // A linked soldado profile always grants access, even if the role assignment
         // had a guard/seed hiccup — otherwise an invited soldado could be locked out
         // right after setting their password.
-        return $this->hasAnyRole(['super_admin', 'notario', 'asistente_notario', 'soldado'])
+        return $this->hasAnyRole(['super_admin', 'notario', 'asistente_notario', 'soldado', 'partner'])
             || $this->soldado()->exists();
+    }
+
+    /**
+     * A "partner" is an external ally (e.g. helping with the bank process) with
+     * read-only access: they may view expedientes and download documents, but never
+     * the e.firma credentials, and cannot create/edit/delete anything.
+     */
+    public function isPartner(): bool
+    {
+        return $this->hasRole('partner');
     }
 
     /**

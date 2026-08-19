@@ -33,6 +33,7 @@ class RolesAndPermissionsSeeder extends Seeder
         Role::firstOrCreate(['name' => 'asistente_notario']);
         Role::firstOrCreate(['name' => 'soldado']);
         Role::firstOrCreate(['name' => 'developer']);
+        Role::firstOrCreate(['name' => 'partner']);
 
         $this->command->info('Roles created: super_admin, notario, asistente_notario, soldado, developer');
     }

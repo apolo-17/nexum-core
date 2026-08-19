@@ -12,6 +12,7 @@ use App\Filament\Resources\RegistrationResource\Pages;
 use App\Filament\Resources\RegistrationResource\RelationManagers;
 use App\Models\LegalName;
 use App\Models\Registration;
+use Illuminate\Database\Eloquent\Model;
 use App\Models\User;
 use App\Services\Denomination\ClaimPoolDenominationService;
 use BackedEnum;
@@ -85,7 +86,32 @@ class RegistrationResource extends Resource
      */
     public static function canAccess(): bool
     {
-        return Auth::user()?->hasAnyRole(['super_admin', 'notario', 'asistente_notario']) ?? false;
+        // `partner` (aliado externo) entra en solo lectura: ve expedientes y descarga
+        // documentos (menos e.firma), pero no puede crear/editar/borrar nada.
+        return Auth::user()?->hasAnyRole(['super_admin', 'notario', 'asistente_notario', 'partner']) ?? false;
+    }
+
+    /**
+     * A partner is read-only: block create/edit/delete entirely for that role.
+     */
+    public static function canCreate(): bool
+    {
+        return ! (Auth::user()?->isPartner() ?? false);
+    }
+
+    public static function canEdit(Model $record): bool
+    {
+        return ! (Auth::user()?->isPartner() ?? false);
+    }
+
+    public static function canDelete(Model $record): bool
+    {
+        return ! (Auth::user()?->isPartner() ?? false);
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return ! (Auth::user()?->isPartner() ?? false);
     }
 
     /**
@@ -925,6 +951,8 @@ class RegistrationResource extends Resource
             // ----------------------------------------------------------------
             Section::make('Credenciales de la empresa (FIEL + RFC)')
                 ->description('Resguardo del .cer, .key, contraseña y RFC de la empresa para descarga segura.')
+                // Nunca visible para el rol partner (solo lectura, sin acceso a la e.firma).
+                ->visible(fn (): bool => ! (auth()->user()?->isPartner() ?? false))
                 ->columnSpan(3)
                 ->columns(4)
                 ->schema([
@@ -1085,6 +1113,14 @@ class RegistrationResource extends Resource
         // 4. Tasks        — cross-stage action items
         // 5. Notes        — cross-stage internal observations
         // 6. Stage transitions — audit trail, always last
+        // El partner (solo lectura) únicamente ve la pestaña de Documentos para descargar
+        // archivos; el resto de pestañas (socios, citas, tareas, notas, etc.) son internas.
+        if (Auth::user()?->isPartner() ?? false) {
+            return [
+                RelationManagers\DocumentsRelationManager::class,
+            ];
+        }
+
         return [
             RelationManagers\DocumentsRelationManager::class,
             RelationManagers\ShareholdersRelationManager::class,

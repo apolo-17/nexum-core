@@ -66,6 +66,7 @@ class UserResource extends Resource
             'notario' => 'Notario',
             'asistente_notario' => 'Asistente de notario',
             'soldado' => 'Soldado',
+            'partner' => 'Partner (solo lectura)',
         ];
     }
 

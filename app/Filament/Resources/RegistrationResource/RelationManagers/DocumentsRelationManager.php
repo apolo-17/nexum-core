@@ -50,7 +50,10 @@ class DocumentsRelationManager extends RelationManager
      */
     public function isReadOnly(): bool
     {
-        return false;
+        // El partner (aliado externo) es solo lectura: Filament oculta automáticamente
+        // crear/editar/borrar. Las acciones personalizadas (evaluar, aprobar, reintentar
+        // IA) se blindan aparte en table(); la descarga de documentos sí queda disponible.
+        return auth()->user()?->isPartner() ?? false;
     }
 
     /**
@@ -122,11 +125,16 @@ class DocumentsRelationManager extends RelationManager
             ->orderBy('created_at')
             ->get();
 
+        // El partner es solo lectura y NUNCA ve documentos de e.firma (credenciales).
+        $isPartner = auth()->user()?->isPartner() ?? false;
+
         return $table
             // Auto-refresh every 3 s so the IA column updates without manual reload.
             ->poll('3s')
             // Eager-load analysis to avoid N+1: one extra JOIN instead of one query per row.
-            ->modifyQueryUsing(fn ($query) => $query->with('analysis'))
+            // Para el partner, se excluyen del listado los documentos de e.firma.
+            ->modifyQueryUsing(fn ($query) => $query->with('analysis')
+                ->when($isPartner, fn ($q) => $q->where('type', '!=', DocumentTypeEnum::EFIRMA->value)))
             ->description(function (): ?string {
                 $registration = $this->ownerRecord->load('shareholders', 'documents');
                 $missing = $registration->missingKycDocuments();
@@ -220,9 +228,9 @@ class DocumentsRelationManager extends RelationManager
                     )
                     ->modalWidth('7xl')
                     ->modalSubmitActionLabel('Guardar evaluación')
-                    // Hide the submit button entirely once the document is evaluated:
-                    // its status is final and the modal becomes view-only.
-                    ->modalSubmitAction(fn (Document $record) => $record->isEvaluated() ? false : null)
+                    // Hide the submit button entirely once the document is evaluated
+                    // (status is final) or for a partner (read-only): the modal is view-only.
+                    ->modalSubmitAction(fn (Document $record) => ($record->isEvaluated() || $isPartner) ? false : null)
                     ->form([
                         // Evaluation radio — pre-filled with the current state.
                         // Disabled once evaluated: status is final and cannot change.
@@ -234,7 +242,7 @@ class DocumentsRelationManager extends RelationManager
                                 'pending' => '— Pendiente de revisión',
                             ])
                             ->required()
-                            ->disabled(fn (Document $record): bool => $record->isEvaluated())
+                            ->disabled(fn (Document $record): bool => $record->isEvaluated() || $isPartner)
                             ->helperText(fn (Document $record): ?string => $record->isEvaluated()
                                 ? 'Este documento ya fue evaluado; su estado es final y no se puede cambiar.'
                                 : null
@@ -263,6 +271,11 @@ class DocumentsRelationManager extends RelationManager
                         ]
                     ))
                     ->action(function (Document $record, array $data): void {
+                        // Read-only guard: a partner can never change a document's status.
+                        if (auth()->user()?->isPartner() ?? false) {
+                            return;
+                        }
+
                         // Final status guard: an already-evaluated document cannot change.
                         if ($record->isEvaluated()) {
                             Notification::make()
@@ -320,11 +333,14 @@ class DocumentsRelationManager extends RelationManager
                         )
                     )
                     ->openUrlInNewTab()
-                    ->visible(fn (Document $record): bool => filled($record->storage_path)),
+                    // El partner puede descargar todo MENOS documentos de e.firma.
+                    ->visible(fn (Document $record): bool => filled($record->storage_path)
+                        && ! ($isPartner && $record->type === DocumentTypeEnum::EFIRMA)),
 
                 // Retry AI extraction — visible only when the previous attempt failed.
-                // Not shown while processing (the job is already running).
+                // Not shown while processing (the job is already running), ni para el partner.
                 Action::make('retryAnalysis')
+                    ->hidden(fn (): bool => $isPartner)
                     ->label('Reintentar extracción IA')
                     ->icon('heroicon-o-arrow-path')
                     ->color('warning')
@@ -480,7 +496,7 @@ class DocumentsRelationManager extends RelationManager
 
                     // Delete — kept inside the same group for convenience.
                     DeleteBulkAction::make(),
-                ]),
+                ])->visible(fn (): bool => ! $isPartner),
             ]);
     }
 

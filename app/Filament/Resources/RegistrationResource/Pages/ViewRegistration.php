@@ -49,6 +49,12 @@ class ViewRegistration extends ViewRecord
         /** @var Registration $record */
         $record = $this->record;
 
+        // El partner es solo lectura: ninguna acción de encabezado (acta, etapa, e.firma,
+        // credenciales, editar). Solo consulta el expediente y descarga documentos.
+        if (auth()->user()?->isPartner() ?? false) {
+            return [];
+        }
+
         return [
             // "Revisar acta" — navigates to the full inline editor.
             // Visible whenever a compiled ACTA_DRAFT with template_data exists.

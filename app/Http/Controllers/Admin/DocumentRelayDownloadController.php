@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\DocumentTypeEnum;
 use App\Http\Controllers\Controller;
 use App\Models\Document;
 use Illuminate\Http\Response;
@@ -57,7 +58,7 @@ class DocumentRelayDownloadController extends Controller
      */
     private function stream(Document $document, bool $attachment): StreamedResponse|Response
     {
-        $this->authorizeAccess();
+        $this->authorizeAccess($document);
 
         if (blank($document->storage_path)) {
             return $this->unavailableResponse(
@@ -103,13 +104,25 @@ class DocumentRelayDownloadController extends Controller
      * NOTE: this is a role gate, not per-expediente ownership — it matches the panel,
      * which currently shows every expediente to all staff. Tighten to assigned-only
      * (assigned_notario_id / assigned_asistente_id) when the panel is scoped per user.
+     *
+     * The read-only `partner` role may also download documents, EXCEPT e.firma
+     * credentials — those stay off-limits to partners at the route level too.
+     *
+     * @param  Document  $document  The document being served (to gate e.firma for partners).
      */
-    private function authorizeAccess(): void
+    private function authorizeAccess(Document $document): void
     {
         $user = Auth::user();
 
-        abort_unless(
-            $user !== null && $user->hasAnyRole(['super_admin', 'notario', 'asistente_notario']),
+        if ($user !== null && $user->hasAnyRole(['super_admin', 'notario', 'asistente_notario'])) {
+            return;
+        }
+
+        if ($user !== null && $user->isPartner() && $document->type !== DocumentTypeEnum::EFIRMA) {
+            return;
+        }
+
+        abort(
             Response::HTTP_FORBIDDEN,
             'No tienes permiso para acceder a este documento.',
         );
