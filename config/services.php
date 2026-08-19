@@ -39,6 +39,9 @@ return [
         'base_url' => env('SINGAPUR_API_URL', 'http://152.42.206.224:8789'),
         'bearer_token' => env('SINGAPUR_BEARER_TOKEN'),
         'webhook_secret' => env('SINGAPUR_WEBHOOK_SECRET'),
+        // Relay endpoint we POST a lightweight "document ready" alert to (pull model).
+        // When empty, alerts are skipped (e.g. local dev) so nothing is dispatched.
+        'document_alert_url' => env('SINGAPUR_DOCUMENT_ALERT_URL'),
     ],
 
     // MUA bot — Python microservice that automates the SE/MUA portal via Playwright.

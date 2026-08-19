@@ -4,6 +4,8 @@ namespace App\Models;
 
 use App\Enums\DocumentTypeEnum;
 use App\Enums\RegistrationStageEnum;
+use App\Observers\DocumentObserver;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -18,6 +20,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * in R2 (or local disk in development). The storage_path column holds the
  * path where the file was persisted. Soft-deleted records are retained for audit.
  */
+#[ObservedBy(DocumentObserver::class)]
 class Document extends Model
 {
     use HasFactory, HasUlids, SoftDeletes;
