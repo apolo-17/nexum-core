@@ -1,12 +1,13 @@
 <?php
 
 use App\Http\Controllers\Api\V3\AuthController;
+use App\Http\Controllers\Api\V3\CompanyDocumentRelayController;
 use App\Http\Controllers\Api\V3\DenominationPoolController;
+use App\Http\Controllers\Api\V3\IntakeController;
 use App\Http\Controllers\Api\V3\LegalNameController;
 use App\Http\Controllers\Api\V3\MuaBotCallbackController;
 use App\Http\Controllers\Api\V3\MuaPendingController;
 use App\Http\Controllers\Api\V3\RegistrationController;
-use App\Http\Controllers\Api\V3\IntakeController;
 use App\Http\Controllers\Api\V3\SatBotCallbackController;
 use App\Http\Controllers\Api\V3\SatBotFormingController;
 use App\Http\Controllers\Api\V3\SatBotReviewController;
@@ -65,6 +66,13 @@ Route::prefix('v3')->group(function () {
     // Denomination pool for the China/Singapur front — token-guarded (X-Pool-Token) so
     // their server reads our live available names instead of a disconnected local list.
     Route::get('denominations/pool', [DenominationPoolController::class, 'availableForRelay']);
+
+    // Finished company documents for the China/Singapur relay — pull model, token-guarded
+    // (X-Nexum-Secret, the same secret they already send). Instead of us pushing heavy files
+    // (acta, e.firma ZIP, CSF, ...), the relay lists what is ready and gets a short-lived
+    // pre-signed R2 link to download each document straight from storage.
+    Route::get('relay/company-documents/{singapurClientCode}', [CompanyDocumentRelayController::class, 'index']);
+    Route::get('relay/company-documents/{singapurClientCode}/{documentType}', [CompanyDocumentRelayController::class, 'show']);
 
     // Reenviar el email de cita agendada a todos los soldados (token X-Intake-Token).
     Route::post('intake/resend-cita-emails', [IntakeController::class, 'resendCitaEmails']);
