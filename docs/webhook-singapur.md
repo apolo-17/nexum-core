@@ -4,6 +4,28 @@
 > exacto** del `POST` que Nexum espera para crear un expediente.
 > Document for the relay team (China / "Singapur"). Describes the **exact format**
 > of the `POST` Nexum expects in order to create a registration.
+>
+> **Versión / Version: 2026-08-19**
+
+---
+
+## ⚠️ Cambios recientes (2026-08-19) · Recent changes
+
+A partir de esta versión, Nexum **valida el contenido de negocio** de forma
+síncrona. Un payload incompleto ya **NO** se acepta con `202`: se rechaza con
+`422` y el relay debe reenviarlo corregido. Campos que **ahora son obligatorios**:
+
+_As of this version, Nexum **validates the business content** synchronously. An
+incomplete payload is **no longer** accepted with `202`; it is rejected with `422`
+and the relay must resend it fixed. Fields that are **now mandatory**:_
+
+- `fields.companyName`, `fields.companyType`
+- `fields.companyObject` — *antes opcional / previously optional*
+- `fields.capitalSocial` — *antes opcional / previously optional*
+- `fields.shareholderCount` (≥ 1)
+- **`fields.denominationPoolId`** — *nuevo / new*
+- Por socio / per shareholder: `naturalShareholderName{i}`, `naturalSharePercentage{i}` (> 0),
+  `naturalShareholderEmail{i}`, `naturalNationality{i}`
 
 ---
 
@@ -38,10 +60,11 @@ con llaves **planas e indexadas por accionista** (`naturalShareholderName1`,
   "fields": {
     "companyName": "NOVA CONSULTORÍA EMPRESARIAL",
     "companyType": "sa",
-    "_language": "zh",
-    "companyObject": "Servicios de consultoría",
+    "companyObject": "Servicios de consultoría empresarial.",
     "capitalSocial": 50000,
+    "denominationPoolId": "pool-abc-123",
     "shareholderCount": 2,
+    "_language": "zh",
 
     "shareholderType1": "natural",
     "naturalShareholderName1": "吴佳鑫",
@@ -72,38 +95,43 @@ con llaves **planas e indexadas por accionista** (`naturalShareholderName1`,
 
 ### Campos obligatorios
 
+Todos los campos ✅ se validan de forma **síncrona**: si falta alguno, la respuesta
+es `422` con el detalle en `errors` y el expediente **no** se crea.
+
 **Nivel superior**
-
-| Campo | Obligatorio | Si falta |
-|-------|:-----------:|----------|
-| `id` | ✅ | `422` inmediato. Es también la **llave de idempotencia**: no reenviar el mismo `id`. |
-| `registration_number` | ✅ | El `POST` responde `202` pero el procesamiento **falla** en segundo plano. |
-| `company_folder_name` | ✅ | Igual: falla en el job. |
-| `fields` (objeto) | ✅ | Igual: falla en el job. |
-| `files` | ➖ | Opcional (default `[]`). |
-| `incorporation_deed` | ➖ | Opcional (acta en base64). |
-
-**Dentro de `fields`**
 
 | Campo | Obligatorio | Notas |
 |-------|:-----------:|-------|
-| `shareholderCount` | ✅ si hay socios | Entero. Define cuántos accionistas (1..N) se leen. |
-| `companyName` | ⚠️ recomendado | Default `''`; sin él el expediente queda sin nombre. |
-| `companyType` | ⚠️ recomendado | `sa`, `srl`, `sapi`, … |
+| `id` | ✅ | UUID del paquete. Es también la **llave de idempotencia**: no reenviar el mismo `id`. |
+| `registration_number` | ✅ | |
+| `company_folder_name` | ✅ | |
+| `fields` (objeto) | ✅ | Bolsa de campos planos (ver abajo). |
+| `files` | ➖ | Opcional (default `[]`). |
+| `incorporation_deed` | ➖ | Opcional (acta pre-generada en base64). |
+
+**Dentro de `fields` — datos de la empresa**
+
+| Campo | Obligatorio | Notas |
+|-------|:-----------:|-------|
+| `companyName` | ✅ | Razón social base. |
+| `companyType` | ✅ | `sa`, `srl` o `sapi`. |
+| `companyObject` | ✅ | Objeto social. |
+| `capitalSocial` | ✅ | Numérico. |
+| `shareholderCount` | ✅ | Entero ≥ 1. Define cuántos accionistas (1..N) se leen. |
+| `denominationPoolId` | ✅ | ID de la denominación asignada del pool de Nexum. |
 | `_language` | ➖ | Default `zh`. |
-| `companyObject`, `capitalSocial` | ➖ | Opcionales. |
 
 **Por cada accionista `i` (de 1 a `shareholderCount`)** — el índice va pegado al final:
 
-| Campo | Obligatorio |
-|-------|:-----------:|
-| `naturalShareholderName{i}` (o `juridicaShareholderName{i}`) | ✅ |
-| `naturalSharePercentage{i}` | ✅ (número) |
-| `naturalShareholderEmail{i}` | ⚠️ recomendado |
-| `naturalNationality{i}` | ⚠️ recomendado |
-| `shareholderType{i}` | ➖ (default `natural`) |
-| `naturalMarried{i}` | ➖ (`"yes"` / `"no"`) |
-| `naturalGender{i}`, `naturalBirthdate{i}`, `naturalBirthplace{i}`, `naturalCivilStatus{i}`, `naturalPhone{i}`, `naturalPhoneCountryCode{i}`, `naturalTaxId{i}` | ➖ |
+| Campo | Obligatorio | Notas |
+|-------|:-----------:|-------|
+| `naturalShareholderName{i}` | ✅ | Acepta también `naturalShareholderNameEs{i}` o `juridicaShareholderName{i}`. |
+| `naturalSharePercentage{i}` | ✅ | Número **mayor que 0**. |
+| `naturalShareholderEmail{i}` | ✅ | Correo — **obligatorio** (se usa para la firma electrónica DocuSign). |
+| `naturalNationality{i}` | ✅ | Acepta también `naturalOtherNationality{i}`. |
+| `shareholderType{i}` | ➖ | Default `natural`. |
+| `naturalMarried{i}` | ➖ | `"yes"` / `"no"`. |
+| `naturalGender{i}`, `naturalBirthdate{i}`, `naturalBirthplace{i}`, `naturalCivilStatus{i}`, `naturalPhone{i}`, `naturalPhoneCountryCode{i}`, `naturalTaxId{i}`, `naturalPassportNumber{i}` | ➖ | Opcionales — Nexum extrae estos datos de los documentos con IA. |
 
 **Cada entrada de `files[]`** (si se envían archivos)
 
@@ -122,8 +150,20 @@ con llaves **planas e indexadas por accionista** (`naturalShareholderName1`,
 |--------|-------------|
 | `202 Accepted` | Recibido y encolado para procesar. |
 | `401 Unauthorized` | Falta o no coincide `X-Nexum-Secret`. |
-| `422 Unprocessable Entity` | Falta `id`. |
 | `409 Conflict` | Ese `id` ya se había recibido (idempotencia). |
+| `422 Unprocessable Entity` | Falta algún campo obligatorio. El detalle viene en `errors`. |
+
+Ejemplo de cuerpo `422`:
+
+```json
+{
+  "message": "Falta denominationPoolId (denominación asignada del pool). (and 1 more errors)",
+  "errors": {
+    "fields.denominationPoolId": ["Falta denominationPoolId (denominación asignada del pool)."],
+    "fields": ["El socio 2 no tiene correo (naturalShareholderEmail2); es obligatorio para la firma."]
+  }
+}
+```
 
 ### Ejemplo `curl`
 
@@ -160,38 +200,43 @@ per-shareholder indexed keys** (`naturalShareholderName1`, `naturalSharePercenta
 
 ### Required fields
 
+All ✅ fields are validated **synchronously**: if any is missing the response is
+`422` with the detail in `errors`, and the registration is **not** created.
+
 **Top level**
-
-| Field | Required | If missing |
-|-------|:--------:|------------|
-| `id` | ✅ | Immediate `422`. Also the **idempotency key**: never resend the same `id`. |
-| `registration_number` | ✅ | `POST` returns `202` but background processing **fails**. |
-| `company_folder_name` | ✅ | Same: job fails. |
-| `fields` (object) | ✅ | Same: job fails. |
-| `files` | ➖ | Optional (defaults to `[]`). |
-| `incorporation_deed` | ➖ | Optional (base64 deed). |
-
-**Inside `fields`**
 
 | Field | Required | Notes |
 |-------|:--------:|-------|
-| `shareholderCount` | ✅ if any shareholders | Integer. How many shareholders (1..N) to read. |
-| `companyName` | ⚠️ recommended | Defaults to `''`; without it the registration has no name. |
-| `companyType` | ⚠️ recommended | `sa`, `srl`, `sapi`, … |
+| `id` | ✅ | Package UUID. Also the **idempotency key**: never resend the same `id`. |
+| `registration_number` | ✅ | |
+| `company_folder_name` | ✅ | |
+| `fields` (object) | ✅ | Flat field bag (see below). |
+| `files` | ➖ | Optional (defaults to `[]`). |
+| `incorporation_deed` | ➖ | Optional (base64 pre-rendered deed). |
+
+**Inside `fields` — company data**
+
+| Field | Required | Notes |
+|-------|:--------:|-------|
+| `companyName` | ✅ | Base company name. |
+| `companyType` | ✅ | `sa`, `srl` or `sapi`. |
+| `companyObject` | ✅ | Corporate purpose. |
+| `capitalSocial` | ✅ | Numeric. |
+| `shareholderCount` | ✅ | Integer ≥ 1. How many shareholders (1..N) to read. |
+| `denominationPoolId` | ✅ | ID of the denomination assigned from Nexum's pool. |
 | `_language` | ➖ | Defaults to `zh`. |
-| `companyObject`, `capitalSocial` | ➖ | Optional. |
 
 **Per shareholder `i` (1..`shareholderCount`)** — the index is appended to the key:
 
-| Field | Required |
-|-------|:--------:|
-| `naturalShareholderName{i}` (or `juridicaShareholderName{i}`) | ✅ |
-| `naturalSharePercentage{i}` | ✅ (number) |
-| `naturalShareholderEmail{i}` | ⚠️ recommended |
-| `naturalNationality{i}` | ⚠️ recommended |
-| `shareholderType{i}` | ➖ (defaults to `natural`) |
-| `naturalMarried{i}` | ➖ (`"yes"` / `"no"`) |
-| `naturalGender{i}`, `naturalBirthdate{i}`, `naturalBirthplace{i}`, `naturalCivilStatus{i}`, `naturalPhone{i}`, `naturalPhoneCountryCode{i}`, `naturalTaxId{i}` | ➖ |
+| Field | Required | Notes |
+|-------|:--------:|-------|
+| `naturalShareholderName{i}` | ✅ | Also accepts `naturalShareholderNameEs{i}` or `juridicaShareholderName{i}`. |
+| `naturalSharePercentage{i}` | ✅ | Number **greater than 0**. |
+| `naturalShareholderEmail{i}` | ✅ | Email — **mandatory** (used for the DocuSign e-signature). |
+| `naturalNationality{i}` | ✅ | Also accepts `naturalOtherNationality{i}`. |
+| `shareholderType{i}` | ➖ | Defaults to `natural`. |
+| `naturalMarried{i}` | ➖ | `"yes"` / `"no"`. |
+| `naturalGender{i}`, `naturalBirthdate{i}`, `naturalBirthplace{i}`, `naturalCivilStatus{i}`, `naturalPhone{i}`, `naturalPhoneCountryCode{i}`, `naturalTaxId{i}`, `naturalPassportNumber{i}` | ➖ | Optional — Nexum extracts these from the documents via AI. |
 
 **Each `files[]` entry** (when files are sent)
 
@@ -210,8 +255,20 @@ per-shareholder indexed keys** (`naturalShareholderName1`, `naturalSharePercenta
 |------|---------|
 | `202 Accepted` | Received and queued for processing. |
 | `401 Unauthorized` | Missing/incorrect `X-Nexum-Secret`. |
-| `422 Unprocessable Entity` | Missing `id`. |
 | `409 Conflict` | That `id` was already received (idempotency). |
+| `422 Unprocessable Entity` | A required field is missing. Detail is in `errors`. |
+
+Example `422` body:
+
+```json
+{
+  "message": "Falta denominationPoolId (denominación asignada del pool). (and 1 more errors)",
+  "errors": {
+    "fields.denominationPoolId": ["Falta denominationPoolId (denominación asignada del pool)."],
+    "fields": ["El socio 2 no tiene correo (naturalShareholderEmail2); es obligatorio para la firma."]
+  }
+}
+```
 
 ### `curl` example
 
