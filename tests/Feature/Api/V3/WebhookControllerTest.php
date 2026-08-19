@@ -69,7 +69,42 @@ class WebhookControllerTest extends TestCase
 
         $this->postJson(self::WEBHOOK_URL, $payload, ['X-Nexum-Secret' => self::VALID_SECRET])
             ->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
-            ->assertJsonPath('error', 'Missing id');
+            ->assertJsonValidationErrors('id');
+    }
+
+    #[Test]
+    public function it_returns_422_when_render_critical_fields_are_missing(): void
+    {
+        $payload = $this->validPayload();
+        unset(
+            $payload['fields']['companyObject'],
+            $payload['fields']['capitalSocial'],
+            $payload['fields']['denominationPoolId'],
+        );
+
+        $this->postJson(self::WEBHOOK_URL, $payload, ['X-Nexum-Secret' => self::VALID_SECRET])
+            ->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors([
+                'fields.companyObject',
+                'fields.capitalSocial',
+                'fields.denominationPoolId',
+            ]);
+    }
+
+    #[Test]
+    public function it_returns_422_when_a_shareholder_is_incomplete(): void
+    {
+        $payload = $this->validPayload();
+        // Second shareholder missing name, percentage and email.
+        unset(
+            $payload['fields']['naturalShareholderName2'],
+            $payload['fields']['naturalSharePercentage2'],
+            $payload['fields']['naturalShareholderEmail2'],
+        );
+
+        $this->postJson(self::WEBHOOK_URL, $payload, ['X-Nexum-Secret' => self::VALID_SECRET])
+            ->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors('fields');
     }
 
     // -------------------------------------------------------------------------
@@ -172,6 +207,9 @@ class WebhookControllerTest extends TestCase
             'fields' => [
                 'companyName' => 'NOVA CONSULTORÍA EMPRESARIAL',
                 'companyType' => 'sa',
+                'companyObject' => 'Servicios de consultoría empresarial.',
+                'capitalSocial' => '50000',
+                'denominationPoolId' => 'pool-abc-123',
                 'shareholderCount' => '2',
                 'shareholderType1' => 'natural',
                 'naturalShareholderName1' => 'Jiaxin Wu',

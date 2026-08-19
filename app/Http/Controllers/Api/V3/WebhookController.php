@@ -43,21 +43,29 @@ class WebhookController extends Controller
             );
         }
 
-        // Validate the submission envelope. Declaring the rules here also feeds
-        // Scramble's auto-generated API docs (otherwise only `id` is shown).
-        // Inner `fields.*` values are intentionally left loose — they are typed and
-        // parsed downstream by SingapurSubmissionParser. We only enforce the
-        // structural envelope so a malformed payload fails fast with 422 instead of
-        // being accepted (202) and then crashing the queued job.
+        // Validate the submission envelope AND the business fields the acta render
+        // strictly needs. Declaring the rules here also feeds Scramble's auto-generated
+        // API docs. We now enforce the render-critical `fields.*` so the relay is forced
+        // to send a complete payload — an incomplete submission fails fast with 422
+        // instead of being accepted (202) and then producing a blank/defaulted acta.
         $validated = $request->validate([
             // Submission UUID — also the idempotency key on webhook_events.
             'id' => ['required', 'string'],
             'registration_number' => ['required', 'string'],
             'company_folder_name' => ['required', 'string'],
 
-            // Flat field bag with company + per-shareholder data (companyName,
-            // companyType, shareholderCount, naturalShareholderName{i}, etc.).
-            'fields' => ['required', 'array'],
+            // Flat field bag with company + per-shareholder data.
+            'fields' => ['required', 'array', $this->shareholdersComplete()],
+
+            // Company-level fields the acta render needs (no silent defaults anymore).
+            'fields.companyName' => ['required', 'string'],
+            'fields.companyType' => ['required', 'string'],
+            'fields.companyObject' => ['required', 'string'],
+            'fields.capitalSocial' => ['required', 'numeric'],
+            'fields.shareholderCount' => ['required', 'integer', 'min:1'],
+
+            // Denomination assigned from our pool (the relay echoes the id back).
+            'fields.denominationPoolId' => ['required'],
 
             // Optional pre-rendered acta (base64 string or {content,...} object).
             'incorporation_deed' => ['nullable'],
@@ -70,7 +78,7 @@ class WebhookController extends Controller
             'files.*.content_type' => ['required', 'string'],
             'files.*.size' => ['required'],
             'files.*.content' => ['nullable', 'string'],
-        ]);
+        ], $this->singapurValidationMessages());
 
         $eventId = $validated['id'];
 
@@ -96,6 +104,67 @@ class WebhookController extends Controller
             ['message' => 'Event accepted'],
             Response::HTTP_ACCEPTED,
         );
+    }
+
+    /**
+     * Closure rule that validates every declared shareholder carries the render-critical
+     * fields: a name, a positive share percentage, an email (needed for DocuSign) and a
+     * nationality. Indexed keys (…{i}) cannot be expressed with Laravel wildcards, so the
+     * check runs over `fields` directly and reports each gap with the exact field name.
+     */
+    private function shareholdersComplete(): \Closure
+    {
+        return function (string $attribute, mixed $value, \Closure $fail): void {
+            if (! is_array($value)) {
+                return;
+            }
+
+            $count = (int) ($value['shareholderCount'] ?? 0);
+
+            for ($i = 1; $i <= $count; $i++) {
+                $name = $value["naturalShareholderNameEs{$i}"]
+                    ?? $value["naturalShareholderName{$i}"]
+                    ?? $value["juridicaShareholderName{$i}"]
+                    ?? null;
+
+                if (blank($name)) {
+                    $fail("El socio {$i} no tiene nombre (naturalShareholderName{$i}).");
+                }
+
+                if (! isset($value["naturalSharePercentage{$i}"]) || (float) $value["naturalSharePercentage{$i}"] <= 0) {
+                    $fail("El socio {$i} no tiene porcentaje de participación válido (naturalSharePercentage{$i}).");
+                }
+
+                if (blank($value["naturalShareholderEmail{$i}"] ?? null)) {
+                    $fail("El socio {$i} no tiene correo (naturalShareholderEmail{$i}); es obligatorio para la firma.");
+                }
+
+                $nationality = $value["naturalNationality{$i}"] ?? $value["naturalOtherNationality{$i}"] ?? null;
+
+                if (blank($nationality)) {
+                    $fail("El socio {$i} no tiene nacionalidad (naturalNationality{$i}).");
+                }
+            }
+        };
+    }
+
+    /**
+     * Human-readable Spanish messages for the Singapur submission validation.
+     *
+     * @return array<string, string>
+     */
+    private function singapurValidationMessages(): array
+    {
+        return [
+            'fields.companyName.required' => 'Falta companyName (razón social base).',
+            'fields.companyType.required' => 'Falta companyType (sa, srl o sapi).',
+            'fields.companyObject.required' => 'Falta companyObject (objeto social).',
+            'fields.capitalSocial.required' => 'Falta capitalSocial (capital social).',
+            'fields.capitalSocial.numeric' => 'capitalSocial debe ser numérico.',
+            'fields.shareholderCount.required' => 'Falta shareholderCount (número de socios).',
+            'fields.shareholderCount.min' => 'Debe declararse al menos un socio (shareholderCount ≥ 1).',
+            'fields.denominationPoolId.required' => 'Falta denominationPoolId (denominación asignada del pool).',
+        ];
     }
 
     /**
