@@ -85,4 +85,64 @@ class UserInvitationTest extends TestCase
 
         $this->assertNotNull($invitee->fresh()->email_verified_at);
     }
+
+    // -------------------------------------------------------------------------
+    // Multi-role assignment
+    // -------------------------------------------------------------------------
+
+    #[Test]
+    public function syncing_multiple_roles_assigns_all_of_them(): void
+    {
+        $user = User::factory()->create();
+
+        UserResource::syncRolesAndSoldado($user, ['super_admin', 'soldado']);
+
+        $fresh = $user->fresh();
+        $this->assertTrue($fresh->hasRole('super_admin'));
+        $this->assertTrue($fresh->hasRole('soldado'));
+    }
+
+    #[Test]
+    public function assigning_the_soldado_role_creates_a_linked_soldado_profile(): void
+    {
+        $user = User::factory()->create();
+
+        UserResource::syncRolesAndSoldado($user, ['super_admin', 'soldado']);
+
+        $soldado = \App\Models\Soldado::where('user_id', $user->id)->first();
+
+        $this->assertNotNull($soldado);
+        $this->assertSame($user->email, $soldado->email);
+        $this->assertTrue((bool) $soldado->available_for_mua);
+    }
+
+    #[Test]
+    public function assigning_the_soldado_role_links_an_existing_soldado_by_email(): void
+    {
+        $user = User::factory()->create();
+        $soldado = \App\Models\Soldado::create([
+            'name' => 'Existente',
+            'email' => $user->email,
+        ]);
+
+        UserResource::syncRolesAndSoldado($user, ['soldado']);
+
+        $this->assertSame($user->id, $soldado->fresh()->user_id);
+        $this->assertSame(1, \App\Models\Soldado::where('email', $user->email)->count());
+    }
+
+    #[Test]
+    public function removing_the_soldado_role_keeps_the_profile_but_drops_the_role(): void
+    {
+        $user = User::factory()->create();
+        UserResource::syncRolesAndSoldado($user, ['super_admin', 'soldado']);
+
+        // Re-sync sin soldado: conserva super_admin y el perfil, quita el rol soldado.
+        UserResource::syncRolesAndSoldado($user, ['super_admin']);
+
+        $fresh = $user->fresh();
+        $this->assertTrue($fresh->hasRole('super_admin'));
+        $this->assertFalse($fresh->hasRole('soldado'));
+        $this->assertNotNull(\App\Models\Soldado::where('user_id', $user->id)->first());
+    }
 }

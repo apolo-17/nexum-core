@@ -41,11 +41,9 @@ class CreateUser extends CreateRecord
      */
     protected function afterCreate(): void
     {
-        $role = $this->data['role'] ?? null;
+        $roles = (array) ($this->data['assigned_roles'] ?? []);
 
-        if ($role !== null) {
-            $this->record->syncRoles([$role]);
-        }
+        UserResource::syncRolesAndSoldado($this->record, $roles);
 
         // The record already exists at this point; never let an email failure
         // break user creation — surface a warning so the admin can retry the

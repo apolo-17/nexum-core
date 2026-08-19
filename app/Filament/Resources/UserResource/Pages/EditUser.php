@@ -29,19 +29,19 @@ class EditUser extends EditRecord
      */
     protected function mutateFormDataBeforeFill(array $data): array
     {
-        $data['role'] = $this->record->roles->first()?->name;
+        $data['assigned_roles'] = $this->record->roles->pluck('name')->all();
 
         return $data;
     }
 
     /**
-     * Sync the selected role after saving the user's attributes.
+     * Sync the selected roles after saving the user's attributes.
      */
     protected function afterSave(): void
     {
-        $role = $this->data['role'] ?? null;
+        $roles = (array) ($this->data['assigned_roles'] ?? []);
 
-        $this->record->syncRoles($role !== null ? [$role] : []);
+        UserResource::syncRolesAndSoldado($this->record, $roles);
     }
 
     /**

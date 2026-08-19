@@ -65,6 +65,7 @@ class UserResource extends Resource
             'super_admin' => 'Administrador',
             'notario' => 'Notario',
             'asistente_notario' => 'Asistente de notario',
+            'soldado' => 'Soldado',
         ];
     }
 
@@ -100,11 +101,13 @@ class UserResource extends Resource
                         ->maxLength(255)
                         ->unique(ignoreRecord: true),
 
-                    Select::make('role')
-                        ->label('Rol')
+                    Select::make('assigned_roles')
+                        ->label('Roles')
                         ->options(self::roleOptions())
+                        ->multiple()
                         ->required()
-                        ->native(false),
+                        ->native(false)
+                        ->helperText('Puedes asignar más de un rol (p. ej. Administrador y Soldado). Si incluyes "Soldado" se crea su perfil para que complete su RFC y e.firma al activar la cuenta.'),
                 ])->columns(2),
         ]);
     }
@@ -200,8 +203,52 @@ class UserResource extends Resource
 
         $user->notify(new AccountInvitationNotification(
             $token,
-            self::roleOptions()[$user->roles->first()?->name] ?? null,
+            self::rolesLabel($user),
         ));
+    }
+
+    /**
+     * Human-readable, comma-joined label of all the user's roles (or null if none).
+     */
+    public static function rolesLabel(User $user): ?string
+    {
+        $labels = $user->roles
+            ->pluck('name')
+            ->map(fn (string $name): string => self::roleOptions()[$name] ?? $name)
+            ->all();
+
+        return $labels === [] ? null : implode(' y ', $labels);
+    }
+
+    /**
+     * Sync a user's roles from the multi-select and, when "soldado" is among them,
+     * ensure the user has a linked Soldado profile so the soldado features (Mis Citas,
+     * fila virtual, e.firma) work. The profile is created minimally (name/email from the
+     * user) and the soldado completes RFC/INE/e.firma through the activation link — the
+     * onboarding form (CompleteRegistration) shows those fields when a linked soldado exists.
+     *
+     * @param  array<int, string>  $roleNames  Role slugs selected in the form.
+     */
+    public static function syncRolesAndSoldado(User $user, array $roleNames): void
+    {
+        $user->syncRoles($roleNames);
+
+        if (! in_array('soldado', $roleNames, true)) {
+            return;
+        }
+
+        // Vincula un soldado existente con el mismo correo, o crea uno nuevo. No se pisan
+        // datos ya capturados; solo se garantiza el vínculo user_id ↔ soldado.
+        $soldado = \App\Models\Soldado::firstOrNew(['email' => $user->email]);
+        $soldado->name = $soldado->name ?: $user->name;
+        $soldado->user_id = $user->id;
+
+        if (! $soldado->exists) {
+            // Nuevo perfil: habilitar e.firma para que el onboarding pida su FIEL.
+            $soldado->available_for_mua = true;
+        }
+
+        $soldado->save();
     }
 
     /**
