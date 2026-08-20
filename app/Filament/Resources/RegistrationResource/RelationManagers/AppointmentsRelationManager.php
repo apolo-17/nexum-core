@@ -297,15 +297,19 @@ class AppointmentsRelationManager extends RelationManager
                                 ]),
                         ]),
 
-                    // Relación de socios (.xlsx) que el SAT exige en la cita de inscripción
-                    // de persona moral (requisito 2 del acuse). Solo aplica a la cita de RFC.
-                    // Previsualiza los datos que el SAT coteja contra el acta, genera el
-                    // archivo y lo deja listo para descargar y llevar en la USB.
+                    // Relación de socios (.xlsx) que el SAT exige tanto en la cita de
+                    // inscripción de persona moral (RFC) como en la de e.firma (FIEL): en
+                    // ambas cotejan la tabla de accionistas contra el acta. Previsualiza los
+                    // datos, genera el archivo y lo deja listo para descargar y llevar en la USB.
                     Action::make('generateSatRelation')
                         ->label('Relación de socios (.xlsx)')
                         ->icon('heroicon-o-table-cells')
                         ->color('info')
-                        ->visible(fn (Appointment $record): bool => $record->type === AppointmentTypeEnum::RFC
+                        ->visible(fn (Appointment $record): bool => in_array(
+                            $record->type,
+                            [AppointmentTypeEnum::RFC, AppointmentTypeEnum::FIEL],
+                            true,
+                        )
                             && $record->registration !== null
                             && $record->registration->shareholders()->exists())
                         ->modalHeading('Relación de socios para el SAT')

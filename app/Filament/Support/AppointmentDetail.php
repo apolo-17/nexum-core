@@ -109,10 +109,15 @@ class AppointmentDetail
                                 ->openUrlInNewTab(),
                         ),
 
-                    // Relación de socios (.xlsx) — solo en la cita de RFC (inscripción PM).
-                    // Un clic: genera con los datos del expediente y descarga (sin ZIP).
+                    // Relación de socios (.xlsx) — la exige el SAT tanto en la cita de RFC
+                    // (inscripción PM) como en la de e.firma (FIEL). Un clic: genera con los
+                    // datos del expediente y descarga (sin ZIP).
                     TextEntry::make('relacion')->hiddenLabel()
-                        ->visible(fn (Appointment $r): bool => $r->type === AppointmentTypeEnum::RFC)
+                        ->visible(fn (Appointment $r): bool => in_array(
+                            $r->type,
+                            [AppointmentTypeEnum::RFC, AppointmentTypeEnum::FIEL],
+                            true,
+                        ))
                         ->state(fn (Appointment $r): string => self::relationDocument($r) !== null
                             ? 'Relación de socios (.xlsx)'
                             : 'Relación de socios — genera y descarga →')

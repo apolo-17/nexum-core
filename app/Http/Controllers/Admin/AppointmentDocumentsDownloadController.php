@@ -46,9 +46,10 @@ class AppointmentDocumentsDownloadController extends Controller
             $files['comprobante_domicilio.pdf'] = $comprobante->storage_path;
         }
 
-        // Relación de socios (.xlsx) — required by the SAT for the RFC (persona moral)
-        // appointment. Bundled so the soldado carries it alongside the acuse.
-        if ($appointment->type === AppointmentTypeEnum::RFC) {
+        // Relación de socios (.xlsx) — required by the SAT for both the RFC (persona
+        // moral inscription) and the e.firma (FIEL) appointments. Bundled so the soldado
+        // carries it alongside the acuse.
+        if (in_array($appointment->type, [AppointmentTypeEnum::RFC, AppointmentTypeEnum::FIEL], true)) {
             $relacion = $appointment->registration?->documents()
                 ->where('type', DocumentTypeEnum::SAT_SHAREHOLDER_RELATION->value)
                 ->whereNotNull('storage_path')
