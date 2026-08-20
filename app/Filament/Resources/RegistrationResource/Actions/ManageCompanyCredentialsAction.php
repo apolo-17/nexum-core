@@ -65,6 +65,12 @@ class ManageCompanyCredentialsAction extends Action
                     ->disk(config('filesystems.default'))
                     ->directory('company-credentials')
                     ->visibility('private'),
+
+                FileUpload::make('company_fiel_req_file')
+                    ->label('Requerimiento .req (documentación completa)')
+                    ->disk(config('filesystems.default'))
+                    ->directory('company-credentials')
+                    ->visibility('private'),
             ]))
             ->action(function (Registration $record, array $data): void {
                 $payload = [];
@@ -80,6 +86,10 @@ class ManageCompanyCredentialsAction extends Action
 
                 if (filled($data['company_rfc_file'] ?? null)) {
                     $payload['company_rfc_path'] = $data['company_rfc_file'];
+                }
+
+                if (filled($data['company_fiel_req_file'] ?? null)) {
+                    $payload['company_fiel_req_path'] = $data['company_fiel_req_file'];
                 }
 
                 if (filled($data['company_fiel_password'] ?? null)) {

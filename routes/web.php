@@ -46,7 +46,7 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () 
     Route::get(
         'registrations/{registration}/company-credentials/{type}',
         [CompanyCredentialDownloadController::class, 'download']
-    )->whereIn('type', ['cer', 'key', 'rfc'])->name('company-credentials.download');
+    )->whereIn('type', ['cer', 'key', 'rfc', 'req'])->name('company-credentials.download');
 
     // SAT appointment acuse (acknowledgment) download.
     Route::get(

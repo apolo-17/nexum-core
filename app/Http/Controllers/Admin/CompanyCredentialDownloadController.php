@@ -28,6 +28,7 @@ class CompanyCredentialDownloadController extends Controller
         'cer' => 'company_fiel_cer_path',
         'key' => 'company_fiel_key_path',
         'rfc' => 'company_rfc_path',
+        'req' => 'company_fiel_req_path',
     ];
 
     /**

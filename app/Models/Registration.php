@@ -58,6 +58,7 @@ class Registration extends Model
         'company_fiel_key_path',
         'company_fiel_password',
         'company_rfc_path',
+        'company_fiel_req_path',
         'notes_count',
         'tasks_pending_count',
         'completed_at',

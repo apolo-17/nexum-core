@@ -11,6 +11,7 @@ use App\Jobs\FormSatAppointmentJob;
 use App\Models\Appointment;
 use App\Models\Document;
 use App\Services\Document\DocumentAnalysisService;
+use App\Services\Efirma\EfirmaCredentialValidator;
 use Filament\Actions\Action;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Radio;
@@ -29,6 +30,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Read-only resource showing the logged-in soldado their own SAT appointments.
@@ -225,6 +227,67 @@ class MisCitasResource extends Resource
                             ->visible(fn (Get $get): bool => $get('resultado') === 'attended'),
                     ])
                     ->action(fn (Appointment $record, array $data) => self::procesarReporte($record, $data)),
+
+                Action::make('subirEfirma')
+                    ->label('Subir e.firma')
+                    ->icon('heroicon-o-shield-check')
+                    ->color('success')
+                    ->button()
+                    // Aparece solo en la cita de e.firma (FIEL) cuando ya pasó (y sigue agendada).
+                    ->visible(fn (Appointment $record): bool => $record->type === AppointmentTypeEnum::FIEL
+                        && $record->status === AppointmentStatusEnum::SCHEDULED
+                        && self::yaPaso($record))
+                    ->modalHeading(fn (Appointment $record): string => 'e.firma de '
+                        .($record->registration?->primaryLegalName?->name ?? 'la empresa'))
+                    ->modalDescription('Sube los archivos de la e.firma de la empresa. Validamos que sean correctos antes de guardarlos.')
+                    ->modalSubmitActionLabel('Validar y guardar')
+                    ->form([
+                        Select::make('resultado')
+                            ->label('¿Cómo te fue en tu cita de e.firma?')
+                            ->options([
+                                'attended' => '✅ Salió bien, ya tengo la e.firma',
+                                'rejected' => '❌ Me rechazaron',
+                                'no_show' => '🚫 No asistí',
+                            ])
+                            ->required()
+                            ->native(false)
+                            ->live(),
+
+                        FileUpload::make('cer_file')
+                            ->label('Certificado (.cer)')
+                            ->helperText('El archivo .cer que te entregó el SAT.')
+                            ->disk('s3')
+                            ->directory('company-credentials')
+                            ->maxSize(2048)
+                            ->visible(fn (Get $get): bool => $get('resultado') === 'attended')
+                            ->required(fn (Get $get): bool => $get('resultado') === 'attended'),
+
+                        FileUpload::make('key_file')
+                            ->label('Llave privada (.key)')
+                            ->helperText('El archivo .key que va con tu e.firma.')
+                            ->disk('s3')
+                            ->directory('company-credentials')
+                            ->maxSize(2048)
+                            ->visible(fn (Get $get): bool => $get('resultado') === 'attended')
+                            ->required(fn (Get $get): bool => $get('resultado') === 'attended'),
+
+                        TextInput::make('password')
+                            ->label('Contraseña de la e.firma')
+                            ->password()
+                            ->revealable()
+                            ->maxLength(255)
+                            ->visible(fn (Get $get): bool => $get('resultado') === 'attended')
+                            ->required(fn (Get $get): bool => $get('resultado') === 'attended'),
+
+                        FileUpload::make('req_file')
+                            ->label('Requerimiento (.req) — opcional')
+                            ->helperText('Si lo tienes, súbelo para dejar el expediente de e.firma completo.')
+                            ->disk('s3')
+                            ->directory('company-credentials')
+                            ->maxSize(2048)
+                            ->visible(fn (Get $get): bool => $get('resultado') === 'attended'),
+                    ])
+                    ->action(fn (Appointment $record, array $data) => self::procesarEfirma($record, $data)),
             ])
             ->recordUrl(fn (Appointment $record): string => Pages\ViewMiCita::getUrl(['record' => $record]))
             ->defaultSort('scheduled_at', 'desc');
@@ -320,6 +383,108 @@ class MisCitasResource extends Resource
             self::avisarAdmins($registration, "El soldado completó la cita de RFC. RFC capturado: {$rfc}.");
             Notification::make()->title('¡Listo! ✅')->body('Guardamos tu RFC y la CSF.')->success()->send();
         }
+    }
+
+    /**
+     * Procesa la subida de la e.firma en la cita FIEL: valida el .cer/.key/contraseña con
+     * OpenSSL (que sean pareja, contraseña correcta, vigente y del RFC de la empresa) y,
+     * si pasa, resguarda cer/key/req/contraseña de la empresa. Si no pasa, avisa el motivo
+     * y NO guarda (el soldado puede reintentar).
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private static function procesarEfirma(Appointment $record, array $data): void
+    {
+        $registration = $record->registration;
+        $resultado = (string) ($data['resultado'] ?? '');
+
+        if ($resultado === 'rejected') {
+            $record->update(['status' => AppointmentStatusEnum::REJECTED]);
+            $record->recordEvent(AppointmentEventTypeEnum::REJECTED, 'El soldado reportó que el SAT rechazó la e.firma.', [], 'soldado');
+            self::avisarAdmins($registration, 'El soldado reportó su cita de e.firma como RECHAZADA.');
+            Notification::make()->title('Registrado')->body('Gracias por avisar. El equipo sacará una nueva cita.')->success()->send();
+
+            return;
+        }
+
+        if ($resultado === 'no_show') {
+            $record->update(['status' => AppointmentStatusEnum::NO_SHOW]);
+            $record->recordEvent(AppointmentEventTypeEnum::NO_SHOW, 'El soldado reportó que no asistió a la e.firma.', [], 'soldado');
+            self::avisarAdmins($registration, 'El soldado reportó que NO asistió a su cita de e.firma.');
+            Notification::make()->title('Registrado')->body('Gracias por avisar.')->success()->send();
+
+            return;
+        }
+
+        // Asistió: validar la e.firma antes de resguardarla.
+        $disk = Storage::disk('s3');
+        $cerPath = self::firstPath($data['cer_file'] ?? null);
+        $keyPath = self::firstPath($data['key_file'] ?? null);
+        $reqPath = self::firstPath($data['req_file'] ?? null);
+        $password = (string) ($data['password'] ?? '');
+
+        $cerBytes = $cerPath !== null ? (string) $disk->get($cerPath) : '';
+        $keyBytes = $keyPath !== null ? (string) $disk->get($keyPath) : '';
+
+        $result = app(EfirmaCredentialValidator::class)->validate(
+            $cerBytes,
+            $keyBytes,
+            $password,
+            $registration?->rfc,
+        );
+
+        if (! $result->valid) {
+            // Borra los archivos recién subidos para no dejar credenciales inválidas.
+            foreach ([$cerPath, $keyPath, $reqPath] as $path) {
+                if ($path !== null) {
+                    $disk->delete($path);
+                }
+            }
+
+            Notification::make()
+                ->title('La e.firma no pasó la validación')
+                ->body(implode(' ', $result->errors))
+                ->danger()
+                ->persistent()
+                ->send();
+
+            return; // No marca la cita: el soldado puede corregir y reintentar.
+        }
+
+        // Válida: resguardar cer/key/req/contraseña de la empresa (la contraseña se cifra por cast).
+        $registration?->update([
+            'company_fiel_cer_path' => $cerPath,
+            'company_fiel_key_path' => $keyPath,
+            'company_fiel_req_path' => $reqPath ?? $registration->company_fiel_req_path,
+            'company_fiel_password' => $password,
+        ]);
+
+        $record->update(['status' => AppointmentStatusEnum::ATTENDED]);
+        $record->recordEvent(
+            AppointmentEventTypeEnum::ATTENDED,
+            'El soldado subió y validó la e.firma de la empresa (RFC '.($result->rfc ?? '—').').',
+            ['rfc' => $result->rfc],
+            'soldado',
+        );
+        self::avisarAdmins($registration, 'El soldado completó la e.firma y subió la FIEL validada de la empresa'.($result->rfc !== null ? " (RFC {$result->rfc})" : '').'.');
+
+        Notification::make()
+            ->title('¡e.firma validada y guardada! 🔐')
+            ->body('Tus archivos pasaron todas las validaciones y quedaron resguardados.')
+            ->success()
+            ->send();
+    }
+
+    /**
+     * Normaliza el valor de un FileUpload (array o string) a una ruta única o null.
+     */
+    private static function firstPath(mixed $value): ?string
+    {
+        if (is_array($value)) {
+            $value = reset($value);
+        }
+
+        return filled($value) ? (string) $value : null;
     }
 
     private static function avisarAdmins(?\App\Models\Registration $registration, string $body): void

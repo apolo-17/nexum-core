@@ -986,6 +986,16 @@ class RegistrationResource extends Resource
                             : null)
                         ->openUrlInNewTab(),
 
+                    TextEntry::make('company_fiel_req_path')
+                        ->label('Requerimiento .req')
+                        ->badge()
+                        ->state(fn (Registration $record): string => filled($record->company_fiel_req_path) ? 'Descargar' : 'No cargado')
+                        ->color(fn (Registration $record): string => filled($record->company_fiel_req_path) ? 'success' : 'gray')
+                        ->url(fn (Registration $record): ?string => filled($record->company_fiel_req_path)
+                            ? route('admin.company-credentials.download', ['registration' => $record, 'type' => 'req'])
+                            : null)
+                        ->openUrlInNewTab(),
+
                     TextEntry::make('company_fiel_password')
                         ->label('Contraseña FIEL')
                         ->copyable()
