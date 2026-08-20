@@ -114,7 +114,10 @@ class DenominationPoolTest extends TestCase
                 && $request['denomination'] === 'BETA SERVICIOS';
         });
 
-        $this->assertSame(LegalNameStatusEnum::PENDING, $poolName->fresh()->status);
+        // trySubmit deja la denominación EN VUELO (SUBMITTING): el bot trabaja ~1 min y la
+        // SE la finaliza a PENDING/PROCESS por el webhook (la fuente de verdad). El estado
+        // se fija antes del request para que el callback firmado siempre aterrice.
+        $this->assertSame(LegalNameStatusEnum::SUBMITTING, $poolName->fresh()->status);
 
         Carbon::setTestNow();
     }
