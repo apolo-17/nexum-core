@@ -77,6 +77,9 @@ enum DocumentTypeEnum: string
     /** Signed acta constitutiva — generated at INCORPORATION stage. */
     case INCORPORATION_ACT = 'incorporation_act';
 
+    /** Escritura constitutiva protocolizada ante notario: la oficial, no un borrador/render. */
+    case ACTA_PROTOCOLIZADA = 'acta_protocolizada';
+
     /** Constancia de Situación Fiscal (SAT Mexico) — generated at SAT_REGISTRATION stage. */
     case CSF = 'csf';
 
@@ -125,6 +128,7 @@ enum DocumentTypeEnum: string
             self::ACTA_FINAL => 'Acta Constitutiva (.docx)',
             self::ACTA_SIGNED => 'Acta Constitutiva firmada (DocuSign)',
             self::INCORPORATION_ACT => 'Acta constitutiva',
+            self::ACTA_PROTOCOLIZADA => 'Acta protocolizada (escritura notariada)',
             self::CSF => 'Constancia de Situación Fiscal (SAT)',
             self::PROOF_OF_ADDRESS_MX => 'Comprobante de domicilio fiscal (México)',
             self::BANK_PROOF => 'Comprobante bancario',
