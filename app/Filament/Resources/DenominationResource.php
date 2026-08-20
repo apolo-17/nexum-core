@@ -342,7 +342,7 @@ class DenominationResource extends Resource
                 ->schema([
                     ViewEntry::make('events')
                         ->hiddenLabel()
-                        ->view('filament.infolists.legal-name-timeline'),
+                        ->view('filament.infolists.event-timeline'),
                 ]),
         ]);
     }

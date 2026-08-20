@@ -108,7 +108,7 @@ class ViewMiCita extends ViewRecord
                 ->schema([
                     ViewEntry::make('events')
                         ->hiddenLabel()
-                        ->view('filament.infolists.appointment-timeline'),
+                        ->view('filament.infolists.event-timeline'),
                 ]),
         ]);
     }

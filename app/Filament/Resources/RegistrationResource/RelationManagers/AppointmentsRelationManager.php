@@ -293,7 +293,7 @@ class AppointmentsRelationManager extends RelationManager
                                 ->schema([
                                     ViewEntry::make('events')
                                         ->hiddenLabel()
-                                        ->view('filament.infolists.appointment-timeline'),
+                                        ->view('filament.infolists.event-timeline'),
                                 ]),
                         ]),
 
