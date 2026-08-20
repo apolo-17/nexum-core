@@ -130,7 +130,7 @@ return [
 
     'temporary_file_upload' => [
         'disk' => env('LIVEWIRE_TEMPORARY_FILE_UPLOAD_DISK', env('FILESYSTEM_DISK', 'local')), // Follow the app's default disk: local in dev, R2/s3 in prod. On Laravel Cloud the local disk is ephemeral/multi-instance, so a temp upload written on one container is gone when the validation request lands on another — temporales must live on the shared object store.
-        'rules' => null,                                      // Example: ['file', 'mimes:png,jpg'] | Default: ['required', 'file', 'max:12288'] (12MB)
+        'rules' => ['required', 'file', 'max:51200'],         // 50 MB. El default de Livewire (12 MB) frenaba la carga de actas escaneadas; cada campo Filament sigue aplicando su propio maxSize. PHP en prod permite 100 MB.
         'directory' => null,                                  // Example: 'tmp'                     | Default: 'livewire-tmp'
         'middleware' => null,                                 // Example: 'throttle:5,1'            | Default: 'throttle:60,1'
         'preview_mimes' => [                                  // Supported file types for temporary pre-signed file URLs...

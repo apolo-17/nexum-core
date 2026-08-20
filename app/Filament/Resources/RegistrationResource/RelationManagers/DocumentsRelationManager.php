@@ -87,7 +87,8 @@ class DocumentsRelationManager extends RelationManager
                     'application/msword', // .doc
                     'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
                 ])
-                ->maxSize(20480)
+                ->maxSize(51200) // 50 MB — suficiente para actas protocolizadas escaneadas.
+                ->helperText('Tamaño máximo: 50 MB. Si el archivo pesa más (p. ej. un acta escaneada), comprímelo antes de subirlo — puedes bajar la resolución del escaneo o usar un compresor de PDF.')
                 ->required()
                 ->columnSpanFull(),
 
