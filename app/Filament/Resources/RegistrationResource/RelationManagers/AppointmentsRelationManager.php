@@ -322,8 +322,9 @@ class AppointmentsRelationManager extends RelationManager
                         ->modalSubmitActionLabel('Generar y descargar .xlsx')
                         ->action(function (Appointment $record) {
                             try {
+                                // Reutiliza el .xlsx de la primera cita si ya existe; solo genera si falta.
                                 $document = resolve(SatShareholderRelationService::class)
-                                    ->generate($record->registration);
+                                    ->getOrGenerate($record->registration);
                             } catch (\Throwable $e) {
                                 Notification::make()
                                     ->title('Error al generar la relación de socios')

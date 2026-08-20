@@ -130,8 +130,9 @@ class AppointmentDetail
                                 ->visible(fn (Appointment $r): bool => (bool) $r->registration?->shareholders()->exists())
                                 ->action(function (Appointment $r) {
                                     try {
+                                        // Reutiliza el .xlsx si ya existe (p. ej. el de la cita de RFC); solo genera si falta.
                                         $document = resolve(\App\Services\Registration\SatShareholderRelationService::class)
-                                            ->generate($r->registration);
+                                            ->getOrGenerate($r->registration);
                                     } catch (\Throwable $e) {
                                         \Filament\Notifications\Notification::make()
                                             ->title('Error al generar la relación de socios')

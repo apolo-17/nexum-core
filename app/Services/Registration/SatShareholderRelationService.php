@@ -172,6 +172,31 @@ class SatShareholderRelationService
     }
 
     /**
+     * Reuse the existing relación de socios if one already exists for the expedient,
+     * otherwise generate it. La tabla de accionistas es la misma para la empresa, así
+     * que la de la primera cita (RFC) se reutiliza en la de e.firma en vez de regenerar
+     * un archivo nuevo. Solo se regenera si no hay documento o si su archivo ya no está
+     * en el almacenamiento.
+     *
+     * @param  Registration  $registration  The expedient to get-or-generate for.
+     * @return Document The existing (reused) or newly generated document.
+     */
+    public function getOrGenerate(Registration $registration): Document
+    {
+        $existing = $registration->documents()
+            ->where('type', DocumentTypeEnum::SAT_SHAREHOLDER_RELATION->value)
+            ->whereNotNull('storage_path')
+            ->latest()
+            ->first();
+
+        if ($existing !== null && Storage::disk('s3')->exists($existing->storage_path)) {
+            return $existing;
+        }
+
+        return $this->generate($registration);
+    }
+
+    /**
      * Build the styled spreadsheet from compiled data.
      *
      * @param  array<string, mixed>  $compiled  Output of compile().
