@@ -16,6 +16,13 @@ use RuntimeException;
 class SingapurSubmissionParser
 {
     /**
+     * Objeto social estándar: es el mismo para TODAS las empresas del relay, así que no
+     * se pide en el payload. Cuando el submission no trae `companyObject`, se aplica este
+     * por defecto (evita actas con el objeto en blanco sin obligar a mandarlo).
+     */
+    public const DEFAULT_COMPANY_OBJECT = 'La sociedad tiene por objeto: A).- La distribución, importación, exportación y comercialización de toda clase de productos físicos y/o digitales, así como bienes tangibles o intangibles, de manera física o en línea ("e-commerce"). B).- La compra, venta, distribución, representación, importación y/ exportación, comercialización al por mayor y menor de productos de todo tipo físicos o digitales y de diversas marcas nacionales y/o extranjeras por medio de redes externas ("Internet"). C).- El desarrollo, implementación, operación y comercialización de plataformas digitales, software y aplicaciones móviles. D).- El diseño, adquisición, explotación y uso de patentes, marcas, nombres comerciales, derechos de autor y demás figuras de propiedad intelectual relacionadas con productos o servicios que comercialice la sociedad. E).- Con fundamento en lo dispuesto en el segundo párrafo del artículo cuarto de la Ley General de Sociedades Mercantiles, la sociedad tendrá capacidad para realizar todos los actos de comercio necesarios para el cumplimiento de su objeto social.';
+
+    /**
      * Parse the decoded content of submission.json into a SingapurSubmissionDTO.
      *
      * @param  array<string, mixed>  $data  Decoded submission.json array.
@@ -36,7 +43,8 @@ class SingapurSubmissionParser
             companyName: $fields['companyName'] ?? '',
             companyType: $fields['companyType'] ?? '',
             language: $fields['_language'] ?? 'zh',
-            companyObject: $fields['companyObject'] ?? null,
+            // Mismo objeto social para todas: si no viene, se usa el estándar por defecto.
+            companyObject: filled($fields['companyObject'] ?? null) ? $fields['companyObject'] : self::DEFAULT_COMPANY_OBJECT,
             capitalSocial: isset($fields['capitalSocial']) ? (float) $fields['capitalSocial'] : null,
             shareholders: $this->parseShareholders($fields, $shareholderCount),
             files: $this->parseFiles($data['files'] ?? []),

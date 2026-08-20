@@ -73,6 +73,29 @@ class SingapurSubmissionParserTest extends TestCase
     }
 
     #[Test]
+    public function it_defaults_the_company_object_when_absent(): void
+    {
+        $data = $this->sampleSubmission();
+        unset($data['fields']['companyObject']);
+
+        $dto = $this->parser->parse($data);
+
+        // El objeto social es el mismo para todas: si no viene, se aplica el estándar.
+        $this->assertSame(SingapurSubmissionParser::DEFAULT_COMPANY_OBJECT, $dto->companyObject);
+    }
+
+    #[Test]
+    public function it_keeps_a_provided_company_object(): void
+    {
+        $data = $this->sampleSubmission();
+        $data['fields']['companyObject'] = 'Objeto social a la medida.';
+
+        $dto = $this->parser->parse($data);
+
+        $this->assertSame('Objeto social a la medida.', $dto->companyObject);
+    }
+
+    #[Test]
     public function it_parses_the_correct_number_of_shareholders(): void
     {
         $dto = $this->parser->parse($this->sampleSubmission());

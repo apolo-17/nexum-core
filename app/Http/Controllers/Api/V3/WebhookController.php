@@ -60,7 +60,9 @@ class WebhookController extends Controller
             // Company-level fields the acta render needs (no silent defaults anymore).
             'fields.companyName' => ['required', 'string'],
             'fields.companyType' => ['required', 'string'],
-            'fields.companyObject' => ['required', 'string'],
+            // El objeto social es el mismo para todas: NO se pide en el payload; si no
+            // viene, el parser aplica el estándar (SingapurSubmissionParser::DEFAULT_COMPANY_OBJECT).
+            'fields.companyObject' => ['nullable', 'string'],
             'fields.capitalSocial' => ['required', 'numeric'],
             'fields.shareholderCount' => ['required', 'integer', 'min:1'],
 
@@ -158,7 +160,6 @@ class WebhookController extends Controller
         return [
             'fields.companyName.required' => 'Falta companyName (razón social base).',
             'fields.companyType.required' => 'Falta companyType (sa, srl o sapi).',
-            'fields.companyObject.required' => 'Falta companyObject (objeto social).',
             'fields.capitalSocial.required' => 'Falta capitalSocial (capital social).',
             'fields.capitalSocial.numeric' => 'capitalSocial debe ser numérico.',
             'fields.shareholderCount.required' => 'Falta shareholderCount (número de socios).',

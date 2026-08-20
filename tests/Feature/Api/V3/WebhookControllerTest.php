@@ -77,6 +77,8 @@ class WebhookControllerTest extends TestCase
     {
         $payload = $this->validPayload();
         unset(
+            // companyObject ya NO es obligatorio: es el mismo para todas y el parser
+            // aplica el estándar por defecto, así que no debe generar error de validación.
             $payload['fields']['companyObject'],
             $payload['fields']['capitalSocial'],
             $payload['fields']['denominationPoolId'],
@@ -85,10 +87,10 @@ class WebhookControllerTest extends TestCase
         $this->postJson(self::WEBHOOK_URL, $payload, ['X-Nexum-Secret' => self::VALID_SECRET])
             ->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
             ->assertJsonValidationErrors([
-                'fields.companyObject',
                 'fields.capitalSocial',
                 'fields.denominationPoolId',
-            ]);
+            ])
+            ->assertJsonMissingValidationErrors('fields.companyObject');
     }
 
     #[Test]
