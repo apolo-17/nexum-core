@@ -127,8 +127,12 @@ class SingapurSubmissionParser
                 participationPercentage: (float) ($fields["naturalSharePercentage{$i}"] ?? 0),
                 isMarried: strtolower($fields["naturalMarried{$i}"] ?? 'no') === 'yes',
                 gender: $fields["naturalGender{$i}"] ?? null,
-                birthdate: $fields["naturalBirthdate{$i}"] ?? null,
-                birthplace: $fields["naturalBirthplace{$i}"] ?? null,
+                // China emits naturalDateOfBirth / naturalPlaceOfBirth (see china-server
+                // onboarding_finalization + validation). The old naturalBirthdate /
+                // naturalBirthplace names were never sent, so we read China's real names
+                // first and keep the legacy ones only as a harmless fallback.
+                birthdate: $fields["naturalDateOfBirth{$i}"] ?? $fields["naturalBirthdate{$i}"] ?? null,
+                birthplace: $fields["naturalPlaceOfBirth{$i}"] ?? $fields["naturalBirthplace{$i}"] ?? null,
                 civilStatus: $fields["naturalCivilStatus{$i}"] ?? null,
                 phone: $fields["naturalPhone{$i}"] ?? null,
                 phoneCountryCode: $fields["naturalPhoneCountryCode{$i}"] ?? null,

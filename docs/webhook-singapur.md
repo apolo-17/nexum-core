@@ -131,7 +131,7 @@ es `422` con el detalle en `errors` y el expediente **no** se crea.
 | `naturalNationality{i}` | ✅ | Acepta también `naturalOtherNationality{i}`. |
 | `shareholderType{i}` | ➖ | Default `natural`. |
 | `naturalMarried{i}` | ➖ | `"yes"` / `"no"`. |
-| `naturalGender{i}`, `naturalBirthdate{i}`, `naturalBirthplace{i}`, `naturalCivilStatus{i}`, `naturalPhone{i}`, `naturalPhoneCountryCode{i}`, `naturalTaxId{i}`, `naturalPassportNumber{i}` | ➖ | Opcionales — Nexum extrae estos datos de los documentos con IA. |
+| `naturalGender{i}`, `naturalDateOfBirth{i}`, `naturalPlaceOfBirth{i}`, `naturalCivilStatus{i}`, `naturalPhone{i}`, `naturalPhoneCountryCode{i}`, `naturalTaxId{i}`, `naturalPassportNumber{i}` | ➖ | Opcionales — Nexum extrae estos datos de los documentos con IA. |
 
 **Cada entrada de `files[]`** (si se envían archivos)
 
@@ -236,7 +236,7 @@ All ✅ fields are validated **synchronously**: if any is missing the response i
 | `naturalNationality{i}` | ✅ | Also accepts `naturalOtherNationality{i}`. |
 | `shareholderType{i}` | ➖ | Defaults to `natural`. |
 | `naturalMarried{i}` | ➖ | `"yes"` / `"no"`. |
-| `naturalGender{i}`, `naturalBirthdate{i}`, `naturalBirthplace{i}`, `naturalCivilStatus{i}`, `naturalPhone{i}`, `naturalPhoneCountryCode{i}`, `naturalTaxId{i}`, `naturalPassportNumber{i}` | ➖ | Optional — Nexum extracts these from the documents via AI. |
+| `naturalGender{i}`, `naturalDateOfBirth{i}`, `naturalPlaceOfBirth{i}`, `naturalCivilStatus{i}`, `naturalPhone{i}`, `naturalPhoneCountryCode{i}`, `naturalTaxId{i}`, `naturalPassportNumber{i}` | ➖ | Optional — Nexum extracts these from the documents via AI. |
 
 **Each `files[]` entry** (when files are sent)
 
