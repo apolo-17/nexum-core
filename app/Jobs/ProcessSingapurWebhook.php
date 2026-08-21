@@ -13,12 +13,15 @@ use App\Models\WebhookEvent;
 use App\Notifications\ExpedienteReceptionFailed;
 use App\Notifications\NewExpedienteReceived;
 use App\Services\Notifications\EventNotifier;
+use App\Services\Registration\ApoderadoAssignmentService;
+use App\Services\Registration\Exceptions\NotEnoughApoderadosException;
 use App\Services\Registration\RegistrationUpsertService;
 use App\Services\Singapur\SingapurSubmissionParser;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -78,9 +81,22 @@ class ProcessSingapurWebhook implements ShouldQueue
         SingapurSubmissionParser $parser,
         RegistrationUpsertService $upsertService,
         EventNotifier $notifier,
+        ApoderadoAssignmentService $apoderadoAssignment,
     ): void {
         $submission = $parser->parse($this->webhookEvent->payload);
         $registration = $upsertService->upsert($submission);
+
+        // Assign 3-4 soldados as apoderados (equitable rotation) now that the shareholders
+        // exist. A shortage of soldados is not fatal here: the acta render job reports it
+        // as a missing-apoderados alert instead.
+        try {
+            $apoderadoAssignment->assign($registration);
+        } catch (NotEnoughApoderadosException $exception) {
+            Log::warning('ProcessSingapurWebhook: not enough soldados to assign apoderados.', [
+                'registration_id' => $registration->id,
+                'error' => $exception->getMessage(),
+            ]);
+        }
 
         // When China sends the pre-rendered acta (incorporation_deed), identity is
         // already verified and data already extracted on their side: mark every
@@ -105,6 +121,11 @@ class ProcessSingapurWebhook implements ShouldQueue
             ->each(function (LegalName $legalName): void {
                 SubmitLegalNameToMuaJob::dispatch($legalName->id);
             });
+
+        // Build the acta render in the background now that documentation + payload arrived.
+        // The job validates completeness and either saves the ACTA_DRAFT + notifies "ready",
+        // or notifies "could not complete" with the exact list of what is missing.
+        BuildActaRenderJob::dispatch($registration->id)->afterCommit();
 
         $this->webhookEvent->update([
             'status' => WebhookEventStatusEnum::PROCESSED,

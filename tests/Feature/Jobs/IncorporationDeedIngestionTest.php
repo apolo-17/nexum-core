@@ -103,6 +103,7 @@ class IncorporationDeedIngestionTest extends TestCase
             app(SingapurSubmissionParser::class),
             app(RegistrationUpsertService::class),
             app(EventNotifier::class),
+            app(\App\Services\Registration\ApoderadoAssignmentService::class),
         );
     }
 
