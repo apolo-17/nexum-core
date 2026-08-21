@@ -3,7 +3,6 @@
 namespace Database\Seeders;
 
 use App\Enums\DocumentTypeEnum;
-use App\Enums\EfirmaAppointmentStatusEnum;
 use App\Enums\LegalNameStatusEnum;
 use App\Enums\RegistrationStageEnum;
 use App\Enums\RegistrationStatusEnum;
@@ -452,16 +451,6 @@ class ChineseCompaniesSeeder extends Seeder
         // RFC is only available after SAT_REGISTRATION.
         $rfc = ($stageIndex >= $satIndex) ? $this->generateRfc($company['name']) : null;
 
-        // e.firma fields only for EFIRMA_APPOINTMENT stage.
-        $efirmaStatus = null;
-        $efirmaAppointment = null;
-
-        if ($stage === RegistrationStageEnum::EFIRMA_APPOINTMENT) {
-            $efirmaStatuses = EfirmaAppointmentStatusEnum::cases();
-            $efirmaStatus = $efirmaStatuses[$codeInt % count($efirmaStatuses)];
-            $efirmaAppointment = now()->addDays(rand(3, 21));
-        }
-
         $completedAt = ($stage === RegistrationStageEnum::COMPLETED)
             ? now()->subDays(rand(5, 60))
             : null;
@@ -485,10 +474,7 @@ class ChineseCompaniesSeeder extends Seeder
             'company_type' => $companyType,
             'company_object' => $companyObjects[$codeInt % count($companyObjects)],
             'capital_social' => [50000, 100000, 200000, 500000][$codeInt % 4],
-            'rfc' => $rfc,
-            'efirma_status' => $efirmaStatus,
-            'efirma_appointment_at' => $efirmaAppointment,
-            'completed_at' => $completedAt,
+            'rfc' => $rfc,            'completed_at' => $completedAt,
             'created_at' => now()->subDays($arrivedDaysAgo),
             'updated_at' => now()->subDays(max(0, $arrivedDaysAgo - 1)),
         ]);

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Enums\AppointmentTypeEnum;
 use App\Enums\RegistrationStatusEnum;
 use App\Models\Registration;
 use App\Models\Task;
@@ -70,8 +71,11 @@ class NotarioStatsOverview extends StatsOverviewWidget
 
         $efirmaUpcoming = Registration::where('assigned_notario_id', $userId)
             ->where('status', RegistrationStatusEnum::ACTIVE)
-            ->whereNotNull('efirma_appointment_at')
-            ->whereBetween('efirma_appointment_at', [now()->startOfDay(), now()->addDays(7)->endOfDay()])
+            ->whereHas('appointments', function ($query): void {
+                $query->where('type', AppointmentTypeEnum::FIEL->value)
+                    ->whereNotNull('scheduled_at')
+                    ->whereBetween('scheduled_at', [now()->startOfDay(), now()->addDays(7)->endOfDay()]);
+            })
             ->count();
 
         $completedThisMonth = Registration::where('assigned_notario_id', $userId)

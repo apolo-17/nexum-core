@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\AppointmentTypeEnum;
 use App\Enums\DocumentTypeEnum;
 use App\Enums\LegalNameStatusEnum;
 use App\Enums\RegistrationStageEnum;
@@ -9,19 +10,17 @@ use App\Enums\RegistrationStatusEnum;
 use App\Enums\ShareholderRoleEnum;
 use App\Filament\Resources\RegistrationResource\Pages;
 use App\Filament\Resources\RegistrationResource\RelationManagers;
-use App\Models\LegalName;
-use App\Enums\AppointmentTypeEnum;
 use App\Models\Appointment;
+use App\Models\LegalName;
 use App\Models\Registration;
-use Illuminate\Database\Eloquent\Model;
 use App\Models\User;
 use App\Services\Denomination\ClaimPoolDenominationService;
+use Illuminate\Database\Eloquent\Model;
 use BackedEnum;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
-use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -259,10 +258,6 @@ class RegistrationResource extends Resource
                     TextInput::make('rfc')
                         ->label('RFC')
                         ->maxLength(13),
-
-                    DateTimePicker::make('efirma_appointment_at')
-                        ->label('Cita e.firma SAT')
-                        ->nullable(),
                 ]),
 
             Section::make('Socios')

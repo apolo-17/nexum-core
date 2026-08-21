@@ -4,12 +4,10 @@ namespace App\Filament\Resources\RegistrationResource\Pages;
 
 use App\Filament\Resources\RegistrationResource;
 use App\Filament\Resources\RegistrationResource\Actions\AdvanceStageAction;
-use App\Filament\Resources\RegistrationResource\Actions\ConfirmEfirmaOutcomeAction;
 use App\Filament\Resources\RegistrationResource\Actions\EditActaInlineAction;
 use App\Filament\Resources\RegistrationResource\Actions\ManageCompanyCredentialsAction;
 use App\Filament\Resources\RegistrationResource\Actions\PartnerSignatureAction;
 use App\Filament\Resources\RegistrationResource\Actions\PrepareActaAction;
-use App\Filament\Resources\RegistrationResource\Actions\RequestEfirmaAppointmentAction;
 use App\Jobs\BuildActaRenderJob;
 use App\Models\Registration;
 use App\Services\DocuSign\DocuSignService;
@@ -40,9 +38,7 @@ class ViewRegistration extends ViewRecord
      *
      * Visible action matrix:
      *   - ACTA_PREPARATION  → PrepareActaAction (compile/refresh the draft)
-     *   - Draft exists       → EditActaInlineAction (full-page editor; includes download)
-     *   - EFIRMA_APPOINTMENT → RequestEfirmaAppointmentAction, ConfirmEfirmaOutcomeAction
-     *   - All stages         → AdvanceStageAction
+     *   - Draft exists       → EditActaInlineAction (full-page editor; includes download)     *   - All stages         → AdvanceStageAction
      *
      * @return array<Action>
      */
@@ -102,10 +98,6 @@ class ViewRegistration extends ViewRecord
                 performedBy: auth()->user(),
                 stageTransitionService: resolve(StageTransitionService::class),
             ),
-
-            // e.firma appointment actions — visible only at EFIRMA_APPOINTMENT stage.
-            RequestEfirmaAppointmentAction::make(),
-            ConfirmEfirmaOutcomeAction::make(),
 
             // Safeguard the company's own e.firma + RFC for download (any stage).
             ManageCompanyCredentialsAction::make(),

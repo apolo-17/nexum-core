@@ -40,8 +40,6 @@ class RegistrationResource extends JsonResource
             'company_type'         => $this->company_type,
             'company_name'         => $this->legalNames->where('priority', 1)->first()?->name,
             'rfc'                  => $this->rfc,
-            'efirma_appointment_at' => $this->efirma_appointment_at?->toISOString(),
-
             // Related entities — always eager loaded by the controller
             'shareholders'         => ShareholderResource::collection($this->whenLoaded('shareholders')),
             'legal_names'          => LegalNameResource::collection($this->whenLoaded('legalNames')),

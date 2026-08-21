@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use App\Enums\DocumentTypeEnum;
-use App\Enums\EfirmaAppointmentStatusEnum;
 use App\Enums\LegalAgentTypeEnum;
 use App\Enums\RegistrationStageEnum;
 use App\Enums\RegistrationStatusEnum;
@@ -49,11 +48,6 @@ class Registration extends Model
         'fiscal_state',
         'fiscal_postal_code',
         'rfc',
-        'efirma_appointment_at',
-        'efirma_status',
-        'efirma_key_path',
-        'efirma_cer_path',
-        'efirma_password_hash',
         'company_fiel_cer_path',
         'company_fiel_key_path',
         'company_fiel_password',
@@ -75,8 +69,6 @@ class Registration extends Model
             'stage' => RegistrationStageEnum::class,
             'status' => RegistrationStatusEnum::class,
             'capital_social' => 'decimal:2',
-            'efirma_appointment_at' => 'datetime',
-            'efirma_status' => EfirmaAppointmentStatusEnum::class,
             // Reversibly encrypted so the company e.firma password can be retrieved for download.
             'company_fiel_password' => 'encrypted',
             'completed_at' => 'datetime',
