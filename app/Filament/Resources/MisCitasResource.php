@@ -349,7 +349,7 @@ class MisCitasResource extends Resource
         if (filled($data['csf'] ?? null) && $registration !== null) {
             $path = is_array($data['csf']) ? reset($data['csf']) : $data['csf'];
 
-            Document::create([
+            $csf = Document::create([
                 'registration_id' => $registration->id,
                 'type' => DocumentTypeEnum::CSF,
                 'name' => 'CSF '.($registration->primaryLegalName?->name ?? 'empresa'),
@@ -357,6 +357,9 @@ class MisCitasResource extends Resource
                 'stage' => $registration->getRawOriginal('stage'),
                 'verified_at' => now(),
             ]);
+
+            // Extraer en segundo plano el RFC y el domicilio fiscal del CSF.
+            \App\Jobs\ExtractCsfDataJob::dispatch($csf->id)->afterCommit();
         }
 
         $registration?->update(['rfc' => $rfc]);

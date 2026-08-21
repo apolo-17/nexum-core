@@ -4,6 +4,7 @@ namespace App\Filament\Resources\RegistrationResource\RelationManagers;
 
 use App\Enums\DocumentTypeEnum;
 use App\Jobs\AnalyzeDocumentJob;
+use App\Jobs\ExtractCsfDataJob;
 use App\Models\Document;
 use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
@@ -411,6 +412,13 @@ class DocumentsRelationManager extends RelationManager
                         unset($data['evaluation']);
 
                         return $data;
+                    })
+                    // Al subir un CSF, extraer en segundo plano el RFC y el domicilio fiscal
+                    // y llenarlos en el expediente.
+                    ->after(function (Document $record): void {
+                        if ($record->type === DocumentTypeEnum::CSF) {
+                            ExtractCsfDataJob::dispatch($record->id)->afterCommit();
+                        }
                     }),
             ])
 

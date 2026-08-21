@@ -212,12 +212,19 @@ class DocumentAnalysisService
                   "rfc": "the RFC exactly as printed (12 characters for a company / persona moral, 13 for persona física), uppercase, letters and digits only, or null",
                   "razon_social": "Denominación / Razón Social exactly as printed, or null",
                   "regimen_capital": "Régimen Capital as printed, or null",
-                  "codigo_postal": "Código Postal (5 digits) or null"
+                  "fiscal_street": "Nombre de Vialidad (street name) from the 'Datos de Ubicación' / domicilio fiscal section, or null",
+                  "fiscal_ext_number": "Número Exterior, or null",
+                  "fiscal_int_number": "Número Interior, or null",
+                  "fiscal_neighborhood": "Nombre de la Colonia, or null",
+                  "fiscal_municipality": "Nombre del Municipio o Demarcación Territorial, or null",
+                  "fiscal_state": "Nombre de la Entidad Federativa (state), or null",
+                  "fiscal_postal_code": "Código Postal (5 digits) or null"
                 }
 
                 Rules:
                 - rfc must be UPPERCASE, no spaces, letters and digits only; read it carefully (do not confuse O/0, I/1, S/5, B/8)
                 - the RFC usually appears next to the label "RFC:" and also inside the barcode text at the top
+                - the fiscal_* fields come from the "Datos de Ubicación" / domicilio fiscal block; copy each value exactly as printed
                 - if a field is not visible or not present, use null
                 - return ONLY the JSON object, nothing else
                 PROMPT,
@@ -240,6 +247,21 @@ class DocumentAnalysisService
     public function extractFields(string $base64, string $mediaType, DocumentTypeEnum $type): array
     {
         return $this->callClaudeApi($base64, $mediaType, $this->buildPrompt($type));
+    }
+
+    /**
+     * Extract fields from a stored document (downloads it from storage first) without
+     * persisting a DocumentAnalysis. Returns the parsed JSON for the document's type.
+     *
+     * @return array<string, mixed>
+     */
+    public function extractFromDocument(Document $document): array
+    {
+        return $this->extractFields(
+            base64_encode($this->downloadFile($document)),
+            $this->resolveMediaType($document),
+            $document->type,
+        );
     }
 
     /**
