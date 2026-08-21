@@ -252,9 +252,14 @@ class MuaSubmissionService
         return Soldado::where('available_for_mua', true)
             ->where('is_active', true)
             ->withMax('legalNames', 'submitted_at')
-            ->orderByRaw('legal_names_max_submitted_at IS NOT NULL')
-            ->orderBy('legal_names_max_submitted_at')
             ->get()
+            // Ordered in PHP, not SQL. Sorting by the withMax alias inside an
+            // expression ("... IS NOT NULL") is accepted by SQLite and rejected by
+            // PostgreSQL, which only resolves a select alias in a bare ORDER BY term.
+            // Since eligibility is already decided in PHP (isReadyForMua reads the
+            // credentials), doing the ordering here too keeps it dialect-proof.
+            // Never-used FIELs sort first, then least-recently-used.
+            ->sortBy(fn (Soldado $soldado): string => (string) ($soldado->legal_names_max_submitted_at ?? ''))
             ->first(function (Soldado $soldado): bool {
                 return $soldado->isReadyForMua()
                     && ! $this->hasInProcessDenomination($soldado);
