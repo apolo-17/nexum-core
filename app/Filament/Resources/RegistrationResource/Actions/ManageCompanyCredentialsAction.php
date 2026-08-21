@@ -39,16 +39,19 @@ class ManageCompanyCredentialsAction extends Action
                 'company_fiel_password' => $record->company_fiel_password,
             ])
             ->form(fn (Schema $schema): Schema => $schema->components([
+                // Sin acceptedFileTypes: los .cer/.key del SAT no tienen un MIME confiable, así
+                // que restringirlo grisea el archivo en el selector y no deja elegirlo. Se acepta
+                // cualquier archivo y el contenido se valida aparte.
                 FileUpload::make('company_fiel_cer_file')
                     ->label('Certificado .cer')
-                    ->acceptedFileTypes(['application/octet-stream', 'application/pkix-cert'])
+                    ->helperText('El archivo .cer de la e.firma.')
                     ->disk(config('filesystems.default'))
                     ->directory('company-credentials')
                     ->visibility('private'),
 
                 FileUpload::make('company_fiel_key_file')
                     ->label('Llave privada .key')
-                    ->acceptedFileTypes(['application/octet-stream'])
+                    ->helperText('El archivo .key de la e.firma.')
                     ->disk(config('filesystems.default'))
                     ->directory('company-credentials')
                     ->visibility('private'),

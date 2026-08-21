@@ -233,10 +233,14 @@ class MisCitasResource extends Resource
                     ->icon('heroicon-o-shield-check')
                     ->color('success')
                     ->button()
-                    // Aparece solo en la cita de e.firma (FIEL) cuando ya pasó (y sigue agendada).
+                    // Aparece en la cita de e.firma (FIEL) cuando ya pasó (agendada) O cuando ya
+                    // se marcó como asistida: la e.firma se sube DESPUÉS de la cita, así que marcar
+                    // éxito no debe esconder el botón — se puede subir/reintentar mientras esté attended.
                     ->visible(fn (Appointment $record): bool => $record->type === AppointmentTypeEnum::FIEL
-                        && $record->status === AppointmentStatusEnum::SCHEDULED
-                        && self::yaPaso($record))
+                        && (
+                            $record->status === AppointmentStatusEnum::ATTENDED
+                            || ($record->status === AppointmentStatusEnum::SCHEDULED && self::yaPaso($record))
+                        ))
                     ->modalHeading(fn (Appointment $record): string => 'e.firma de '
                         .($record->registration?->primaryLegalName?->name ?? 'la empresa'))
                     ->modalDescription('Sube los archivos de la e.firma de la empresa. Validamos que sean correctos antes de guardarlos.')
@@ -251,7 +255,10 @@ class MisCitasResource extends Resource
                             ])
                             ->required()
                             ->native(false)
-                            ->live(),
+                            ->live()
+                            // Si la cita ya se marcó asistida, precarga "salió bien" para que los
+                            // campos de la e.firma aparezcan de una vez y solo falte subir archivos.
+                            ->default(fn (Appointment $record): ?string => $record->status === AppointmentStatusEnum::ATTENDED ? 'attended' : null),
 
                         FileUpload::make('cer_file')
                             ->label('Certificado (.cer)')
