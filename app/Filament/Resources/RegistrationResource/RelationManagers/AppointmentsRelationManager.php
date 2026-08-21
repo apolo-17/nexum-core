@@ -146,17 +146,19 @@ class AppointmentsRelationManager extends RelationManager
 
             Select::make('soldado_id')
                 ->label('Soldado que asiste')
-                // Solo los apoderados del acta de ESTA empresa que además tengan lo que
-                // la cita necesita: RFC (identifica al soldado ante el SAT) y correo
-                // (para notificarle). La CURP no la pide el SAT para la cita.
+                // Solo apoderados del acta de ESTA empresa que además: (a) tengan luz verde
+                // como representante (available_as_legal_representative) — estar en el acta no
+                // basta, deben poder ir al SAT; y (b) tengan RFC (los identifica ante el SAT)
+                // y correo (para avisarles). La CURP no la pide el SAT para la cita.
                 ->options(fn ($livewire): array => $livewire->getOwnerRecord()
                     ->legalRepresentatives()
+                    ->where('available_as_legal_representative', true)
                     ->whereNotNull('rfc')
                     ->whereNotNull('email')
                     ->orderBy('name')
                     ->pluck('name', 'soldados.id')
                     ->all())
-                ->helperText('Apoderados del acta de esta empresa con RFC y correo (el correo se usa para avisarle al soldado).')
+                ->helperText('Solo apoderados del acta con luz verde de representante (los que sí pueden ir al SAT), con RFC y correo.')
                 ->searchable()
                 ->live()
                 // Alerta INMEDIATA al seleccionar: un soldado no puede tener dos citas del
