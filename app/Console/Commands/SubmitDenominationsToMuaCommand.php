@@ -73,8 +73,11 @@ class SubmitDenominationsToMuaCommand extends Command
             return Command::SUCCESS;
         }
 
+        // Filter on STATUS alone. soldado_id is no longer cleared when a dispatch
+        // fails (it records which FIEL last tried), so a whereNull() filter here
+        // would silently skip every name that had already been attempted once —
+        // exactly the ones this fallback exists to pick up.
         $pendingNames = LegalName::where('status', LegalNameStatusEnum::WAIT->value)
-            ->whereNull('soldado_id')
             ->with('registration')
             ->get();
 
