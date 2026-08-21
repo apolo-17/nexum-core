@@ -5,6 +5,7 @@ namespace App\Filament\Resources\DenominationResource\Pages;
 use App\Enums\LegalNameEventTypeEnum;
 use App\Enums\LegalNameStatusEnum;
 use App\Filament\Resources\DenominationResource;
+use App\Jobs\SubmitDenominationToMuaNowJob;
 use App\Models\LegalName;
 use App\Services\Denomination\DenominationGeneratorService;
 use App\Services\Mua\MuaSubmissionService;
@@ -13,6 +14,7 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ListRecords;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -133,14 +135,33 @@ class ListDenominations extends ListRecords
             ->icon('heroicon-o-paper-airplane')
             ->color('info')
             ->requiresConfirmation()
-            ->modalDescription('Se enviarán al portal MUA todas las denominaciones en borrador o en espera (si es horario hábil y hay FIEL disponible).')
+            // Show the capacity BEFORE confirming: how many soldiers can take work
+            // right now, and how many are already holding a denomination. Without
+            // this the operator cannot tell "everyone is busy" from "we only have
+            // two soldiers configured".
+            ->modalDescription(function (): string {
+                $service = app(MuaSubmissionService::class);
+                $pending = $this->pendingPoolQuery()->count();
+                $fiel = $service->fielAvailability();
+
+                $lines = [
+                    "Denominaciones pendientes: {$pending}.",
+                    "Soldados listos para MUA: {$fiel['ready']} · libres ahora: {$fiel['free']} · ocupados: {$fiel['busy']}.",
+                ];
+
+                if ($fiel['free'] > 0) {
+                    $lines[] = 'Se enviarán '.min($pending, $fiel['free'])
+                        .' de inmediato ('.implode(', ', $fiel['free_names']).'); el resto queda en cola.';
+                } else {
+                    $lines[] = 'Ningún soldado está libre: la SE permite una denominación en proceso por RFC. '
+                        .'Las denominaciones quedarán en espera hasta que se libere alguno.';
+                }
+
+                return implode(' ', $lines);
+            })
             ->action(function (): void {
-                $pending = LegalName::whereNull('registration_id')
-                    ->whereIn('status', [
-                        LegalNameStatusEnum::DRAFT->value,
-                        LegalNameStatusEnum::WAIT->value,
-                    ])
-                    ->get();
+                $service = app(MuaSubmissionService::class);
+                $pending = $this->pendingPoolQuery()->get();
 
                 if ($pending->isEmpty()) {
                     Notification::make()
@@ -150,8 +171,6 @@ class ListDenominations extends ListRecords
 
                     return;
                 }
-
-                $service = app(MuaSubmissionService::class);
 
                 // Pre-check: if there is no complete FIEL at all, nothing can be sent.
                 // Alert clearly and list every denomination that stayed unsent.
@@ -169,90 +188,63 @@ class ListDenominations extends ListRecords
                     return;
                 }
 
-                $sent = 0;
-                $errors = 0;
-                $deferredNames = [];
-                $reason = null;
+                $fiel = $service->fielAvailability();
 
+                // Queue every submission instead of running them here. Each one blocks
+                // on the bot for up to 30 s, so sending a batch inline pinned the web
+                // request for minutes until PHP killed it mid-list — the names it never
+                // reached showed no reason at all. Queued, the modal closes instantly
+                // and each denomination reports its own outcome on its timeline.
                 foreach ($pending as $name) {
-                    // Stop as soon as no FIEL is free. Each dispatch blocks on the
-                    // bot for up to 30 s, so grinding through the whole list once
-                    // capacity ran out just burned the web request until PHP killed
-                    // it — and the names it never reached showed no reason at all.
-                    // The remaining names are deferred below with the real cause.
-                    if ($service->findAvailableFiel() === null) {
-                        $deferredNames[] = $name->name;
-                        $reason ??= $service->unavailabilityReason()
-                            ?? 'No hay FIEL disponible para enviar en este momento.';
-
-                        if ($name->status !== LegalNameStatusEnum::WAIT) {
-                            $name->update(['status' => LegalNameStatusEnum::WAIT]);
-                        }
-
-                        $name->recordEvent(
-                            LegalNameEventTypeEnum::DEFERRED,
-                            'Envío diferido — quedó en espera.',
-                            ['reason' => $reason],
-                        );
-
-                        continue;
-                    }
-
-                    try {
-                        if ($service->trySubmit($name)) {
-                            $sent++;
-
-                            continue;
-                        }
-                    } catch (\Throwable $exception) {
-                        Log::error('Pool denomination submission failed.', [
-                            'legal_name_id' => $name->id,
-                            'error' => $exception->getMessage(),
-                        ]);
-
-                        $name->recordEvent(
-                            LegalNameEventTypeEnum::SUBMISSION_FAILED,
-                            'Error al enviar al portal MUA.',
-                            ['error' => $exception->getMessage()],
-                        );
-
-                        $errors++;
-
-                        continue;
-                    }
-
                     if ($name->status !== LegalNameStatusEnum::WAIT) {
                         $name->update(['status' => LegalNameStatusEnum::WAIT]);
                     }
-                    $deferredNames[] = $name->name;
-                    $deferReason = $service->unavailabilityReason()
-                        ?? 'No fue posible enviar la denominación en este momento.';
-                    $reason ??= $deferReason;
 
                     $name->recordEvent(
-                        LegalNameEventTypeEnum::DEFERRED,
-                        'Envío diferido — quedó en espera.',
-                        ['reason' => $deferReason],
+                        LegalNameEventTypeEnum::QUEUED,
+                        'En cola de envío al portal MUA.',
                     );
+
+                    SubmitDenominationToMuaNowJob::dispatch($name->id);
                 }
 
-                $deferred = count($deferredNames);
-                $body = "Enviadas: {$sent} · Diferidas: {$deferred} · Errores: {$errors}.";
+                $queued = $pending->count();
+                $willSend = min($queued, $fiel['free']);
+                $body = "Se encolaron {$queued} denominaciones. "
+                    ."Soldados listos: {$fiel['ready']} · libres: {$fiel['free']} · ocupados: {$fiel['busy']}.";
 
-                if ($deferred > 0) {
-                    $body .= ' No se enviaron: '.implode(', ', $deferredNames).'.';
-
-                    if ($reason !== null) {
-                        $body .= " Motivo: {$reason}";
-                    }
+                if ($fiel['free'] === 0) {
+                    $body .= ' Ningún soldado está libre ahora mismo, así que quedarán en espera '
+                        .'hasta que una denominación en proceso se apruebe o se rechace.';
+                } elseif ($queued > $fiel['free']) {
+                    $body .= " Solo {$willSend} saldrán ahora (una por soldado); las demás esperan turno.";
                 }
 
                 Notification::make()
-                    ->title('Envío de denominaciones procesado.')
+                    ->title('Envío encolado.')
                     ->body($body)
-                    ->status($errors > 0 || $deferred > 0 ? 'warning' : 'success')
+                    ->status($fiel['free'] === 0 ? 'warning' : 'success')
                     ->persistent()
                     ->send();
             });
+    }
+
+    /**
+     * Query for pool denominations that have not been sent to the SE yet.
+     *
+     * Pool names only (no registration): drafts awaiting review and names already
+     * queued. Filtering on status alone is deliberate — soldado_id now records which
+     * FIEL last attempted a name, so excluding non-null would skip exactly the ones
+     * that failed once and need resending.
+     *
+     * @return Builder<LegalName>
+     */
+    private function pendingPoolQuery(): Builder
+    {
+        return LegalName::whereNull('registration_id')
+            ->whereIn('status', [
+                LegalNameStatusEnum::DRAFT->value,
+                LegalNameStatusEnum::WAIT->value,
+            ]);
     }
 }

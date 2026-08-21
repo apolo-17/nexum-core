@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Enums\LegalNameEventTypeEnum;
+use App\Enums\LegalNameStatusEnum;
 use App\Models\LegalName;
 use App\Services\Mua\MuaSubmissionService;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -56,7 +57,25 @@ class SubmitDenominationToMuaNowJob implements ShouldQueue
         }
 
         try {
-            $service->trySubmit($legalName);
+            if ($service->trySubmit($legalName)) {
+                return;
+            }
+
+            // Deferred, not failed: outside business hours, or every FIEL is holding
+            // an in-process denomination. trySubmit() already recorded the FIEL case;
+            // record the hours case here so a name queued off-hours never sits in the
+            // pool with no explanation of why nothing happened.
+            if (! $service->isBusinessHours()) {
+                $legalName->recordEvent(
+                    LegalNameEventTypeEnum::DEFERRED,
+                    'Envío diferido — quedó en espera.',
+                    ['reason' => $service->unavailabilityReason()],
+                );
+            }
+
+            if ($legalName->status !== LegalNameStatusEnum::WAIT) {
+                $legalName->update(['status' => LegalNameStatusEnum::WAIT->value]);
+            }
         } catch (\Throwable $exception) {
             $legalName->recordEvent(
                 LegalNameEventTypeEnum::SUBMISSION_FAILED,

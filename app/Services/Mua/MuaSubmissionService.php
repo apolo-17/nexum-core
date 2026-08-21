@@ -11,6 +11,7 @@ use App\Models\Soldado;
 use Carbon\Carbon;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -19,14 +20,16 @@ use Illuminate\Support\Facades\Log;
  *
  * Enforces two pre-conditions before submitting:
  *   1. Business hours gate — the SE portal only accepts requests Mon–Fri 09:00–16:00 CDMX.
- *   2. FIEL availability — at most 5 denominations per FIEL account per calendar day (CDMX).
+ *   2. FIEL availability — ONE in-process denomination per FIEL account at a time.
+ *      That is the SE's own cap, per ACCOUNT (RFC), not per fedatario and not a daily
+ *      quota: the slot frees only when that denomination is approved or rejected.
  *
  * If either condition is not met, trySubmit() returns false and the denomination stays
- * in WAIT status so the cron scheduler picks it up in the next window.
+ * in WAIT status so the next dispatch picks it up.
  *
- * When both conditions are satisfied, the service assigns the FIEL with the lowest
- * daily usage, builds the bot payload with all required fields (including the fixed
- * Nexum notary: Sinaloa / Notaría 248), and fires the HTTP call.
+ * When both are satisfied the service CLAIMS a free FIEL — selection and the
+ * SUBMITTING mark happen together under a lock, so two concurrent submissions can
+ * never hand the same account two denominations — and fires the HTTP call to the bot.
  */
 class MuaSubmissionService
 {
@@ -120,7 +123,7 @@ class MuaSubmissionService
             return false;
         }
 
-        $soldado = $this->findAvailableFiel();
+        $soldado = $this->claimFielFor($legalName);
 
         if ($soldado === null) {
             // Every FIEL is busy: the SE allows a single in-process request per
@@ -162,6 +165,70 @@ class MuaSubmissionService
 
         return $now->hour >= self::BUSINESS_START_HOUR
             && $now->hour < self::BUSINESS_END_HOUR;
+    }
+
+    /**
+     * Atomically claim a free FIEL for this denomination.
+     *
+     * Selecting a FIEL and marking the denomination SUBMITTING must happen together.
+     * Occupancy is derived from status, so between a bare findAvailableFiel() and the
+     * status write there is a window where a second submission sees the same account
+     * as free and claims it too — handing one RFC two denominations, which the SE
+     * refuses outright. That window is real now that the bulk button dispatches
+     * every submission to the queue at once.
+     *
+     * The lock is held only for the claim; the slow HTTP call to the bot happens
+     * outside it, so parallel submissions still overlap where it matters.
+     *
+     * @param  LegalName  $legalName  The denomination to assign a FIEL to.
+     * @return Soldado|null The claimed FIEL, or null when every one is occupied.
+     */
+    private function claimFielFor(LegalName $legalName): ?Soldado
+    {
+        return Cache::lock('mua:fiel-claim', 15)->block(20, function () use ($legalName): ?Soldado {
+            $soldado = $this->findAvailableFiel();
+
+            if ($soldado === null) {
+                return null;
+            }
+
+            // Marking SUBMITTING is what occupies the account's slot, so it has to
+            // land before the lock is released.
+            $legalName->update([
+                'status' => LegalNameStatusEnum::SUBMITTING->value,
+                'soldado_id' => $soldado->id,
+                'submitted_at' => now(),
+            ]);
+
+            return $soldado;
+        });
+    }
+
+    /**
+     * Count the FIELs usable for MUA right now, split into total and free.
+     *
+     * "Ready" means an active soldado flagged for MUA holding all three credentials.
+     * "Free" means ready AND not already holding an in-process denomination. The
+     * operator needs both numbers to tell "every soldier is busy working" apart from
+     * "we only ever configured two soldiers".
+     *
+     * @return array{ready:int, free:int, busy:int, free_names:list<string>}
+     */
+    public function fielAvailability(): array
+    {
+        $ready = Soldado::where('available_for_mua', true)
+            ->where('is_active', true)
+            ->get()
+            ->filter(fn (Soldado $soldado): bool => $soldado->isReadyForMua());
+
+        $free = $ready->reject(fn (Soldado $soldado): bool => $this->hasInProcessDenomination($soldado));
+
+        return [
+            'ready' => $ready->count(),
+            'free' => $free->count(),
+            'busy' => $ready->count() - $free->count(),
+            'free_names' => $free->pluck('name')->values()->all(),
+        ];
     }
 
     /**
@@ -301,19 +368,11 @@ class MuaSubmissionService
         $botUrl = rtrim((string) config('services.mua_bot.url'), '/');
         $apiKey = (string) config('services.mua_bot.api_key');
 
-        // Mark the denomination in-flight BEFORE dispatching. The bot processes
-        // synchronously (login + capture + sign, ~1 min) and reports the real
-        // outcome via the webhook callback — which only advances from
-        // SUBMITTING/PENDING. Setting the state first guarantees that callback lands
-        // even when the bot outlives our HTTP read timeout below (the original race:
-        // status was set after ->throw(), so a timeout left it stuck in WAIT and the
-        // signed `submitted` callback was ignored).
-        $legalName->update([
-            'status' => LegalNameStatusEnum::SUBMITTING,
-            'soldado_id' => $soldado->id,
-            'submitted_at' => now(),
-        ]);
-
+        // The denomination is ALREADY SUBMITTING with this FIEL assigned — claimFielFor()
+        // did it under the lock before this method ran. That ordering is deliberate: the
+        // bot works ~1 min and reports through the webhook, which only advances from
+        // SUBMITTING/PENDING, so a callback arriving after our read timeout below would
+        // be discarded if the name were still in WAIT.
         $legalName->recordEvent(
             LegalNameEventTypeEnum::SUBMIT_DISPATCHED,
             "Solicitud enviada al bot con la FIEL «{$soldado->name}». Esperando confirmación de la SE.",
