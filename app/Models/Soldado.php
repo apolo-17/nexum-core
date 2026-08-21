@@ -41,6 +41,8 @@ class Soldado extends Model
         'ine_front_path',
         'ine_back_path',
         'available_for_mua',
+        'mua_blocked_reason',
+        'mua_blocked_at',
         'available_as_legal_representative',
         'available_as_commissary',
         'is_active',
@@ -59,6 +61,7 @@ class Soldado extends Model
         return [
             'birthdate' => 'date',
             'available_for_mua' => 'boolean',
+            'mua_blocked_at' => 'datetime',
             'available_as_legal_representative' => 'boolean',
             'available_as_commissary' => 'boolean',
             'is_active' => 'boolean',
