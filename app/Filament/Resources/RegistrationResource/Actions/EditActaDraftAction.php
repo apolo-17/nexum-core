@@ -103,10 +103,8 @@ class EditActaDraftAction
                             ->placeholder('Ej. la Ciudad de México')
                             ->columnSpanFull(),
 
-                        Textarea::make('company_activity')
-                            ->label('Objeto social')
-                            ->rows(4)
-                            ->columnSpanFull(),
+                        // El objeto social es el mismo estándar para todas las empresas del
+                        // relay: no se edita aquí. Se conserva tal cual en template_data.
                     ]),
 
                 // ---------------------------------------------------------------
