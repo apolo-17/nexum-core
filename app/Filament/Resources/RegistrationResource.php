@@ -3,7 +3,6 @@
 namespace App\Filament\Resources;
 
 use App\Enums\DocumentTypeEnum;
-use App\Enums\EfirmaAppointmentStatusEnum;
 use App\Enums\LegalNameStatusEnum;
 use App\Enums\RegistrationStageEnum;
 use App\Enums\RegistrationStatusEnum;
@@ -11,6 +10,8 @@ use App\Enums\ShareholderRoleEnum;
 use App\Filament\Resources\RegistrationResource\Pages;
 use App\Filament\Resources\RegistrationResource\RelationManagers;
 use App\Models\LegalName;
+use App\Enums\AppointmentTypeEnum;
+use App\Models\Appointment;
 use App\Models\Registration;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\User;
@@ -112,6 +113,18 @@ class RegistrationResource extends Resource
     public static function canDeleteAny(): bool
     {
         return ! (Auth::user()?->isPartner() ?? false);
+    }
+
+    /**
+     * The registration's e.firma (FIEL) appointment — the source of truth for the e.firma
+     * cita's status and date. The old efirma_status flow is not used.
+     */
+    private static function fielAppointment(Registration $registration): ?Appointment
+    {
+        return $registration->appointments()
+            ->where('type', AppointmentTypeEnum::FIEL->value)
+            ->latest()
+            ->first();
     }
 
     /**
@@ -907,39 +920,32 @@ class RegistrationResource extends Resource
                     $record->stage === RegistrationStageEnum::EFIRMA_APPOINTMENT
                 ))
                 ->schema([
-                    TextEntry::make('efirma_status')
+                    // Estado/fecha de la cita REAL de e.firma (la cita FIEL), no el flujo viejo.
+                    TextEntry::make('efirma_cita_estado')
                         ->label('Estado de la cita')
                         ->badge()
-                        ->formatStateUsing(
-                            fn (?EfirmaAppointmentStatusEnum $state) => $state?->label() ?? 'Sin solicitar'
-                        )
-                        ->color(fn (?EfirmaAppointmentStatusEnum $state): string => match ($state) {
-                            EfirmaAppointmentStatusEnum::PENDING_SCHEDULING => 'warning',
-                            EfirmaAppointmentStatusEnum::SCHEDULED => 'info',
-                            EfirmaAppointmentStatusEnum::ATTENDED_APPROVED => 'success',
-                            EfirmaAppointmentStatusEnum::ATTENDED_REJECTED => 'danger',
-                            EfirmaAppointmentStatusEnum::NO_SHOW => 'danger',
-                            default => 'gray',
-                        }),
+                        ->state(fn (Registration $record): string => self::fielAppointment($record)?->status?->label() ?? 'Sin cita')
+                        ->color(fn (Registration $record): string => self::fielAppointment($record)?->status?->color() ?? 'gray'),
 
-                    TextEntry::make('efirma_appointment_at')
+                    TextEntry::make('efirma_cita_fecha')
                         ->label('Fecha de cita')
-                        ->dateTime('d/m/Y H:i')
+                        ->state(fn (Registration $record): ?string => self::fielAppointment($record)?->scheduled_at?->format('d/m/Y H:i'))
                         ->placeholder('Sin confirmar'),
 
-                    IconEntry::make('efirma_key_path')
+                    // Archivos de la e.firma: se guardan en company_fiel_* (donde sube el soldado/admin).
+                    IconEntry::make('key_subido')
                         ->label('.key subido')
                         ->boolean()
                         ->trueIcon('heroicon-o-check-circle')
                         ->falseIcon('heroicon-o-x-circle')
-                        ->state(fn (Registration $record): bool => filled($record->efirma_key_path)),
+                        ->state(fn (Registration $record): bool => filled($record->company_fiel_key_path)),
 
-                    IconEntry::make('efirma_cer_path')
+                    IconEntry::make('cer_subido')
                         ->label('.cer subido')
                         ->boolean()
                         ->trueIcon('heroicon-o-check-circle')
                         ->falseIcon('heroicon-o-x-circle')
-                        ->state(fn (Registration $record): bool => filled($record->efirma_cer_path)),
+                        ->state(fn (Registration $record): bool => filled($record->company_fiel_cer_path)),
                 ]),
 
             // ----------------------------------------------------------------
@@ -996,12 +1002,13 @@ class RegistrationResource extends Resource
                             : null)
                         ->openUrlInNewTab(),
 
+                    // NUNCA mostrar la contraseña en texto plano. Se guarda cifrada y solo se
+                    // indica si está registrada o no; el valor no se expone en la vista.
                     TextEntry::make('company_fiel_password')
                         ->label('Contraseña FIEL')
-                        ->copyable()
-                        ->placeholder('Sin registrar')
-                        ->state(fn (Registration $record): ?string => $record->company_fiel_password)
-                        ->visible(fn (): bool => (bool) auth()->user()?->hasRole('super_admin')),
+                        ->badge()
+                        ->state(fn (Registration $record): string => filled($record->company_fiel_password) ? '✓ Registrada' : 'Sin registrar')
+                        ->color(fn (Registration $record): string => filled($record->company_fiel_password) ? 'success' : 'gray'),
                 ]),
         ]);
     }
