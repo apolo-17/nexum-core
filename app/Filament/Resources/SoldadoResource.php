@@ -181,24 +181,7 @@ class SoldadoResource extends Resource
                     Toggle::make('available_for_mua')
                         ->label('Disponible para MUA (presta su FIEL)')
                         ->live()
-                        ->default(false)
-                        // The bot parks a FIEL automatically when the SE refuses the
-                        // account (cap reached, or certificate/password rejected).
-                        // Without showing why, it would silently vanish from the
-                        // rotation and nobody would know what to fix.
-                        ->helperText(fn (?Soldado $record): ?string => $record?->mua_blocked_reason
-                            ? 'Se desactivó automáticamente: '.$record->mua_blocked_reason
-                            : null)
-                        ->afterStateUpdated(function (bool $state, ?Soldado $record): void {
-                            // Re-enabling by hand is the operator saying "ya lo arreglé":
-                            // clear the block so the reason does not linger as noise.
-                            if ($state && $record?->mua_blocked_reason) {
-                                $record->update([
-                                    'mua_blocked_reason' => null,
-                                    'mua_blocked_at' => null,
-                                ]);
-                            }
-                        }),
+                        ->default(false),
 
                     Toggle::make('is_active')
                         ->label('Activo')
@@ -366,64 +349,64 @@ class SoldadoResource extends Resource
             ])
             ->actions([
                 ActionGroup::make([
-                    Action::make('grantAccess')
-                        ->label('Dar acceso')
-                        ->icon('heroicon-o-envelope')
-                        ->color('success')
-                        ->visible(fn (Soldado $record): bool => $record->user_id === null)
-                        ->requiresConfirmation()
-                        ->modalDescription('Se creará una cuenta y se enviará un correo de bienvenida para que el soldado defina su contraseña.')
-                        ->action(function (Soldado $record): void {
-                            try {
-                                self::grantAccess($record);
+                Action::make('grantAccess')
+                    ->label('Dar acceso')
+                    ->icon('heroicon-o-envelope')
+                    ->color('success')
+                    ->visible(fn (Soldado $record): bool => $record->user_id === null)
+                    ->requiresConfirmation()
+                    ->modalDescription('Se creará una cuenta y se enviará un correo de bienvenida para que el soldado defina su contraseña.')
+                    ->action(function (Soldado $record): void {
+                        try {
+                            self::grantAccess($record);
 
-                                Notification::make()
-                                    ->title('Invitación enviada')
-                                    ->body('El soldado recibirá un correo para activar su acceso.')
-                                    ->success()
-                                    ->send();
-                            } catch (\Throwable $exception) {
-                                Notification::make()
-                                    ->title('No se pudo enviar la invitación')
-                                    ->body($exception->getMessage())
-                                    ->danger()
-                                    ->send();
-                            }
-                        }),
+                            Notification::make()
+                                ->title('Invitación enviada')
+                                ->body('El soldado recibirá un correo para activar su acceso.')
+                                ->success()
+                                ->send();
+                        } catch (\Throwable $exception) {
+                            Notification::make()
+                                ->title('No se pudo enviar la invitación')
+                                ->body($exception->getMessage())
+                                ->danger()
+                                ->send();
+                        }
+                    }),
 
-                    Action::make('resendInvitation')
-                        ->label('Reenviar invitación')
-                        ->icon('heroicon-o-envelope')
-                        ->color('info')
-                        ->visible(fn (Soldado $record): bool => $record->user_id !== null)
-                        ->requiresConfirmation()
-                        ->modalDescription('Se enviará un nuevo correo con un enlace vigente por 24 horas para que el soldado defina su contraseña. El enlace anterior dejará de funcionar.')
-                        ->action(function (Soldado $record): void {
-                            try {
-                                self::grantAccess($record);
+                Action::make('resendInvitation')
+                    ->label('Reenviar invitación')
+                    ->icon('heroicon-o-envelope')
+                    ->color('info')
+                    ->visible(fn (Soldado $record): bool => $record->user_id !== null)
+                    ->requiresConfirmation()
+                    ->modalDescription('Se enviará un nuevo correo con un enlace vigente por 24 horas para que el soldado defina su contraseña. El enlace anterior dejará de funcionar.')
+                    ->action(function (Soldado $record): void {
+                        try {
+                            self::grantAccess($record);
 
-                                Notification::make()
-                                    ->title('Invitación reenviada correctamente.')
-                                    ->body('El soldado recibirá un nuevo correo para completar su registro.')
-                                    ->success()
-                                    ->send();
-                            } catch (\Throwable $exception) {
-                                Log::error('Failed to resend soldado invitation.', [
-                                    'soldado_id' => $record->id,
-                                    'error' => $exception->getMessage(),
-                                ]);
+                            Notification::make()
+                                ->title('Invitación reenviada correctamente.')
+                                ->body('El soldado recibirá un nuevo correo para completar su registro.')
+                                ->success()
+                                ->send();
+                        } catch (\Throwable $exception) {
+                            Log::error('Failed to resend soldado invitation.', [
+                                'soldado_id' => $record->id,
+                                'error' => $exception->getMessage(),
+                            ]);
 
-                                Notification::make()
-                                    ->title('No se pudo reenviar la invitación')
-                                    ->body('Revisa la configuración de correo (Resend).')
-                                    ->danger()
-                                    ->send();
-                            }
-                        }),
+                            Notification::make()
+                                ->title('No se pudo reenviar la invitación')
+                                ->body('Revisa la configuración de correo (Resend).')
+                                ->danger()
+                                ->send();
+                        }
+                    }),
 
-                    ViewAction::make(),
-                    EditAction::make(),
-                    DeleteAction::make(),
+                ViewAction::make(),
+                EditAction::make(),
+                DeleteAction::make(),
                 ])
                     // Un solo botón "⋮" agrupa todas las acciones (como las otras tablas).
                     ->label('Acciones')
@@ -463,11 +446,6 @@ class SoldadoResource extends Resource
                 ->columns(4)
                 ->schema([
                     IconEntry::make('available_for_mua')->label('MUA')->boolean(),
-                    InfoTextEntry::make('mua_blocked_reason')
-                        ->label('MUA bloqueada por')
-                        ->columnSpanFull()
-                        ->color('danger')
-                        ->visible(fn (Soldado $record): bool => filled($record->mua_blocked_reason)),
                     IconEntry::make('available_as_legal_representative')->label('Rep. legal')->boolean(),
                     IconEntry::make('available_as_commissary')->label('Comisario')->boolean(),
                     IconEntry::make('is_active')->label('Activo')->boolean(),

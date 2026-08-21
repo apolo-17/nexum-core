@@ -103,11 +103,9 @@ class MuaBotCallbackController extends Controller
         // The bot's callback vocabulary, decoupled from our internal status enum:
         //   submitted → the SE confirmed registration (advances SUBMITTING → PENDING)
         //   failed    → a bot-side failure (submit or check) — never stays silent
-        //   deferred  → the FIEL is unusable (SE cap reached / certificate refused);
-        //               the name returns to the queue AND the FIEL leaves rotation
         //   process   → still in dictamen
         //   approved / rejected → terminal resolution
-        $allowed = ['submitted', 'failed', 'deferred', 'process', 'approved', 'rejected'];
+        $allowed = ['submitted', 'failed', 'process', 'approved', 'rejected'];
 
         if (! in_array($callbackStatus, $allowed, true)) {
             return response()->json(['error' => 'Invalid status value'], Response::HTTP_UNPROCESSABLE_ENTITY);
@@ -186,10 +184,6 @@ class MuaBotCallbackController extends Controller
 
                 case 'failed':
                     $this->processFailed($request, $legalName);
-                    break;
-
-                case 'deferred':
-                    $this->processDeferred($request, $legalName);
                     break;
             }
         } catch (\Throwable $th) {
@@ -439,16 +433,9 @@ class MuaBotCallbackController extends Controller
      * the denomination. This advances the honest in-flight SUBMITTING state to
      * PENDING ("Enviada a la SE"), so that label always reflects a confirmed fact.
      *
-     * Idempotent and non-regressive: advances from SUBMITTING (or re-affirms an
+     * Idempotent and non-regressive: only advances from SUBMITTING (or re-affirms an
      * existing PENDING). A stale confirmation for a denomination already in dictamen
      * or resolved is ignored — a later state is never downgraded.
-     *
-     * WAIT is accepted too, and that is not cosmetic. When one attempt fails and a
-     * retry succeeds, the two callbacks can land out of order: the `failed` from
-     * the first attempt returns the name to WAIT, then the `submitted` from the
-     * retry arrives moments later. Refusing it left the SE holding a registered
-     * request that Nexum believed was still queued — a phantom the operator only
-     * finds by reading the portal by hand.
      *
      * @param  Request  $request  Request carrying the optional portal_status label.
      * @param  LegalName  $legalName  The denomination whose registration is confirmed.
@@ -458,16 +445,12 @@ class MuaBotCallbackController extends Controller
         if (! in_array($legalName->status, [
             LegalNameStatusEnum::SUBMITTING,
             LegalNameStatusEnum::PENDING,
-            LegalNameStatusEnum::WAIT,
         ], true)) {
             return;
         }
 
         $portalStatus = (string) $request->input('portal_status', '');
-        $wasSubmitting = in_array($legalName->status, [
-            LegalNameStatusEnum::SUBMITTING,
-            LegalNameStatusEnum::WAIT,
-        ], true);
+        $wasSubmitting = $legalName->status === LegalNameStatusEnum::SUBMITTING;
 
         $legalName->update([
             'status' => LegalNameStatusEnum::PENDING->value,
@@ -496,74 +479,6 @@ class MuaBotCallbackController extends Controller
     }
 
     /**
-     * Handle a `deferred` callback: the FIEL — not the name — blocked the attempt.
-     *
-     * The SE refused the whole account, either because it is already at its
-     * one-in-process cap or because it rejected the certificate/password. Nothing
-     * was registered, so the denomination goes back to the queue exactly as with
-     * `failed`. The difference is what happens to the FIEL: retrying it is
-     * guaranteed to bounce the same way, so it leaves the MUA rotation and the
-     * portal's own wording is stored for whoever has to fix it.
-     *
-     * Without this, every dispatch re-picked the same blocked FIEL and failed
-     * identically — the loop that kept three denominations stuck for days.
-     *
-     * @param  Request  $request  Request carrying the portal reason and block flag.
-     * @param  LegalName  $legalName  The denomination that could not be submitted.
-     */
-    private function processDeferred(Request $request, LegalName $legalName): void
-    {
-        $reason = (string) $request->input('reason', 'La FIEL no pudo usarse en la SE.');
-        $blocksFiel = (bool) $request->input('blocks_fiel', true);
-        $soldado = $legalName->soldado;
-
-        if (in_array($legalName->status, [
-            LegalNameStatusEnum::SUBMITTING,
-            LegalNameStatusEnum::WAIT,
-        ], true)) {
-            $legalName->update([
-                'status' => LegalNameStatusEnum::WAIT->value,
-                'submitted_at' => null,
-                'last_status_check_at' => null,
-            ]);
-        }
-
-        $legalName->recordEvent(
-            LegalNameEventTypeEnum::DEFERRED,
-            $soldado
-                ? "La SE no aceptó el envío con la FIEL «{$soldado->name}». Regresó a la cola."
-                : 'La SE no aceptó el envío. Regresó a la cola.',
-            ['reason' => $reason, 'soldado_id' => $soldado?->id],
-            actorType: 'bot',
-        );
-
-        if ($blocksFiel && $soldado && $soldado->available_for_mua) {
-            $soldado->update([
-                'available_for_mua' => false,
-                'mua_blocked_reason' => $reason,
-                'mua_blocked_at' => now(),
-            ]);
-
-            Log::warning('MUA bot callback: FIEL parked out of the MUA rotation.', [
-                'soldado_id' => $soldado->id,
-                'soldado_name' => $soldado->name,
-                'reason' => $reason,
-            ]);
-        }
-
-        $this->notifySafely(
-            NotificationEventEnum::DENOMINATION_FAILED,
-            new DenominationStatusNotification($legalName, NotificationEventEnum::DENOMINATION_FAILED, $reason),
-        );
-
-        Log::warning('MUA bot callback: submission deferred, FIEL unusable.', [
-            'legal_name_id' => $legalName->id,
-            'name' => $legalName->name,
-            'reason' => $reason,
-        ]);
-    }
-
-    /**
      * Handle a `failed` callback: the bot's background task could not complete.
      *
      * Branches on the current state so the failure is honest:
@@ -580,12 +495,9 @@ class MuaBotCallbackController extends Controller
         $reason = (string) $request->input('reason', 'El bot no pudo completar la operación.');
 
         if ($legalName->status === LegalNameStatusEnum::SUBMITTING) {
-            // Keep soldado_id: it records which FIEL made the attempt. Occupancy is
-            // derived from STATUS (see MuaSubmissionService::hasInProcessDenomination),
-            // so a WAIT name holds nobody's slot, and keeping it means a `submitted`
-            // that lands after this failure still knows which FIEL registered it.
             $legalName->update([
                 'status' => LegalNameStatusEnum::WAIT->value,
+                'soldado_id' => null,
                 'submitted_at' => null,
                 'last_status_check_at' => null,
             ]);

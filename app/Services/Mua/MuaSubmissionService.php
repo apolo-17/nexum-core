@@ -124,7 +124,7 @@ class MuaSubmissionService
 
         if ($soldado === null) {
             // Every FIEL is busy: the SE allows a single in-process request per
-            // account, so the denomination waits until one frees up (its current
+            // fedatario, so the denomination waits until one frees up (its current
             // denomination is approved or rejected).
             $legalName->recordEvent(
                 LegalNameEventTypeEnum::DEFERRED,
@@ -167,16 +167,11 @@ class MuaSubmissionService
     /**
      * Find a soldado FIEL that is free to take a new denomination.
      *
-     * The SE allows only ONE in-process request per ACCOUNT (RFC/e.firma) at a
-     * time — not per fedatario; the notary is the same for all of them. So a FIEL
-     * is eligible only when it is not already holding an in-process denomination. Filters by: MUA capability, active flag, all three
-     * credentials present, and no denomination currently in process.
-     *
-     * Candidates are tried LEAST-RECENTLY-USED first rather than oldest-created
-     * first. Picking by creation order meant the same FIEL was chosen for every
-     * dispatch, so one account that the SE refuses absorbed attempt after attempt
-     * while healthy FIELs sat idle. Rotating spreads the load and lets a failed
-     * dispatch fall through to a different account on the next try.
+     * The SE portal (Notaría 248) allows only ONE in-process request per fedatario
+     * at a time, so a FIEL is eligible only when it is not already holding an
+     * in-process denomination. Filters by: MUA capability, active flag, all three
+     * credentials present, and no denomination currently in process. Returns the
+     * first free FIEL, or null when every FIEL is occupied.
      *
      * @return Soldado|null A free soldado FIEL, or null if none are available.
      */
@@ -184,9 +179,6 @@ class MuaSubmissionService
     {
         return Soldado::where('available_for_mua', true)
             ->where('is_active', true)
-            ->withMax('legalNames', 'submitted_at')
-            ->orderByRaw('legal_names_max_submitted_at IS NOT NULL')
-            ->orderBy('legal_names_max_submitted_at')
             ->get()
             ->first(function (Soldado $soldado): bool {
                 return $soldado->isReadyForMua()
@@ -244,13 +236,8 @@ class MuaSubmissionService
      *
      * A FIEL holding a denomination in a non-terminal state — SUBMITTING, PENDING
      * or PROCESS — cannot take another one (the SE allows a single in-process
-     * request per ACCOUNT). The slot frees only when that denomination becomes
+     * request per fedatario). The slot frees only when that denomination becomes
      * APPROVED or REJECTED.
-     *
-     * Caveat this cannot see: the SE counts EVERY request on that account, including
-     * ones made before Nexum existed. An account carrying old unresolved requests
-     * looks free here and is refused by the portal. That is what `deferred` handles
-     * — the bot reports the portal's own count and the FIEL leaves the rotation.
      *
      * @param  Soldado  $soldado  The soldado FIEL to check.
      * @return bool True when the FIEL already has an in-process denomination.

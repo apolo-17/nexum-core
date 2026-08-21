@@ -175,29 +175,6 @@ class ListDenominations extends ListRecords
                 $reason = null;
 
                 foreach ($pending as $name) {
-                    // Stop as soon as no FIEL is free. Each dispatch blocks on the
-                    // bot for up to 30 s, so grinding through the whole list once
-                    // capacity ran out just burned the web request until PHP killed
-                    // it — and the names it never reached showed no reason at all.
-                    // The remaining names are deferred below with the real cause.
-                    if ($service->findAvailableFiel() === null) {
-                        $deferredNames[] = $name->name;
-                        $reason ??= $service->unavailabilityReason()
-                            ?? 'No hay FIEL disponible para enviar en este momento.';
-
-                        if ($name->status !== LegalNameStatusEnum::WAIT) {
-                            $name->update(['status' => LegalNameStatusEnum::WAIT]);
-                        }
-
-                        $name->recordEvent(
-                            LegalNameEventTypeEnum::DEFERRED,
-                            'Envío diferido — quedó en espera.',
-                            ['reason' => $reason],
-                        );
-
-                        continue;
-                    }
-
                     try {
                         if ($service->trySubmit($name)) {
                             $sent++;
