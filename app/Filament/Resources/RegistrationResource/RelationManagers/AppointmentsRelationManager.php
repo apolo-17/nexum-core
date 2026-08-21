@@ -31,8 +31,10 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Infolists\Components\TextEntry as InfoTextEntry;
 use Filament\Infolists\Components\ViewEntry;
+use Closure;
 use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\BadgeColumn;
@@ -73,6 +75,40 @@ class AppointmentsRelationManager extends RelationManager
      *
      * @param  Appointment  $record  The appointment whose office is shown.
      */
+    /**
+     * Active statuses that occupy a SAT slot: a soldado in any of these for a given cita
+     * type cannot be given another cita of the same type.
+     */
+    private const ACTIVE_STATUSES = [
+        AppointmentStatusEnum::PENDING_FORMING->value,
+        AppointmentStatusEnum::FORMED->value,
+        AppointmentStatusEnum::SCHEDULED->value,
+    ];
+
+    /**
+     * True when the soldado already has an active cita of the given type (excluding the one
+     * being edited). The SAT allows a soldado at most one active cita per type — one RFC and
+     * one e.firma at the same time, never two of the same.
+     */
+    private static function soldadoHasActiveConflict(?string $soldadoId, ?string $type, ?string $exceptId): bool
+    {
+        if (blank($soldadoId) || blank($type)) {
+            return false;
+        }
+
+        return Appointment::query()
+            ->where('soldado_id', $soldadoId)
+            ->where('type', $type)
+            ->whereIn('status', self::ACTIVE_STATUSES)
+            ->when($exceptId !== null, fn ($query) => $query->whereKeyNot($exceptId))
+            ->exists();
+    }
+
+    private static function typeLabel(?string $type): string
+    {
+        return AppointmentTypeEnum::tryFrom((string) $type)?->label() ?? 'ese tipo';
+    }
+
     private static function officeName(Appointment $record): string
     {
         $office = (string) ($record->office ?? '');
@@ -99,6 +135,7 @@ class AppointmentsRelationManager extends RelationManager
                 ->label('Tipo de cita')
                 ->options(AppointmentTypeEnum::options())
                 ->required()
+                ->live()
                 ->helperText('Cada empresa necesita una cita RFC y una cita e.firma (FIEL).'),
 
             Select::make('status')
@@ -121,7 +158,30 @@ class AppointmentsRelationManager extends RelationManager
                     ->all())
                 ->helperText('Apoderados del acta de esta empresa con RFC y correo (el correo se usa para avisarle al soldado).')
                 ->searchable()
-                ->live(),
+                ->live()
+                // Alerta INMEDIATA al seleccionar: un soldado no puede tener dos citas del
+                // mismo tipo al mismo tiempo (el SAT no lo permite). Puede tener una RFC y
+                // una e.firma a la vez, pero no dos RFC ni dos e.firma.
+                ->afterStateUpdated(function ($state, Get $get, ?Appointment $record): void {
+                    if (self::soldadoHasActiveConflict($state, $get('type'), $record?->id)) {
+                        Notification::make()
+                            ->title('⚠️ Soldado ocupado')
+                            ->body('Este soldado ya tiene una cita de '.self::typeLabel($get('type'))
+                                .' activa. El SAT no permitirá asignarle otra del mismo tipo hasta que la termine o se cancele.')
+                            ->warning()
+                            ->persistent()
+                            ->send();
+                    }
+                })
+                // Y bloqueo al guardar, por si se cambió el tipo después de elegir el soldado.
+                ->rules([
+                    fn (Get $get, ?Appointment $record): Closure => function (string $attribute, mixed $value, Closure $fail) use ($get, $record): void {
+                        if (self::soldadoHasActiveConflict($value, $get('type'), $record?->id)) {
+                            $fail('Este soldado ya tiene una cita de '.self::typeLabel($get('type'))
+                                .' activa. El SAT no permite dos citas del mismo tipo para el mismo soldado.');
+                        }
+                    },
+                ]),
 
             // Sin toggle: al guardar una cita "por formar" con soldado, se manda a formar
             // automáticamente (ver autoDispatchForming). El equipo no tiene que hacer nada.
