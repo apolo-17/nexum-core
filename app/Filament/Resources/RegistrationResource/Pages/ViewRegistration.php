@@ -10,12 +10,14 @@ use App\Filament\Resources\RegistrationResource\Actions\ManageCompanyCredentials
 use App\Filament\Resources\RegistrationResource\Actions\PartnerSignatureAction;
 use App\Filament\Resources\RegistrationResource\Actions\PrepareActaAction;
 use App\Filament\Resources\RegistrationResource\Actions\RequestEfirmaAppointmentAction;
+use App\Jobs\BuildActaRenderJob;
 use App\Models\Registration;
 use App\Services\DocuSign\DocuSignService;
 use App\Services\Registration\ActaPreparationService;
 use App\Services\Registration\StageTransitionService;
 use Filament\Actions\Action;
 use Filament\Actions\EditAction;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
 
 /**
@@ -56,6 +58,27 @@ class ViewRegistration extends ViewRecord
         }
 
         return [
+            // Generar / reintentar el acta en segundo plano. Corre las validaciones,
+            // asigna apoderados si faltan y arma el borrador; avisa por correo al terminar
+            // (lista o incompleta con lo que falta). Útil cuando faltaba un dato y ya se corrigió.
+            Action::make('regenerateActaRender')
+                ->label('Generar / reintentar acta')
+                ->icon('heroicon-o-arrow-path')
+                ->color('primary')
+                ->requiresConfirmation()
+                ->modalHeading('Generar el acta')
+                ->modalDescription('Se generará el acta en segundo plano con los datos y apoderados del expediente. Puede tardar unos minutos; te avisaremos por correo cuando esté lista, o si falta algún dato.')
+                ->modalSubmitActionLabel('Generar acta')
+                ->action(function () use ($record): void {
+                    BuildActaRenderJob::dispatch($record->id);
+
+                    Notification::make()
+                        ->title('Generando el acta…')
+                        ->body('Esto puede tardar unos minutos. Cuando esté lista te avisaremos por correo.')
+                        ->info()
+                        ->send();
+                }),
+
             // "Revisar acta" — navigates to the full inline editor.
             // Visible whenever a compiled ACTA_DRAFT with template_data exists.
             // Download (.docx) is available from inside the editor toolbar.

@@ -11,9 +11,11 @@ use App\Models\Shareholder;
 use App\Models\User;
 use App\Notifications\ActaRenderIncomplete;
 use App\Notifications\ActaRenderReady;
+use App\Enums\RegistrationStageEnum;
 use App\Services\Registration\ActaCompletenessValidator;
 use App\Services\Registration\ActaPreparationService;
 use App\Services\Registration\KycReconciliationService;
+use App\Services\Registration\StageTransitionService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -53,6 +55,7 @@ class BuildActaRenderJob implements ShouldQueue
         ActaCompletenessValidator $completeness,
         KycReconciliationService $reconciliation,
         ActaPreparationService $preparation,
+        StageTransitionService $stageTransition,
     ): void {
         $registration = Registration::find($this->registrationId);
 
@@ -63,6 +66,8 @@ class BuildActaRenderJob implements ShouldQueue
         $issues = $completeness->validate($registration);
 
         if ($issues !== []) {
+            // Missing data: the pipeline stops where it is (no advance) and the alert lists
+            // exactly what to add. The team fixes it and re-runs the render.
             $this->notifyAdmins(new ActaRenderIncomplete($registration, $issues));
 
             return;
@@ -85,7 +90,31 @@ class BuildActaRenderJob implements ShouldQueue
             ],
         );
 
+        $this->advanceToActaPreparation($registration, $stageTransition);
+
         $this->notifyAdmins(new ActaRenderReady($registration, $warnings));
+    }
+
+    /**
+     * Render succeeded: advance the pipeline forward to ACTA_PREPARATION so the earlier
+     * stages (identity validation, legal name) are marked done automatically. Forward-only
+     * and idempotent — never throws into the render flow.
+     */
+    private function advanceToActaPreparation(Registration $registration, StageTransitionService $stageTransition): void
+    {
+        try {
+            $stageTransition->jumpTo(
+                $registration,
+                RegistrationStageEnum::ACTA_PREPARATION,
+                null,
+                'Acta generada automáticamente por el sistema.',
+            );
+        } catch (\Throwable $exception) {
+            Log::warning('BuildActaRenderJob: could not advance stage after render.', [
+                'registration_id' => $registration->id,
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 
     /**

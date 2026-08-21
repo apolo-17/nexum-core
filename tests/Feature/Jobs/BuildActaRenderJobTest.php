@@ -4,6 +4,7 @@ namespace Tests\Feature\Jobs;
 
 use App\Enums\DocumentTypeEnum;
 use App\Enums\LegalNameStatusEnum;
+use App\Enums\RegistrationStageEnum;
 use App\Jobs\BuildActaRenderJob;
 use App\Models\Document;
 use App\Models\LegalName;
@@ -17,6 +18,7 @@ use App\Services\Registration\ActaCompletenessValidator;
 use App\Services\Registration\ActaPreparationService;
 use App\Services\Registration\KycReconciliationResult;
 use App\Services\Registration\KycReconciliationService;
+use App\Services\Registration\StageTransitionService;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
@@ -50,6 +52,7 @@ class BuildActaRenderJobTest extends TestCase
         $registration = Registration::factory()->create([
             'capital_social' => 10000,
             'company_object' => 'La sociedad tiene por objeto…',
+            'stage' => RegistrationStageEnum::DATA_RECEIVED->value,
         ]);
 
         LegalName::create([
@@ -98,6 +101,7 @@ class BuildActaRenderJobTest extends TestCase
             app(ActaCompletenessValidator::class),
             app(KycReconciliationService::class),
             app(ActaPreparationService::class),
+            app(StageTransitionService::class),
         );
     }
 
@@ -109,7 +113,9 @@ class BuildActaRenderJobTest extends TestCase
         // Never reached, but resolved as a handle() dependency — mock so no vision runs.
         $this->mock(KycReconciliationService::class);
 
-        $registration = Registration::factory()->create(); // minimal → many gaps
+        $registration = Registration::factory()->create([
+            'stage' => RegistrationStageEnum::DATA_RECEIVED->value,
+        ]); // minimal → many gaps
 
         $this->runJob($registration);
 
@@ -118,6 +124,8 @@ class BuildActaRenderJobTest extends TestCase
             'registration_id' => $registration->id,
             'type' => DocumentTypeEnum::ACTA_DRAFT->value,
         ]);
+        // Pipeline stops where it is when the render cannot be built.
+        $this->assertSame(RegistrationStageEnum::DATA_RECEIVED, $registration->fresh()->stage);
     }
 
     #[Test]
@@ -142,5 +150,7 @@ class BuildActaRenderJobTest extends TestCase
             'type' => DocumentTypeEnum::ACTA_DRAFT->value,
         ]);
         Notification::assertSentTo($admin, ActaRenderReady::class);
+        // Render succeeded: the pipeline auto-advances to ACTA_PREPARATION (prior steps green).
+        $this->assertSame(RegistrationStageEnum::ACTA_PREPARATION, $registration->fresh()->stage);
     }
 }
