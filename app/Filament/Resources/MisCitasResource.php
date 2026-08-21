@@ -484,6 +484,9 @@ class MisCitasResource extends Resource
         // La e.firma quedó resguardada: el expediente avanza a "Cita e.firma".
         self::avanzarEtapa($registration, RegistrationStageEnum::EFIRMA_APPOINTMENT);
 
+        // Con la e.firma podría cerrarse el ciclo (RFC + CSF + e.firma) → empresa operativa.
+        app(\App\Services\Registration\RegistrationCompletionService::class)->evaluate($registration);
+
         self::avisarAdmins($registration, 'El soldado completó la e.firma y subió la FIEL validada de la empresa'.($result->rfc !== null ? " (RFC {$result->rfc})" : '').'.');
 
         Notification::make()

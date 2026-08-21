@@ -35,6 +35,7 @@ class CsfExtractionService
     public function __construct(
         private readonly DocumentAnalysisService $analysis,
         private readonly StageTransitionService $stages,
+        private readonly RegistrationCompletionService $completion,
     ) {}
 
     /**
@@ -80,6 +81,9 @@ class CsfExtractionService
         if (filled($registration->fresh()->rfc)) {
             $this->advanceToSatRegistration($registration);
         }
+
+        // Si con este CSF (RFC + domicilio) ya están los tres entregables, la empresa es operativa.
+        $this->completion->evaluate($registration);
     }
 
     /**
