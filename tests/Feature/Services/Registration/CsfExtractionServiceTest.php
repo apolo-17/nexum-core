@@ -3,6 +3,8 @@
 namespace Tests\Feature\Services\Registration;
 
 use App\Enums\DocumentTypeEnum;
+use App\Enums\RegistrationStageEnum;
+use App\Enums\RegistrationStatusEnum;
 use App\Models\Document;
 use App\Models\Registration;
 use App\Services\Document\DocumentAnalysisService;
@@ -73,5 +75,23 @@ class CsfExtractionServiceTest extends TestCase
         $registration->refresh();
         $this->assertSame('EXISTING0001', $registration->rfc); // unchanged
         $this->assertSame('Jalisco', $registration->fiscal_state); // still filled
+    }
+
+    #[Test]
+    public function it_advances_the_registration_to_sat_registration_once_the_rfc_is_obtained(): void
+    {
+        $registration = Registration::factory()->create([
+            'rfc' => null,
+            'status' => RegistrationStatusEnum::ACTIVE,
+            'stage' => RegistrationStageEnum::ACTA_PREPARATION,
+        ]);
+        $csf = $this->csfFor($registration);
+
+        $this->fakeExtraction(['rfc' => 'ABC260101XY9']);
+
+        app(CsfExtractionService::class)->applyToRegistration($csf);
+
+        $registration->refresh();
+        $this->assertSame(RegistrationStageEnum::SAT_REGISTRATION, $registration->stage);
     }
 }

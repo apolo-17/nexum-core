@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Services\Registration;
 
 use App\Enums\DocumentTypeEnum;
+use App\Enums\RegistrationStageEnum;
 use App\Models\Document;
+use App\Models\Registration;
 use App\Services\Document\DocumentAnalysisService;
 use Illuminate\Support\Facades\Log;
 
@@ -32,6 +34,7 @@ class CsfExtractionService
 
     public function __construct(
         private readonly DocumentAnalysisService $analysis,
+        private readonly StageTransitionService $stages,
     ) {}
 
     /**
@@ -71,6 +74,31 @@ class CsfExtractionService
 
         if ($updates !== []) {
             $registration->update($updates);
+        }
+
+        // Con el RFC ya en el expediente, el hito "Registro SAT" está cumplido: avanza la etapa.
+        if (filled($registration->fresh()->rfc)) {
+            $this->advanceToSatRegistration($registration);
+        }
+    }
+
+    /**
+     * Avanza el expediente a "Registro SAT" (forward-only, sin romper el flujo si falla).
+     */
+    private function advanceToSatRegistration(Registration $registration): void
+    {
+        try {
+            $this->stages->jumpTo(
+                $registration->fresh(),
+                RegistrationStageEnum::SAT_REGISTRATION,
+                null,
+                'Avance automático: RFC obtenido (CSF procesado).',
+            );
+        } catch (\Throwable $exception) {
+            Log::warning('CsfExtractionService: could not advance the registration stage.', [
+                'registration_id' => $registration->id,
+                'error' => $exception->getMessage(),
+            ]);
         }
     }
 }

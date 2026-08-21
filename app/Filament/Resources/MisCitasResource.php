@@ -5,6 +5,8 @@ namespace App\Filament\Resources;
 use App\Enums\AppointmentEventTypeEnum;
 use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
+use App\Enums\RegistrationStageEnum;
+use App\Services\Registration\StageTransitionService;
 use App\Enums\DocumentTypeEnum;
 use App\Filament\Resources\MisCitasResource\Pages;
 use App\Jobs\FormSatAppointmentJob;
@@ -366,6 +368,9 @@ class MisCitasResource extends Resource
         $record->update(['status' => AppointmentStatusEnum::ATTENDED]);
         $record->recordEvent(AppointmentEventTypeEnum::ATTENDED, "El soldado completó la cita. RFC: {$rfc}.", ['rfc' => $rfc], 'soldado');
 
+        // El RFC ya está: el expediente avanza a "Registro SAT".
+        self::avanzarEtapa($registration, RegistrationStageEnum::SAT_REGISTRATION);
+
         // Preparar la cita de e.firma (por formar) con el mismo soldado, si no existe.
         $fiel = $registration?->appointments()
             ->where('type', AppointmentTypeEnum::FIEL->value)
@@ -476,6 +481,9 @@ class MisCitasResource extends Resource
             ['rfc' => $result->rfc],
             'soldado',
         );
+        // La e.firma quedó resguardada: el expediente avanza a "Cita e.firma".
+        self::avanzarEtapa($registration, RegistrationStageEnum::EFIRMA_APPOINTMENT);
+
         self::avisarAdmins($registration, 'El soldado completó la e.firma y subió la FIEL validada de la empresa'.($result->rfc !== null ? " (RFC {$result->rfc})" : '').'.');
 
         Notification::make()
@@ -495,6 +503,33 @@ class MisCitasResource extends Resource
         }
 
         return filled($value) ? (string) $value : null;
+    }
+
+    /**
+     * Avanza automáticamente la etapa del expediente cuando un hito del SAT se cumple
+     * (RFC obtenido → Registro SAT; e.firma resguardada → Cita e.firma). Solo avanza
+     * hacia adelante (jumpTo es forward-only) y nunca rompe el flujo si algo falla.
+     */
+    private static function avanzarEtapa(?\App\Models\Registration $registration, RegistrationStageEnum $destino): void
+    {
+        if ($registration === null) {
+            return;
+        }
+
+        try {
+            app(StageTransitionService::class)->jumpTo(
+                $registration->fresh(),
+                $destino,
+                null,
+                'Avance automático: hito del SAT cumplido.',
+            );
+        } catch (\Throwable $exception) {
+            \Illuminate\Support\Facades\Log::warning('MisCitas: no se pudo avanzar la etapa automáticamente.', [
+                'registration_id' => $registration->id,
+                'target' => $destino->value,
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 
     private static function avisarAdmins(?\App\Models\Registration $registration, string $body): void
