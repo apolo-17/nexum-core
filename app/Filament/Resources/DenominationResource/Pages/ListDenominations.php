@@ -5,6 +5,7 @@ namespace App\Filament\Resources\DenominationResource\Pages;
 use App\Enums\LegalNameEventTypeEnum;
 use App\Enums\LegalNameStatusEnum;
 use App\Filament\Resources\DenominationResource;
+use App\Filament\Widgets\MuaCapacityOverview;
 use App\Jobs\SubmitDenominationToMuaNowJob;
 use App\Models\LegalName;
 use App\Services\Denomination\DenominationGeneratorService;
@@ -14,6 +15,7 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ListRecords;
+use Filament\Widgets\Widget;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Log;
 
@@ -37,6 +39,23 @@ class ListDenominations extends ListRecords
         return [
             $this->generateAction(),
             $this->submitPendingAction(),
+        ];
+    }
+
+    /**
+     * Widgets shown above the table.
+     *
+     * Free soldiers is the ceiling on how many denominations can be sent right now
+     * (the SE allows one in-process per RFC), so it belongs on screen rather than
+     * only inside the send confirmation — asking "is everyone busy?" should not
+     * require opening a dialog that sends things.
+     *
+     * @return list<class-string<Widget>>
+     */
+    protected function getHeaderWidgets(): array
+    {
+        return [
+            MuaCapacityOverview::class,
         ];
     }
 
