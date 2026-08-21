@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources\RegistrationResource\Actions;
 
+use App\Enums\AppointmentStatusEnum;
+use App\Enums\AppointmentTypeEnum;
 use App\Enums\EfirmaAppointmentStatusEnum;
 use App\Enums\RegistrationStageEnum;
 use App\Models\Registration;
@@ -34,6 +36,22 @@ class RequestEfirmaAppointmentAction extends Action
             ->modalSubmitActionLabel('Sí, solicitar cita')
             ->visible(function (Registration $record): bool {
                 if ($record->stage !== RegistrationStageEnum::EFIRMA_APPOINTMENT) {
+                    return false;
+                }
+
+                // Si ya existe una cita de e.firma (FIEL) en curso o hecha —formada, agendada
+                // o atendida— no hay nada que solicitar: el botón se oculta.
+                $yaTieneCitaEfirma = $record->appointments()
+                    ->where('type', AppointmentTypeEnum::FIEL->value)
+                    ->whereIn('status', [
+                        AppointmentStatusEnum::PENDING_FORMING->value,
+                        AppointmentStatusEnum::FORMED->value,
+                        AppointmentStatusEnum::SCHEDULED->value,
+                        AppointmentStatusEnum::ATTENDED->value,
+                    ])
+                    ->exists();
+
+                if ($yaTieneCitaEfirma) {
                     return false;
                 }
 
