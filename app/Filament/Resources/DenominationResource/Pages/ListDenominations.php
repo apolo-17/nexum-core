@@ -209,6 +209,29 @@ class ListDenominations extends ListRecords
 
                 $fiel = $service->fielAvailability();
 
+                // Nobody free: do NOT queue. The SE allows one in-process denomination
+                // per RFC, so every job would just defer and the operator would be told
+                // "encolado" for work that cannot start. Say so plainly instead.
+                if ($fiel['free'] === 0) {
+                    $enProceso = LegalName::whereIn('status', [
+                        LegalNameStatusEnum::SUBMITTING->value,
+                        LegalNameStatusEnum::PENDING->value,
+                        LegalNameStatusEnum::PROCESS->value,
+                    ])->count();
+
+                    Notification::make()
+                        ->title('No hay soldados disponibles — no se envió nada.')
+                        ->body("Los {$fiel['ready']} soldados con FIEL están ocupados: la SE permite una "
+                            .'denominación en proceso por RFC. '
+                            ."Se liberará uno en cuanto la SE resuelva alguna de las {$enProceso} en dictamen. "
+                            .'Las denominaciones siguen en cola; vuelve a intentar entonces.')
+                        ->danger()
+                        ->persistent()
+                        ->send();
+
+                    return;
+                }
+
                 // Queue every submission instead of running them here. Each one blocks
                 // on the bot for up to 30 s, so sending a batch inline pinned the web
                 // request for minutes until PHP killed it mid-list — the names it never
@@ -232,17 +255,14 @@ class ListDenominations extends ListRecords
                 $body = "Se encolaron {$queued} denominaciones. "
                     ."Soldados listos: {$fiel['ready']} · libres: {$fiel['free']} · ocupados: {$fiel['busy']}.";
 
-                if ($fiel['free'] === 0) {
-                    $body .= ' Ningún soldado está libre ahora mismo, así que quedarán en espera '
-                        .'hasta que una denominación en proceso se apruebe o se rechace.';
-                } elseif ($queued > $fiel['free']) {
+                if ($queued > $fiel['free']) {
                     $body .= " Solo {$willSend} saldrán ahora (una por soldado); las demás esperan turno.";
                 }
 
                 Notification::make()
                     ->title('Envío encolado.')
                     ->body($body)
-                    ->status($fiel['free'] === 0 ? 'warning' : 'success')
+                    ->status($queued > $fiel['free'] ? 'warning' : 'success')
                     ->persistent()
                     ->send();
             });

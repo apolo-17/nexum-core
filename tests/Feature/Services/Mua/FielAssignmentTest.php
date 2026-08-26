@@ -124,6 +124,28 @@ class FielAssignmentTest extends TestCase
         $this->assertSame(['Libre'], $availability['free_names']);
     }
 
+    #[Test]
+    public function availability_reports_zero_free_when_every_soldier_is_occupied(): void
+    {
+        // What the "no hay soldados disponibles" notice keys off: with nobody free,
+        // sending must be refused outright rather than queueing work that only defers.
+        $busy = $this->readySoldado('Ocupada');
+        LegalName::create([
+            'registration_id' => null,
+            'name' => 'EN DICTAMEN',
+            'company_type' => 'srl',
+            'priority' => 1,
+            'status' => LegalNameStatusEnum::PENDING,
+            'soldado_id' => $busy->id,
+        ]);
+
+        $availability = app(MuaSubmissionService::class)->fielAvailability();
+
+        $this->assertSame(0, $availability['free']);
+        $this->assertSame(1, $availability['ready']);
+        $this->assertSame([], $availability['free_names']);
+    }
+
     private function readySoldado(string $name): Soldado
     {
         $soldado = Soldado::create([

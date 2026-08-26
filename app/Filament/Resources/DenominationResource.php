@@ -144,12 +144,31 @@ class DenominationResource extends Resource
                         ->modalDescription('El bot enviará la denominación al portal MUA en segundo plano '
                             .'(si es horario hábil y hay FIEL disponible). Puedes cerrar esto; el estado se actualiza solo.')
                         ->action(function (LegalName $record): void {
+                            $service = app(MuaSubmissionService::class);
+                            $fiel = $service->fielAvailability();
+
+                            // Nobody free: queueing would only defer. Say so instead of
+                            // reporting "enviando" for work that cannot start.
+                            if ($fiel['free'] === 0) {
+                                Notification::make()
+                                    ->title('No hay soldados disponibles — no se envió.')
+                                    ->body("Los {$fiel['ready']} soldados con FIEL están ocupados: la SE permite "
+                                        .'una denominación en proceso por RFC. La denominación sigue en cola; '
+                                        .'vuelve a intentar cuando se libere alguno.')
+                                    ->danger()
+                                    ->persistent()
+                                    ->send();
+
+                                return;
+                            }
+
                             // Segundo plano: el modal cierra al instante en vez de esperar ~1 min al bot.
                             SubmitDenominationToMuaNowJob::dispatch($record->id);
 
                             Notification::make()
                                 ->title('Enviando a la SE')
-                                ->body('Se está enviando en segundo plano. El estado se actualizará solo cuando el bot confirme.')
+                                ->body('Se está enviando en segundo plano con una de las '
+                                    ."{$fiel['free']} FIEL libres. El estado se actualizará solo cuando el bot confirme.")
                                 ->info()
                                 ->send();
                         }),
