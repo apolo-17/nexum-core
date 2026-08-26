@@ -34,12 +34,20 @@ class DenominationGeneratorService
     /**
      * Generate a list of candidate denominations.
      *
+     * Names already held by Nexum are passed to the model so it does not propose
+     * them in the first place. Filtering them out afterwards silently returned
+     * fewer names than asked for, and — worse — a name the SE has already granted
+     * us cannot be requested again: the portal refuses the trámite outright and
+     * the bot retries it forever. That is exactly what happened with
+     * GUANG HUA COMERCIAL.
+     *
      * @param  int  $quantity  How many names to generate (clamped 1–20).
+     * @param  list<string>  $exclude  Names already in use, in any state.
      * @return list<string> Distinct, upper-cased candidate names.
      *
      * @throws \RuntimeException When the API key is missing or the API call fails.
      */
-    public function generate(int $quantity = 10): array
+    public function generate(int $quantity = 10, array $exclude = []): array
     {
         $quantity = max(1, min(20, $quantity));
 
@@ -59,7 +67,7 @@ class DenominationGeneratorService
             'messages' => [
                 [
                     'role' => 'user',
-                    'content' => $this->prompt($quantity),
+                    'content' => $this->prompt($quantity, $exclude),
                 ],
             ],
         ]);
@@ -79,9 +87,22 @@ class DenominationGeneratorService
      * Build the generation prompt.
      *
      * @param  int  $quantity  Number of names requested.
+     * @param  list<string>  $exclude  Names the model must not propose.
      */
-    private function prompt(int $quantity): string
+    private function prompt(int $quantity, array $exclude = []): string
     {
+        $forbidden = '';
+
+        if ($exclude !== []) {
+            $list = implode(', ', array_map(
+                static fn (string $name): string => '"'.$name.'"',
+                $exclude,
+            ));
+
+            $forbidden = "\n- PROHIBIDO repetir cualquiera de estas denominaciones que ya tenemos "
+                ."(ni variantes que solo cambien mayúsculas, acentos o espacios): {$list}.";
+        }
+
         return <<<PROMPT
             Genera exactamente {$quantity} propuestas de denominación social (razón social)
             para empresas de capital chino que se constituyen en México (comercio,
@@ -97,7 +118,7 @@ class DenominationGeneratorService
             - Pinyin plausible y variado; NO uses caracteres chinos, solo alfabeto latino.
             - Sin el tipo de sociedad al final (no agregues "S.A.", "S. de R.L.", etc.).
             - Entre 2 y 4 palabras. Sin comillas, sin numeración.
-            - Evita marcas conocidas y términos restringidos (México, Nacional, Banco, etc.).
+            - Evita marcas conocidas y términos restringidos (México, Nacional, Banco, etc.).{$forbidden}
             Devuelve ÚNICAMENTE un arreglo JSON de cadenas, por ejemplo:
             ["HUA DIAN COMERCIO DIGITAL", "DONG HAI IMPORTACIONES"]
             Nada de texto adicional.

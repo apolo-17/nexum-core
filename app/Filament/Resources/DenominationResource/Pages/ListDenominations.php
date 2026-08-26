@@ -88,8 +88,14 @@ class ListDenominations extends ListRecords
                     ->native(false),
             ])
             ->action(function (array $data): void {
+                // Every name we already hold, in ANY state and whether or not it is tied
+                // to an expedient. Checking only the pool is what let GUANG HUA COMERCIAL
+                // through: it lived on a registration, so the pool query never saw it.
+                $existing = LegalName::pluck('name')->all();
+
                 try {
-                    $names = app(DenominationGeneratorService::class)->generate((int) $data['quantity']);
+                    $names = app(DenominationGeneratorService::class)
+                        ->generate((int) $data['quantity'], $existing);
                 } catch (\Throwable $exception) {
                     Log::error('Denomination generation failed.', ['error' => $exception->getMessage()]);
 
@@ -103,13 +109,19 @@ class ListDenominations extends ListRecords
                 }
 
                 $created = 0;
+                $repeated = [];
+
+                // Second line of defence, normalised: the model is told what to avoid,
+                // but a near-miss on casing/accents/spacing is still the same name to
+                // the SE, and requesting one it already granted us is refused outright.
+                $taken = collect($existing)
+                    ->mapWithKeys(fn (string $n): array => [$this->normalizeName($n) => true])
+                    ->all();
 
                 foreach ($names as $name) {
-                    $exists = LegalName::whereNull('registration_id')
-                        ->where('name', $name)
-                        ->exists();
+                    if (isset($taken[$this->normalizeName($name)])) {
+                        $repeated[] = $name;
 
-                    if ($exists) {
                         continue;
                     }
 
@@ -132,10 +144,17 @@ class ListDenominations extends ListRecords
 
                 $suggestedFiel = app(MuaSubmissionService::class)->findAvailableFiel();
 
+                $body = 'FIEL sugerida al enviar: '.($suggestedFiel?->name ?? 'ninguna disponible').'.';
+
+                if ($repeated !== []) {
+                    $body .= ' Se descartaron '.count($repeated).' por repetir denominaciones que ya tenemos: '
+                        .implode(', ', $repeated).'.';
+                }
+
                 Notification::make()
                     ->title("Se generaron {$created} denominaciones (borrador).")
-                    ->body('FIEL sugerida al enviar: '.($suggestedFiel?->name ?? 'ninguna disponible'))
-                    ->success()
+                    ->body($body)
+                    ->status($repeated !== [] ? 'warning' : 'success')
                     ->send();
             });
     }
@@ -266,6 +285,23 @@ class ListDenominations extends ListRecords
                     ->persistent()
                     ->send();
             });
+    }
+
+    /**
+     * Reduce a denomination to a form where near-misses compare equal.
+     *
+     * The SE treats names differing only in casing, accents or spacing as the same
+     * one, so comparing raw strings would let "Guang Hua Comercial" slip past an
+     * existing "GUANG HUA COMERCIAL".
+     *
+     * @param  string  $name  Raw denomination.
+     * @return string Upper-cased, unaccented, single-spaced form.
+     */
+    private function normalizeName(string $name): string
+    {
+        $ascii = (string) iconv('UTF-8', 'ASCII//TRANSLIT', $name);
+
+        return trim((string) preg_replace('/\s+/', ' ', mb_strtoupper($ascii)));
     }
 
     /**

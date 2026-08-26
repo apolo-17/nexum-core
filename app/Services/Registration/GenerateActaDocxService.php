@@ -210,16 +210,31 @@ class GenerateActaDocxService
      *
      * @throws \RuntimeException When the expediente does not have exactly two socios.
      */
-    private function buildSrlValues(array $data): array
+    /**
+     * Public, lenient version of buildSrlValues for the on-screen HTML preview: never throws
+     * on a socio-count mismatch (pads to two) so an incomplete expediente can still be previewed.
+     *
+     * @param  array<string, mixed>  $data  Compiled template_data from ACTA_DRAFT.
+     * @return array<string, string>
+     */
+    public function previewValues(array $data): array
+    {
+        return $this->buildSrlValues($data, strict: false);
+    }
+
+    private function buildSrlValues(array $data, bool $strict = true): array
     {
         $socios = array_values($data['socios'] ?? []);
 
-        if (count($socios) !== 2) {
+        if ($strict && count($socios) !== 2) {
             throw new \RuntimeException(
                 'La plantilla S. de R.L. de C.V. requiere exactamente 2 socios; este expediente tiene '
                 .count($socios).'. Revisa el expediente antes de generar el acta.'
             );
         }
+
+        // Preview mode may run with 0, 1 or 3+ socios; pad to two so the mapping never errors.
+        $socios = array_pad(array_slice($socios, 0, 2), 2, []);
 
         $cud = $this->dateParts($data['fecha_denominacion'] ?? '');
 
