@@ -41,7 +41,9 @@ class RelayDocumentAlertService
      * @var array<string, string>
      */
     private const DELIVERABLE_SLUGS = [
-        DocumentTypeEnum::ACTA_SIGNED->value => 'incorporation_deed',
+        // El "incorporation_deed" que China necesita es la ESCRITURA PROTOCOLIZADA (acta
+        // notariada), no el borrador firmado (acta_signed) previo al notario.
+        DocumentTypeEnum::ACTA_PROTOCOLIZADA->value => 'incorporation_deed',
         DocumentTypeEnum::RPP_REGISTRATION->value => 'rpc_registration_receipt',
         DocumentTypeEnum::PROOF_OF_ADDRESS_MX->value => 'company_proof_of_address',
         DocumentTypeEnum::CSF->value => 'tax_status_certificate',
