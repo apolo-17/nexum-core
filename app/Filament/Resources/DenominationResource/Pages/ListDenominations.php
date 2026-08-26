@@ -9,6 +9,7 @@ use App\Filament\Widgets\MuaCapacityOverview;
 use App\Jobs\SubmitDenominationToMuaNowJob;
 use App\Models\LegalName;
 use App\Services\Denomination\DenominationGeneratorService;
+use App\Services\LegalName\CheckMuaAvailabilityService;
 use App\Services\Mua\MuaSubmissionService;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
@@ -118,9 +119,23 @@ class ListDenominations extends ListRecords
                     ->mapWithKeys(fn (string $n): array => [$this->normalizeName($n) => true])
                     ->all();
 
+                // Third check, and the only one that sees names OTHER companies hold:
+                // the SE's public registry. A name nobody at Nexum has ever requested
+                // can still be taken, and the portal refuses the trámite for it.
+                // Unknown (portal down) is NOT treated as taken — we would rather send
+                // and be refused than silently discard a good name.
+                $seStatus = app(CheckMuaAvailabilityService::class)->checkMany($names);
+                $alreadyAtSe = [];
+
                 foreach ($names as $name) {
                     if (isset($taken[$this->normalizeName($name)])) {
                         $repeated[] = $name;
+
+                        continue;
+                    }
+
+                    if (($seStatus[$name] ?? null) === false) {
+                        $alreadyAtSe[] = $name;
 
                         continue;
                     }
@@ -151,10 +166,25 @@ class ListDenominations extends ListRecords
                         .implode(', ', $repeated).'.';
                 }
 
+                if ($alreadyAtSe !== []) {
+                    $body .= ' Se descartaron '.count($alreadyAtSe).' porque ya están registradas en la SE '
+                        .'por otra empresa: '.implode(', ', $alreadyAtSe).'.';
+                }
+
+                $unverified = count(array_filter(
+                    $seStatus,
+                    static fn (?bool $status): bool => $status === null,
+                ));
+
+                if ($unverified > 0) {
+                    $body .= " No se pudo verificar {$unverified} contra el portal de la SE "
+                        .'(no respondió); se guardaron igual y se sabrá al enviarlas.';
+                }
+
                 Notification::make()
                     ->title("Se generaron {$created} denominaciones (borrador).")
                     ->body($body)
-                    ->status($repeated !== [] ? 'warning' : 'success')
+                    ->status($repeated !== [] || $alreadyAtSe !== [] ? 'warning' : 'success')
                     ->send();
             });
     }

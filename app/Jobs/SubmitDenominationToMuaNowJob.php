@@ -7,6 +7,7 @@ namespace App\Jobs;
 use App\Enums\LegalNameEventTypeEnum;
 use App\Enums\LegalNameStatusEnum;
 use App\Models\LegalName;
+use App\Services\LegalName\CheckMuaAvailabilityService;
 use App\Services\Mua\MuaSubmissionService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -51,6 +52,32 @@ class SubmitDenominationToMuaNowJob implements ShouldQueue
         if ($legalName === null) {
             Log::warning('SubmitDenominationToMuaNowJob: denomination not found — skipping.', [
                 'legal_name_id' => $this->legalNameId,
+            ]);
+
+            return;
+        }
+
+        // The SE refuses a trámite for a name already on its registry, and does so
+        // WITHOUT saying the name is not viable — so the bot reads it as a technical
+        // fault and the denomination is retried forever. Catch it here instead: this
+        // is the public registry, no login needed, and it costs one request.
+        // Only a definite `false` blocks; an unreachable portal must not.
+        if (app(CheckMuaAvailabilityService::class)->check($legalName->name) === false) {
+            $legalName->update([
+                'status' => LegalNameStatusEnum::REJECTED->value,
+                'rejection_reason' => 'La denominación ya está registrada en la SE, '
+                    .'así que el portal no permite solicitarla.',
+            ]);
+
+            $legalName->recordEvent(
+                LegalNameEventTypeEnum::REJECTED,
+                'No se envió: la razón social ya está registrada en la SE.',
+                ['origen' => 'consulta pública del MUA'],
+            );
+
+            Log::info('SubmitDenominationToMuaNowJob: name already registered at the SE — not sent.', [
+                'legal_name_id' => $this->legalNameId,
+                'name' => $legalName->name,
             ]);
 
             return;
