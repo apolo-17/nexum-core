@@ -78,7 +78,13 @@
         style="border-radius:12px;border:1px solid #d1d5db;background:#fff;box-shadow:0 4px 20px rgba(0,0,0,.10),0 1px 4px rgba(0,0,0,.06);"
     >
         <div id="acta-doc" class="mx-auto max-w-3xl px-8 py-6">
-            @include('filament.acta.render-document', [
+            @php
+                // Elige la plantilla del render por tipo de sociedad (espeja GenerateActaDocxService).
+                $ct = strtoupper($templateData['company_type'] ?? '');
+                $isSrlActa = str_contains(str_replace([' ', '.'], '', $ct), 'RL')
+                    || str_contains($ct, 'RESPONSABILIDAD');
+            @endphp
+            @include($isSrlActa ? 'filament.acta.render-document-srl' : 'filament.acta.render-document', [
                 'data'     => $templateData,
                 'editable' => true,
             ])
