@@ -7,6 +7,7 @@ use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -98,5 +99,17 @@ class User extends Authenticatable implements FilamentUser, JWTSubject
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    /**
+     * Normaliza el correo a minúscula (y sin espacios) SIEMPRE que se guarda, sin importar
+     * el origen (registro, invitación, alta manual, updates). Así el login por correo nunca
+     * falla por diferencias de mayúsculas/minúsculas (Postgres distingue mayúsculas).
+     */
+    protected function email(): Attribute
+    {
+        return Attribute::make(
+            set: fn (?string $value): ?string => $value === null ? null : mb_strtolower(trim($value)),
+        );
     }
 }

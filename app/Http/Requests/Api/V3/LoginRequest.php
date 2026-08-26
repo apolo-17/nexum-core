@@ -20,6 +20,17 @@ class LoginRequest extends FormRequest
     }
 
     /**
+     * Normaliza el correo a minúscula (y sin espacios) antes de validar y autenticar, para
+     * que el login no dependa de cómo lo escriba el usuario.
+     */
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('email') && is_string($this->input('email'))) {
+            $this->merge(['email' => mb_strtolower(trim($this->input('email')))]);
+        }
+    }
+
+    /**
      * Return the validation rules for login credentials.
      *
      * @return array<string, list<string>>
