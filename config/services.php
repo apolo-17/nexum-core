@@ -42,6 +42,9 @@ return [
         // Relay endpoint we POST a lightweight "document ready" alert to (pull model).
         // When empty, alerts are skipped (e.g. local dev) so nothing is dispatched.
         'document_alert_url' => env('SINGAPUR_DOCUMENT_ALERT_URL'),
+        // Optional Bearer token (NEXUM_WEBHOOK_TOKEN on the relay) sent alongside X-Nexum-Secret
+        // so the alert is accepted by relay instances still running the older Bearer-auth code.
+        'document_alert_bearer' => env('SINGAPUR_DOCUMENT_ALERT_BEARER'),
     ],
 
     // MUA bot — Python microservice that automates the SE/MUA portal via Playwright.

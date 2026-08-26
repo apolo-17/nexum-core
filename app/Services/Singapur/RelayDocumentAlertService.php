@@ -106,9 +106,19 @@ class RelayDocumentAlertService
 
         $registrationNumber = (string) ($document->registration?->singapur_client_code ?? '');
 
+        // The relay authenticates the alert with X-Nexum-Secret. Some deployed instances may
+        // still run the older code that expects an "Authorization: Bearer <webhook token>"
+        // instead; when that token is configured we send BOTH headers so the alert is accepted
+        // regardless of which relay version handles the request.
+        $headers = ['X-Nexum-Secret' => $secret];
+        $bearer = (string) config('services.singapur.document_alert_bearer');
+        if ($bearer !== '') {
+            $headers['Authorization'] = 'Bearer '.$bearer;
+        }
+
         $response = Http::connectTimeout(10)
             ->timeout(30)
-            ->withHeaders(['X-Nexum-Secret' => $secret])
+            ->withHeaders($headers)
             ->acceptJson()
             ->post($url, [
                 'schema_version' => self::SCHEMA_VERSION,
