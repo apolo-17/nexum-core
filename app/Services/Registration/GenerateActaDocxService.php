@@ -26,6 +26,25 @@ use PhpOffice\PhpWord\TemplateProcessor;
  */
 class GenerateActaDocxService
 {
+    /** Estatutos-style template for Sociedad Anónima de C.V. */
+    private const TEMPLATE_SA = 'sa.docx';
+
+    /** Contract-style template for Sociedad de Responsabilidad Limitada de C.V. */
+    private const TEMPLATE_SRL = 'srl.docx';
+
+    /** Default special delegate (protocolizes the acta before a notary). Editable per acta. */
+    private const DELEGADO_DEFAULT_NOMBRE = 'LINDA CECILIA FAVELA MORENO';
+
+    private const DELEGADO_DEFAULT_RFC = 'FAML020304QS1';
+
+    /** Generic RFC the SAT assigns to foreign shareholders with no Mexican RFC. */
+    private const RFC_EXTRANJERO = 'EXTF900101NI1';
+
+    private const MESES_ES = [
+        1 => 'enero', 2 => 'febrero', 3 => 'marzo', 4 => 'abril', 5 => 'mayo', 6 => 'junio',
+        7 => 'julio', 8 => 'agosto', 9 => 'septiembre', 10 => 'octubre', 11 => 'noviembre', 12 => 'diciembre',
+    ];
+
     /**
      * Generate the .docx acta constitutiva and persist it to R2.
      *
@@ -48,39 +67,42 @@ class GenerateActaDocxService
 
         $data = $actaDraft->template_data;
 
-        $templatePath = storage_path('docs/sa.docx');
+        $isSrl = $this->isSrl($data);
+        $templateFile = $isSrl ? self::TEMPLATE_SRL : self::TEMPLATE_SA;
+        $templatePath = storage_path('docs/'.$templateFile);
 
         if (! file_exists($templatePath)) {
             throw new \RuntimeException("Template file not found at: {$templatePath}");
         }
 
-        Log::info('GenerateActaDocxService: filling sa.docx template', [
+        Log::info("GenerateActaDocxService: filling {$templateFile} template", [
             'registration_id' => $registration->id,
             'code' => $registration->singapur_client_code,
+            'company_type' => $data['company_type'] ?? null,
         ]);
 
         $processor = new TemplateProcessor($templatePath);
 
-        // Single-value replacements — fills global placeholders once.
-        $processor->setValues($this->buildSingleValues($data));
+        if ($isSrl) {
+            // S. de R.L. de C.V. — contract-style template (srl.docx). All placeholders are
+            // single-value: 2 fixed socios + an inline apoderados list. No cloneBlock.
+            $processor->setValues($this->buildSrlValues($data));
+        } else {
+            // S.A. de C.V. — estatutos-style template (sa.docx) with per-socio cloneBlocks.
+            $processor->setValues($this->buildSingleValues($data));
 
-        // Per-partner block cloning — each block is repeated once per socio.
-        $dataPartners = $this->buildPartnersData($data);
+            $dataPartners = $this->buildPartnersData($data);
+            $processor->cloneBlock('transitionalItems', 0, true, false, $dataPartners);
+            $processor->cloneBlock('rfcPartners', 0, true, false, $dataPartners);
+            $processor->cloneBlock('general', 0, true, false, $dataPartners);
+            // Signature page — one block per socio, with the DocuSign anchor "${socio_anchor}".
+            $processor->cloneBlock('signaturePage', 0, true, false, $dataPartners);
 
-        $processor->cloneBlock('transitionalItems', 0, true, false, $dataPartners);
-        $processor->cloneBlock('rfcPartners', 0, true, false, $dataPartners);
-        $processor->cloneBlock('general', 0, true, false, $dataPartners);
-
-        // Signature page — one block per socio, with the DocuSign anchor string.
-        // Each block contains "${socio_anchor}" which resolves to "-FIRMA1", "-FIRMA2", etc.
-        $processor->cloneBlock('signaturePage', 0, true, false, $dataPartners);
-
-        // Apoderados block — one clone per soldado named in the acta as legal
-        // representative (power to do the SAT trámite). No-op when the template has no
-        // ${apoderados} block yet, or when there are no apoderados.
-        $dataApoderados = $this->buildApoderadosData($data);
-        if ($dataApoderados !== []) {
-            $processor->cloneBlock('apoderados', 0, true, false, $dataApoderados);
+            // Apoderados block — one clone per soldado named as legal representative.
+            $dataApoderados = $this->buildApoderadosData($data);
+            if ($dataApoderados !== []) {
+                $processor->cloneBlock('apoderados', 0, true, false, $dataApoderados);
+            }
         }
 
         // Persist temp file locally, upload to R2, then clean up.
@@ -158,6 +180,155 @@ class GenerateActaDocxService
             'total_shares' => $this->formatShares($capitalSocial),
             'value_shares' => $this->formatCapitalValue($capitalSocial),
         ];
+    }
+
+    /**
+     * Whether the acta is for a Sociedad de Responsabilidad Limitada (uses srl.docx).
+     *
+     * Detected from the compiled company_type (e.g. "SRL de CV", "S. de R.L. de C.V.").
+     *
+     * @param  array<string, mixed>  $data  Compiled template_data from ACTA_DRAFT.
+     */
+    private function isSrl(array $data): bool
+    {
+        $type = strtoupper((string) ($data['company_type'] ?? ''));
+        $normalized = str_replace([' ', '.'], '', $type);
+
+        return str_contains($normalized, 'RL') || str_contains($type, 'RESPONSABILIDAD');
+    }
+
+    /**
+     * Build the full placeholder map for the S. de R.L. de C.V. template (srl.docx).
+     *
+     * The template is fixed at exactly two socios; a mismatch throws so the operator sees a
+     * clear error instead of a malformed acta. The apoderados (3–4 legal representatives from
+     * ApoderadoAssignmentService) are rendered inline as a single list, and the special
+     * delegate defaults to the recurring one but can be overridden per acta via template_data.
+     *
+     * @param  array<string, mixed>  $data  Compiled template_data from ACTA_DRAFT.
+     * @return array<string, string>
+     *
+     * @throws \RuntimeException When the expediente does not have exactly two socios.
+     */
+    private function buildSrlValues(array $data): array
+    {
+        $socios = array_values($data['socios'] ?? []);
+
+        if (count($socios) !== 2) {
+            throw new \RuntimeException(
+                'La plantilla S. de R.L. de C.V. requiere exactamente 2 socios; este expediente tiene '
+                .count($socios).'. Revisa el expediente antes de generar el acta.'
+            );
+        }
+
+        $cud = $this->dateParts($data['fecha_denominacion'] ?? '');
+
+        $values = [
+            'company_name' => mb_strtoupper(trim((string) ($data['autorizacion_denominacion'] ?? '')), 'UTF-8'),
+            'CUD' => (string) ($data['folio_denominacion'] ?? ''),
+            'CUD_day' => $cud['day'],
+            'CUD_day_words' => $cud['day_words'],
+            'CUD_month' => $cud['month'],
+            'CUD_year' => $cud['year'],
+            'CUD_year_words' => $cud['year_words'],
+            'apoderados_lista' => $this->buildApoderadosLista($data),
+            'delegado_nombre' => mb_strtoupper((string) ($data['delegado_nombre'] ?? self::DELEGADO_DEFAULT_NOMBRE), 'UTF-8'),
+            'delegado_rfc' => strtoupper((string) ($data['delegado_rfc'] ?? self::DELEGADO_DEFAULT_RFC)),
+        ];
+
+        return array_merge(
+            $values,
+            $this->shareholderValues('shareholder1', $socios[0]),
+            $this->shareholderValues('shareholder2', $socios[1]),
+        );
+    }
+
+    /**
+     * Map one socio to the srl.docx shareholderN_* placeholders.
+     *
+     * @param  string  $prefix  'shareholder1' or 'shareholder2'.
+     * @param  array<string, mixed>  $socio  One entry of template_data['socios'].
+     * @return array<string, string>
+     */
+    private function shareholderValues(string $prefix, array $socio): array
+    {
+        $birth = $this->dateParts($socio['socio_fecha_nacimiento'] ?? '');
+
+        return [
+            "{$prefix}_full_name" => mb_strtoupper((string) ($socio['socio_nombre'] ?? ''), 'UTF-8'),
+            "{$prefix}_nationality" => (string) ($socio['socio_nacionalidad'] ?? ''),
+            "{$prefix}_place_of_birth" => (string) ($socio['socio_estado_nacimiento'] ?? ''),
+            "{$prefix}_country" => (string) ($socio['pais_residencia'] ?? 'China'),
+            "{$prefix}_birth_day" => $birth['day'],
+            "{$prefix}_birth_day_words" => $birth['day_words'],
+            "{$prefix}_birth_month" => $birth['month'],
+            "{$prefix}_birth_year" => $birth['year'],
+            "{$prefix}_birth_year_words" => $birth['year_words'],
+            "{$prefix}_address" => (string) ($socio['socio_direccion'] ?? ''),
+            "{$prefix}_tax_id" => (string) ($socio['tax_id'] ?? ''),
+            "{$prefix}_passport_number" => (string) ($socio['socio_tipo_identificacion_numero'] ?? ''),
+            "{$prefix}_email" => (string) ($socio['socio_correo'] ?? ''),
+        ];
+    }
+
+    /**
+     * Build the inline apoderados list for the SRL "Numeral 2" special-powers clause:
+     * `NOMBRE cuyo RFC es "RFC", NOMBRE cuyo RFC es "RFC", …`.
+     *
+     * @param  array<string, mixed>  $data  Compiled template_data from ACTA_DRAFT.
+     */
+    private function buildApoderadosLista(array $data): string
+    {
+        $apoderados = array_values($data['apoderados'] ?? []);
+
+        $parts = array_map(function (array $a): string {
+            $nombre = mb_strtoupper((string) ($a['apoderado_nombre'] ?? ''), 'UTF-8');
+            $rfc = strtoupper((string) ($a['apoderado_rfc'] ?? self::RFC_EXTRANJERO));
+
+            return $nombre.' cuyo RFC es "'.$rfc.'"';
+        }, $apoderados);
+
+        return implode(', ', array_filter($parts, fn (string $p): bool => trim($p) !== 'cuyo RFC es ""'));
+    }
+
+    /**
+     * Break a `d/m/Y` date into the parts the acta spells out:
+     * [day, day_words, month (name), year, year_words]. All empty when unparseable.
+     *
+     * @return array{day: string, day_words: string, month: string, year: string, year_words: string}
+     */
+    private function dateParts(string $dmy): array
+    {
+        $empty = ['day' => '', 'day_words' => '', 'month' => '', 'year' => '', 'year_words' => ''];
+
+        $dmy = trim($dmy);
+        if ($dmy === '' || ! preg_match('#^(\d{1,2})/(\d{1,2})/(\d{4})$#', $dmy, $m)) {
+            return $empty;
+        }
+
+        [$day, $month, $year] = [(int) $m[1], (int) $m[2], (int) $m[3]];
+
+        if ($month < 1 || $month > 12) {
+            return $empty;
+        }
+
+        return [
+            'day' => (string) $day,
+            'day_words' => $this->spellCardinal($day),
+            'month' => self::MESES_ES[$month],
+            'year' => (string) $year,
+            'year_words' => $this->spellCardinal($year),
+        ];
+    }
+
+    /**
+     * Spell an integer in lowercase Spanish (masculine cardinal), e.g. 26 → "veintiséis".
+     */
+    private function spellCardinal(int $amount): string
+    {
+        $formatter = new NumberFormatter('es_MX', NumberFormatter::SPELLOUT);
+
+        return (string) $formatter->format($amount);
     }
 
     /**
@@ -284,7 +455,7 @@ class GenerateActaDocxService
             $map[$key] = [
                 'anchor' => "-FIRMA{$n}",
                 'nombre' => strtoupper($socio['socio_nombre'] ?? ''),
-                'email' => $socio['email'] ?? '',
+                'email' => $socio['socio_correo'] ?? ($socio['email'] ?? ''),
                 'rfc' => strtoupper($socio['socio_rfc'] ?? ''),
             ];
         }
