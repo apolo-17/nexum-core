@@ -102,7 +102,55 @@ class ViewRegistration extends ViewRecord
             // Safeguard the company's own e.firma + RFC for download (any stage).
             ManageCompanyCredentialsAction::make(),
 
+            // Enviar a China todos los entregables que tenemos pero aún no están confirmados
+            // (los que se cargaron antes de que el relay funcionara, o que fallaron/rechazaron).
+            Action::make('sendPendingToChina')
+                ->label('Enviar pendientes a China')
+                ->icon('heroicon-o-paper-airplane')
+                ->color('info')
+                ->visible(fn (): bool => self::pendingChinaDocuments($record)->isNotEmpty())
+                ->requiresConfirmation()
+                ->modalHeading('Enviar pendientes a China')
+                ->modalDescription(fn (): string => 'Se enviarán '.self::pendingChinaDocuments($record)->count()
+                    .' documento(s) a China en segundo plano. Recibirás una alerta por cada uno.')
+                ->modalSubmitActionLabel('Enviar todos')
+                ->action(function () use ($record): void {
+                    $docs = self::pendingChinaDocuments($record);
+
+                    foreach ($docs as $doc) {
+                        $doc->forceFill([
+                            'relay_delivered_at' => null,
+                            'relay_drive_url' => null,
+                            'relay_rejected_at' => null,
+                            'relay_rejection_reason' => null,
+                        ])->saveQuietly();
+
+                        \App\Jobs\NotifyRelayDocumentJob::dispatch($doc->id);
+                    }
+
+                    Notification::make()
+                        ->title('Enviando a China…')
+                        ->body($docs->count().' documento(s) en camino. Te avisaremos por cada uno.')
+                        ->info()
+                        ->send();
+                }),
+
             EditAction::make(),
         ];
+    }
+
+    /**
+     * Deliverable documents this registration HAS but China has not confirmed yet.
+     *
+     * @return \Illuminate\Support\Collection<int, \App\Models\Document>
+     */
+    private static function pendingChinaDocuments(Registration $record): \Illuminate\Support\Collection
+    {
+        return \App\Models\Document::query()
+            ->where('registration_id', $record->id)
+            ->whereIn('type', array_keys(\App\Services\Singapur\ChinaDeliverablesService::DELIVERABLES))
+            ->whereNotNull('storage_path')
+            ->whereNull('relay_delivered_at')
+            ->get();
     }
 }

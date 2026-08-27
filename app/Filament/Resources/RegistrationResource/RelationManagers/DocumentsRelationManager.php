@@ -381,6 +381,41 @@ class DocumentsRelationManager extends RelationManager
                             ->send();
                     }),
 
+                // Enviar / reenviar el documento a China (para los que se cargaron antes de que
+                // el relay funcionara, o para reintentar tras un fallo/rechazo).
+                Action::make('sendToChina')
+                    ->label('Enviar a China')
+                    ->icon('heroicon-o-paper-airplane')
+                    ->color('info')
+                    ->iconButton()
+                    ->tooltip(fn (Document $record): string => $record->relay_delivered_at !== null
+                        ? 'Reenviar a China'
+                        : 'Enviar a China')
+                    ->hidden(fn (): bool => $isPartner)
+                    ->visible(fn (Document $record): bool => filled($record->storage_path)
+                        && app(\App\Services\Singapur\RelayDocumentAlertService::class)->isDeliverableType($record))
+                    ->requiresConfirmation()
+                    ->modalHeading('Enviar documento a China')
+                    ->modalDescription('Se enviará en segundo plano. Recibirás una alerta con el resultado (enviado / falló / rechazado).')
+                    ->modalSubmitActionLabel('Enviar')
+                    ->action(function (Document $record): void {
+                        // Reinicia el estado de entrega para que sea elegible y se (re)envíe.
+                        $record->forceFill([
+                            'relay_delivered_at' => null,
+                            'relay_drive_url' => null,
+                            'relay_rejected_at' => null,
+                            'relay_rejection_reason' => null,
+                        ])->saveQuietly();
+
+                        \App\Jobs\NotifyRelayDocumentJob::dispatch($record->id);
+
+                        Notification::make()
+                            ->title('Enviando a China…')
+                            ->body('Te avisaremos con el resultado en la campana.')
+                            ->info()
+                            ->send();
+                    }),
+
                 // Marcar como erróneo un entregable enviado a China (documento equivocado).
                 // Al subir el correcto (reemplazo), el observer lo reenvía solo.
                 Action::make('markRelayWrong')
