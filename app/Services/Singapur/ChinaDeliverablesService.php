@@ -59,6 +59,7 @@ class ChinaDeliverablesService
             $doc = $docs->get($type);
             $state = match (true) {
                 $doc === null => 'missing',
+                $doc->relay_rejected_at !== null => 'rejected',
                 $doc->relay_delivered_at !== null => 'delivered',
                 default => 'pending',
             };
@@ -69,6 +70,7 @@ class ChinaDeliverablesService
                 'state' => $state,
                 'drive_url' => $doc?->relay_drive_url,
                 'delivered_at' => $doc?->relay_delivered_at,
+                'rejection_reason' => $doc?->relay_rejection_reason,
             ];
         }
 

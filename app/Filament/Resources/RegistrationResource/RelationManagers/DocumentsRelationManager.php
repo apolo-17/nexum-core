@@ -381,6 +381,41 @@ class DocumentsRelationManager extends RelationManager
                             ->send();
                     }),
 
+                // Marcar como erróneo un entregable enviado a China (documento equivocado).
+                // Al subir el correcto (reemplazo), el observer lo reenvía solo.
+                Action::make('markRelayWrong')
+                    ->label('Marcar erróneo (China)')
+                    ->icon('heroicon-o-exclamation-triangle')
+                    ->color('danger')
+                    ->iconButton()
+                    ->tooltip('Marcar este documento como erróneo (China). Sube el correcto para reenviarlo.')
+                    ->hidden(fn (): bool => $isPartner)
+                    ->visible(fn (Document $record): bool => filled($record->storage_path)
+                        && app(\App\Services\Singapur\RelayDocumentAlertService::class)->isDeliverableType($record))
+                    ->schema([
+                        Textarea::make('reason')
+                            ->label('Motivo')
+                            ->placeholder('¿Por qué está mal este documento?')
+                            ->required()
+                            ->rows(3),
+                    ])
+                    ->action(function (Document $record, array $data): void {
+                        $record->forceFill([
+                            'relay_rejected_at' => now(),
+                            'relay_rejection_reason' => trim((string) ($data['reason'] ?? '')),
+                        ])->save();
+
+                        app(\App\Services\Singapur\RelayDocumentAlertService::class)->notifySuperAdmins(
+                            \App\Notifications\ChinaDeliveryNotification::for($record, 'rejected', trim((string) ($data['reason'] ?? ''))),
+                        );
+
+                        Notification::make()
+                            ->title('Documento marcado como erróneo')
+                            ->body('Sube el documento correcto para que se reenvíe a China.')
+                            ->warning()
+                            ->send();
+                    }),
+
                 // Delete — with confirmation.
                 DeleteAction::make()
                     ->iconButton(),

@@ -73,6 +73,8 @@ Route::prefix('v3')->group(function () {
     // pre-signed R2 link to download each document straight from storage.
     Route::get('relay/company-documents/{singapurClientCode}', [CompanyDocumentRelayController::class, 'index']);
     Route::get('relay/company-documents/{singapurClientCode}/{documentType}', [CompanyDocumentRelayController::class, 'show']);
+    // China rechaza un documento entregado (documento equivocado, etc.) con un motivo.
+    Route::post('relay/company-documents/{singapurClientCode}/{documentType}/reject', [CompanyDocumentRelayController::class, 'reject']);
 
     // Reenviar el email de cita agendada a todos los soldados (token X-Intake-Token).
     Route::post('intake/resend-cita-emails', [IntakeController::class, 'resendCitaEmails']);

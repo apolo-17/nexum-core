@@ -41,7 +41,11 @@ class CompanyDocumentRelayController extends Controller
      * @var array<string, list<DocumentTypeEnum>>
      */
     private const RELAY_TYPE_MAP = [
+        // El incorporation_deed que China necesita es la ESCRITURA PROTOCOLIZADA — debe ir
+        // PRIMERO para que el relay jale exactamente lo que anunciamos (RelayDocumentAlertService
+        // avisa solo por acta_protocolizada). El resto queda como respaldo por compatibilidad.
         'incorporation_deed' => [
+            DocumentTypeEnum::ACTA_PROTOCOLIZADA,
             DocumentTypeEnum::ACTA_SIGNED,
             DocumentTypeEnum::ACTA_FINAL,
             DocumentTypeEnum::INCORPORATION_DEED,
@@ -141,6 +145,51 @@ class CompanyDocumentRelayController extends Controller
             'url' => $url,
             'expires_at' => $expiresAt->toIso8601String(),
         ], Response::HTTP_OK);
+    }
+
+    /**
+     * China rejects a delivered document (e.g. it was the wrong file), with a reason.
+     *
+     * Token-guarded (X-Nexum-Secret). Marks the document as rejected, translates the reason to
+     * Spanish and alerts the super admins so the operator can replace it. Body: {reason}.
+     *
+     * @return JsonResponse 200 when flagged, 401/404 otherwise.
+     */
+    public function reject(Request $request, string $singapurClientCode, string $documentType): JsonResponse
+    {
+        $this->assertRelayToken($request);
+
+        if (! array_key_exists($documentType, self::RELAY_TYPE_MAP)) {
+            return response()->json(['error' => 'Unsupported document type'], Response::HTTP_NOT_FOUND);
+        }
+
+        $registration = $this->findRegistration($singapurClientCode);
+        if ($registration === null) {
+            return response()->json(['error' => 'Registration not found'], Response::HTTP_NOT_FOUND);
+        }
+
+        $document = $this->resolveDocument($registration, self::RELAY_TYPE_MAP[$documentType]);
+        if ($document === null) {
+            return response()->json(['error' => 'Document not found'], Response::HTTP_NOT_FOUND);
+        }
+
+        $rawReason = trim((string) $request->input('reason', ''));
+        $reason = $rawReason !== ''
+            ? app(\App\Services\Singapur\RelayMessageAi::class)->translateRejection($document, $rawReason)
+            : 'China rechazó el documento (sin motivo especificado).';
+
+        // Marca el rechazo. No cambia storage_path, así que el observer no reenvía nada; el
+        // reenvío ocurre cuando el operador sube el documento correcto (reemplazo).
+        $document->forceFill([
+            'relay_rejected_at' => now(),
+            'relay_rejection_reason' => $reason,
+        ])->save();
+
+        app(\App\Services\Singapur\RelayDocumentAlertService::class)->notifySuperAdmins(
+            \App\Notifications\ChinaDeliveryNotification::for($document, 'rejected', $reason),
+        );
+
+        return response()->json(['ok' => true], Response::HTTP_OK);
     }
 
     /**

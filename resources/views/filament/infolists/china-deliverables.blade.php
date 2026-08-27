@@ -13,6 +13,7 @@
     $meta = [
         'delivered' => ['icon' => '✅', 'text' => 'Enviado a China',        'color' => '#16a34a'],
         'pending'   => ['icon' => '⏳', 'text' => 'Lo tenemos — falta enviar', 'color' => '#ca8a04'],
+        'rejected'  => ['icon' => '⛔', 'text' => 'Rechazado por China',      'color' => '#dc2626'],
         'missing'   => ['icon' => '❌', 'text' => 'No lo tenemos',          'color' => '#dc2626'],
     ];
 @endphp
@@ -35,6 +36,10 @@
                         @if($it['drive_url'])
                             · <a href="{{ $it['drive_url'] }}" target="_blank" rel="noopener" style="color:#2563eb;text-decoration:underline;">ver en Drive ↗</a>
                         @endif
+                    </span>
+                @elseif($it['state'] === 'rejected' && $it['rejection_reason'])
+                    <span style="color:#b91c1c;margin-left:auto;font-size:12px;max-width:280px;">
+                        Motivo: {{ $it['rejection_reason'] }}
                     </span>
                 @endif
             </div>
