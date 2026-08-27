@@ -129,11 +129,20 @@ class RelayDocumentAlertService
             );
         }
 
-        Log::info('RelayDocumentAlertService: alert sent', [
+        // China confirmed it stored the file — stamp the delivery and keep its Drive link so the
+        // panel can show, per registration, which deliverables China already has.
+        $doc = (array) ($response->json('document') ?? []);
+        $document->forceFill([
+            'relay_delivered_at' => $doc['received_at'] ?? now(),
+            'relay_drive_url' => $doc['drive_web_view_link'] ?? null,
+        ])->save();
+
+        Log::info('RelayDocumentAlertService: alert delivered', [
             'document_id' => $document->id,
             'document_type' => $slug,
             'registration_number' => $registrationNumber,
             'event_id' => $eventId,
+            'drive_url' => $document->relay_drive_url,
         ]);
     }
 }

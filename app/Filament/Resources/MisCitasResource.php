@@ -474,6 +474,12 @@ class MisCitasResource extends Resource
             'company_fiel_password' => $password,
         ]);
 
+        // Materializa la e.firma como documento entregable (apunta al .cer) para que entre al
+        // flujo del relay y se envíe a China como 'e_firma' (el observer la dispara al crearla).
+        if ($registration !== null && filled($cerPath)) {
+            self::materializeEfirmaDocument($registration, $cerPath);
+        }
+
         $record->update(['status' => AppointmentStatusEnum::ATTENDED]);
         $record->recordEvent(
             AppointmentEventTypeEnum::ATTENDED,
@@ -494,6 +500,26 @@ class MisCitasResource extends Resource
             ->body('Tus archivos pasaron todas las validaciones y quedaron resguardados.')
             ->success()
             ->send();
+    }
+
+    /**
+     * Crea/actualiza el documento entregable de la e.firma (tipo EFIRMA) apuntando al .cer,
+     * para que el relay lo envíe a China como 'e_firma'. Idempotente por expediente.
+     */
+    private static function materializeEfirmaDocument(\App\Models\Registration $registration, string $cerPath): void
+    {
+        Document::updateOrCreate(
+            [
+                'registration_id' => $registration->id,
+                'type' => DocumentTypeEnum::EFIRMA,
+            ],
+            [
+                'name' => 'e.firma '.($registration->primaryLegalName?->name ?? 'empresa'),
+                'storage_path' => $cerPath,
+                'stage' => $registration->getRawOriginal('stage'),
+                'verified_at' => now(),
+            ]
+        );
     }
 
     /**

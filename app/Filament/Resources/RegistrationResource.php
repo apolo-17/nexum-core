@@ -1005,6 +1005,16 @@ class RegistrationResource extends Resource
                         ->state(fn (Registration $record): string => filled($record->company_fiel_password) ? '✓ Registrada' : 'Sin registrar')
                         ->color(fn (Registration $record): string => filled($record->company_fiel_password) ? 'success' : 'gray'),
                 ]),
+
+            Section::make('Entregables a China')
+                ->description('Los 5 documentos que China necesita y su estado de entrega.')
+                ->columnSpanFull()
+                ->collapsible()
+                ->schema([
+                    \Filament\Infolists\Components\ViewEntry::make('china_deliverables')
+                        ->hiddenLabel()
+                        ->view('filament.infolists.china-deliverables'),
+                ]),
         ]);
     }
 
@@ -1072,6 +1082,27 @@ class RegistrationResource extends Resource
                     ->label('Tareas')
                     ->badge()
                     ->color('warning')
+                    ->grow(false),
+
+                TextColumn::make('china_deliverables')
+                    ->label('China')
+                    ->badge()
+                    ->state(function (Registration $record): string {
+                        $svc = app(\App\Services\Singapur\ChinaDeliverablesService::class);
+
+                        return $svc->deliveredCount($record).'/'.$svc->total();
+                    })
+                    ->color(function (Registration $record): string {
+                        $svc = app(\App\Services\Singapur\ChinaDeliverablesService::class);
+                        $done = $svc->deliveredCount($record);
+
+                        return match (true) {
+                            $done === $svc->total() => 'success',
+                            $done === 0 => 'gray',
+                            default => 'warning',
+                        };
+                    })
+                    ->tooltip('Entregables confirmados por China (acta, RPP, domicilio, CSF, e.firma).')
                     ->grow(false),
 
                 TextColumn::make('created_at')

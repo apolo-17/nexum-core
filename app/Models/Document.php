@@ -44,6 +44,8 @@ class Document extends Model
         'rejected_at',
         'rejected_by',
         'rejection_reason',
+        'relay_delivered_at',
+        'relay_drive_url',
     ];
 
     /**
@@ -59,6 +61,7 @@ class Document extends Model
             'template_data' => 'array',
             'verified_at' => 'datetime',
             'rejected_at' => 'datetime',
+            'relay_delivered_at' => 'datetime',
         ];
     }
 

@@ -71,8 +71,14 @@ class DocumentsRelationManager extends RelationManager
                 ->label('Tipo de documento')
                 ->options(
                     collect(DocumentTypeEnum::cases())
-                        ->mapWithKeys(fn ($case) => [$case->value => $case->label()])
+                        ->mapWithKeys(function ($case): array {
+                            // Marca los tipos que se envían a China (entregables del relay).
+                            $sentToChina = array_key_exists($case->value, \App\Services\Singapur\ChinaDeliverablesService::DELIVERABLES);
+
+                            return [$case->value => $case->label().($sentToChina ? '  →  China 🇨🇳' : '')];
+                        })
                 )
+                ->helperText('Los tipos marcados con "→ China" se envían automáticamente a China al subirlos.')
                 ->required()
                 ->columnSpanFull(),
 
