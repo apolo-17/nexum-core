@@ -55,4 +55,18 @@ class RelayDocumentAlertTest extends TestCase
 
         $this->assertFalse($service->shouldAlert($this->doc(DocumentTypeEnum::ACTA_PROTOCOLIZADA, null)));
     }
+
+    #[Test]
+    public function it_does_not_re_alert_a_document_already_delivered(): void
+    {
+        $service = app(RelayDocumentAlertService::class);
+
+        $doc = $this->doc(DocumentTypeEnum::ACTA_PROTOCOLIZADA);
+        $doc->relay_delivered_at = now();
+
+        // isDeliverableType stays true (it IS a deliverable), but shouldAlert is false so the
+        // observer/job never re-sends a document China already confirmed.
+        $this->assertTrue($service->isDeliverableType($doc));
+        $this->assertFalse($service->shouldAlert($doc));
+    }
 }

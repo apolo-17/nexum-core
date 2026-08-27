@@ -4,6 +4,7 @@ namespace App\Services\Singapur;
 
 use App\Enums\DocumentTypeEnum;
 use App\Models\Document;
+use App\Notifications\ChinaDeliveryNotification;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -62,18 +63,29 @@ class RelayDocumentAlertService
     }
 
     /**
+     * Whether the document is one of the deliverable types China pulls (regardless of file).
+     */
+    public function isDeliverableType(Document $document): bool
+    {
+        return $document->type instanceof DocumentTypeEnum
+            && $this->slugFor($document->type) !== null;
+    }
+
+    /**
      * Determine whether a document should trigger a relay alert.
      *
-     * True only when the document is a deliverable type and actually has a stored
-     * file to pull.
+     * True only when it is a deliverable type WITH a stored file that has NOT already been
+     * delivered — so a document China already confirmed is never re-sent on its own. A new
+     * or replaced file resets relay_delivered_at (see DocumentObserver), which makes it
+     * eligible again.
      *
      * @param  Document  $document  The document to evaluate.
      */
     public function shouldAlert(Document $document): bool
     {
-        return $document->type instanceof DocumentTypeEnum
-            && $this->slugFor($document->type) !== null
-            && filled($document->storage_path);
+        return $this->isDeliverableType($document)
+            && filled($document->storage_path)
+            && $document->relay_delivered_at === null;
     }
 
     /**
@@ -135,6 +147,8 @@ class RelayDocumentAlertService
         $document->forceFill([
             'relay_delivered_at' => $doc['received_at'] ?? now(),
             'relay_drive_url' => $doc['drive_web_view_link'] ?? null,
+            'relay_rejected_at' => null,
+            'relay_rejection_reason' => null,
         ])->save();
 
         Log::info('RelayDocumentAlertService: alert delivered', [
@@ -144,5 +158,29 @@ class RelayDocumentAlertService
             'event_id' => $eventId,
             'drive_url' => $document->relay_drive_url,
         ]);
+
+        $this->notifySuperAdmins(ChinaDeliveryNotification::for(
+            $document,
+            'delivered',
+            'China lo recibió y lo guardó en su Drive.',
+            $document->relay_drive_url,
+        ));
+    }
+
+    /**
+     * Send a bell notification about a China delivery to every super admin.
+     */
+    public function notifySuperAdmins(ChinaDeliveryNotification $notification): void
+    {
+        try {
+            $admins = \App\Models\User::role('super_admin')->get();
+            if ($admins->isNotEmpty()) {
+                \Illuminate\Support\Facades\Notification::send($admins, $notification);
+            }
+        } catch (\Throwable $exception) {
+            Log::warning('RelayDocumentAlertService: could not notify super admins.', [
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 }

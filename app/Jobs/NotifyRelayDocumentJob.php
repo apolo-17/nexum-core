@@ -78,4 +78,24 @@ class NotifyRelayDocumentJob implements ShouldQueue
 
         $service->send($document, $this->eventId, $this->occurredAt);
     }
+
+    /**
+     * After all retries are exhausted, alert the super admins with an AI-composed,
+     * human-readable explanation of why the delivery to China failed.
+     */
+    public function failed(\Throwable $exception): void
+    {
+        $document = Document::with('registration')->find($this->documentId);
+
+        if ($document === null) {
+            return;
+        }
+
+        $message = app(\App\Services\Singapur\RelayMessageAi::class)
+            ->explainFailure($document, $exception->getMessage());
+
+        app(RelayDocumentAlertService::class)->notifySuperAdmins(
+            \App\Notifications\ChinaDeliveryNotification::for($document, 'failed', $message),
+        );
+    }
 }
