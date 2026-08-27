@@ -133,6 +133,12 @@ class SoldadoResource extends Resource
                         ->dehydrateStateUsing(fn (?string $state): ?string => $state !== null ? strtoupper($state) : null)
                         ->hiddenOn('create'),
 
+                    DatePicker::make('fiel_valid_until')
+                        ->label('FIEL vigente hasta')
+                        ->helperText('Vencimiento de la e.firma personal del soldado. Necesaria (vigente) para poder ir a una cita de e.firma.')
+                        ->native(false)
+                        ->hiddenOn('create'),
+
                     DatePicker::make('birthdate')
                         ->label('Fecha de nacimiento')
                         ->native(false)
@@ -355,6 +361,27 @@ class SoldadoResource extends Resource
                     ->label('Rep. legal')
                     ->boolean(),
 
+                TextColumn::make('fiel_status')
+                    ->label('FIEL')
+                    ->badge()
+                    ->state(fn (Soldado $record): string => match (true) {
+                        $record->fiel_valid_until === null => 'Sin fecha',
+                        $record->fielVigente() => 'Vigente '.$record->fiel_valid_until->format('d/m/y'),
+                        default => 'Vencida '.$record->fiel_valid_until->format('d/m/y'),
+                    })
+                    ->color(fn (Soldado $record): string => match (true) {
+                        $record->fiel_valid_until === null => 'gray',
+                        $record->fielVigente() => 'success',
+                        default => 'danger',
+                    })
+                    ->tooltip('Vigencia de la e.firma personal del soldado (para citas de e.firma).'),
+
+                IconColumn::make('profile_complete')
+                    ->label('Perfil')
+                    ->boolean()
+                    ->state(fn (Soldado $record): bool => $record->legalRepProfileComplete())
+                    ->tooltip('Perfil completo de representante legal: RFC + CURP + FIEL vigente.'),
+
                 IconColumn::make('is_active')
                     ->label('Activo')
                     ->boolean(),
@@ -447,7 +474,20 @@ class SoldadoResource extends Resource
                     InfoTextEntry::make('email')->label('Correo electrónico'),
                     InfoTextEntry::make('phone')->label('Teléfono')->placeholder('—'),
                     InfoTextEntry::make('rfc')->label('RFC'),
-                    InfoTextEntry::make('curp')->label('CURP')->placeholder('—'),
+                    InfoTextEntry::make('curp')->label('CURP')->placeholder('— (falta)'),
+                    InfoTextEntry::make('fiel_valid_until')
+                        ->label('FIEL vigente hasta')
+                        ->badge()
+                        ->state(fn (Soldado $record): string => match (true) {
+                            $record->fiel_valid_until === null => 'Sin fecha',
+                            $record->fielVigente() => 'Vigente · '.$record->fiel_valid_until->format('d/m/Y'),
+                            default => 'Vencida · '.$record->fiel_valid_until->format('d/m/Y'),
+                        })
+                        ->color(fn (Soldado $record): string => match (true) {
+                            $record->fiel_valid_until === null => 'gray',
+                            $record->fielVigente() => 'success',
+                            default => 'danger',
+                        }),
                     InfoTextEntry::make('birthdate')->label('Fecha de nacimiento')->date('d/m/Y')->placeholder('—'),
                 ]),
 

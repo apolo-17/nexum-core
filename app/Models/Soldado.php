@@ -35,6 +35,7 @@ class Soldado extends Model
         'phone_country_code',
         'rfc',
         'curp',
+        'fiel_valid_until',
         'birthdate',
         'birthplace',
         'address',
@@ -60,6 +61,7 @@ class Soldado extends Model
     {
         return [
             'birthdate' => 'date',
+            'fiel_valid_until' => 'date',
             'available_for_mua' => 'boolean',
             'mua_blocked_at' => 'datetime',
             'available_as_legal_representative' => 'boolean',
@@ -67,6 +69,27 @@ class Soldado extends Model
             'is_active' => 'boolean',
             'active_submissions' => 'integer',
         ];
+    }
+
+    /**
+     * Whether the soldado's own e.firma (FIEL) is still valid today.
+     *
+     * Advisory only: the SAT admits a soldado to an e.firma appointment only if their personal
+     * FIEL is vigente. Null date = unknown (treated as not-vigente for the indicator).
+     */
+    public function fielVigente(): bool
+    {
+        return $this->fiel_valid_until !== null && ! $this->fiel_valid_until->isPast();
+    }
+
+    /**
+     * Whether we hold a complete legal-rep profile: RFC + CURP + a vigente FIEL.
+     *
+     * Informative (never blocks); lets the team see at a glance who can attend an e.firma cita.
+     */
+    public function legalRepProfileComplete(): bool
+    {
+        return filled($this->rfc) && filled($this->curp) && $this->fielVigente();
     }
 
     // -------------------------------------------------------------------------

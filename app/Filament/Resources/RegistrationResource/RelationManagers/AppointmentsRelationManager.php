@@ -150,17 +150,37 @@ class AppointmentsRelationManager extends RelationManager
                 // como representante (available_as_legal_representative) — estar en el acta no
                 // basta, deben poder ir al SAT; y (b) tengan RFC (los identifica ante el SAT)
                 // y correo (para avisarles). La CURP no la pide el SAT para la cita.
-                ->options(fn ($livewire): array => $livewire->getOwnerRecord()
-                    ->legalRepresentatives()
-                    ->where('available_as_legal_representative', true)
-                    ->whereNotNull('rfc')
-                    ->whereNotNull('email')
-                    ->orderBy('name')
-                    ->pluck('name', 'soldados.id')
-                    ->all())
-                ->helperText('Solo apoderados del acta con luz verde de representante (los que sí pueden ir al SAT), con RFC y correo.')
+                // En citas de e.firma se muestra la vigencia de la FIEL del soldado (aviso):
+                // el SAT solo lo admite si su FIEL personal está vigente (caso Ulises).
+                ->options(function (Get $get, $livewire): array {
+                    $reps = $livewire->getOwnerRecord()
+                        ->legalRepresentatives()
+                        ->where('available_as_legal_representative', true)
+                        ->whereNotNull('rfc')
+                        ->whereNotNull('email')
+                        ->orderBy('name')
+                        ->get();
+
+                    $isFiel = $get('type') === AppointmentTypeEnum::FIEL->value;
+
+                    return $reps->mapWithKeys(function ($soldado) use ($isFiel): array {
+                        $label = $soldado->name;
+                        if ($isFiel) {
+                            $label .= $soldado->fielVigente()
+                                ? '  ·  FIEL vigente ✓'
+                                : '  ·  FIEL vencida/sin fecha ⛔';
+                        }
+
+                        return [$soldado->id => $label];
+                    })->all();
+                })
+                ->helperText('Apoderados del acta con luz verde, RFC y correo. En e.firma se marca la vigencia de la FIEL del soldado; solo super admin puede cambiarlo en citas de e.firma.')
                 ->searchable()
                 ->live()
+                // Solo super admin cambia el soldado en citas de e.firma (FIEL): al día de la
+                // cita se puede necesitar cambiarlo por uno con FIEL vigente.
+                ->disabled(fn (Get $get): bool => $get('type') === AppointmentTypeEnum::FIEL->value
+                    && ! (auth()->user()?->hasRole('super_admin') ?? false))
                 // Alerta INMEDIATA al seleccionar: un soldado no puede tener dos citas del
                 // mismo tipo al mismo tiempo (el SAT no lo permite). Puede tener una RFC y
                 // una e.firma a la vez, pero no dos RFC ni dos e.firma.
