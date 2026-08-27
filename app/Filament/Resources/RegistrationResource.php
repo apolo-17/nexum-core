@@ -75,7 +75,15 @@ class RegistrationResource extends Resource
      */
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->with('primaryLegalName');
+        $query = parent::getEloquentQuery()->with('primaryLegalName');
+
+        // El partner (aliado externo) solo ve empresas que YA tienen su RFC moral (persona
+        // moral constituida). Aplica a la lista y a la vista del expediente (por URL también).
+        if (Auth::user()?->isPartner() ?? false) {
+            $query->whereNotNull('rfc')->where('rfc', '!=', '');
+        }
+
+        return $query;
     }
 
     /**

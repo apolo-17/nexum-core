@@ -50,6 +50,34 @@ class PartnerRoleTest extends TestCase
     }
 
     #[Test]
+    public function partner_only_sees_companies_with_a_moral_rfc(): void
+    {
+        $this->actingAs($this->partner());
+
+        $withRfc = Registration::factory()->create(['rfc' => 'ABC260101XY9']);
+        $withoutRfc = Registration::factory()->create(['rfc' => null]);
+
+        $ids = RegistrationResource::getEloquentQuery()->pluck('id');
+
+        $this->assertTrue($ids->contains($withRfc->id), 'El partner debe ver empresas con RFC moral.');
+        $this->assertFalse($ids->contains($withoutRfc->id), 'El partner NO debe ver empresas sin RFC moral.');
+    }
+
+    #[Test]
+    public function admin_sees_companies_without_a_moral_rfc_too(): void
+    {
+        $admin = User::factory()->create();
+        $admin->assignRole('super_admin');
+        $this->actingAs($admin);
+
+        $withoutRfc = Registration::factory()->create(['rfc' => null]);
+
+        $this->assertTrue(
+            RegistrationResource::getEloquentQuery()->pluck('id')->contains($withoutRfc->id),
+        );
+    }
+
+    #[Test]
     public function partner_can_log_into_the_panel(): void
     {
         $partner = $this->partner();
