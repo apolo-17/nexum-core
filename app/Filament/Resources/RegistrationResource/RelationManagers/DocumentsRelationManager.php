@@ -381,75 +381,8 @@ class DocumentsRelationManager extends RelationManager
                             ->send();
                     }),
 
-                // Enviar / reenviar el documento a China (para los que se cargaron antes de que
-                // el relay funcionara, o para reintentar tras un fallo/rechazo).
-                Action::make('sendToChina')
-                    ->label('Enviar a China')
-                    ->icon('heroicon-o-paper-airplane')
-                    ->color('info')
-                    ->iconButton()
-                    ->tooltip(fn (Document $record): string => $record->relay_delivered_at !== null
-                        ? 'Reenviar a China'
-                        : 'Enviar a China')
-                    ->hidden(fn (): bool => $isPartner)
-                    ->visible(fn (Document $record): bool => filled($record->storage_path)
-                        && app(\App\Services\Singapur\RelayDocumentAlertService::class)->isDeliverableType($record))
-                    ->requiresConfirmation()
-                    ->modalHeading('Enviar documento a China')
-                    ->modalDescription('Se enviará en segundo plano. Recibirás una alerta con el resultado (enviado / falló / rechazado).')
-                    ->modalSubmitActionLabel('Enviar')
-                    ->action(function (Document $record): void {
-                        // Reinicia el estado de entrega para que sea elegible y se (re)envíe.
-                        $record->forceFill([
-                            'relay_delivered_at' => null,
-                            'relay_drive_url' => null,
-                            'relay_rejected_at' => null,
-                            'relay_rejection_reason' => null,
-                        ])->saveQuietly();
-
-                        \App\Jobs\NotifyRelayDocumentJob::dispatch($record->id);
-
-                        Notification::make()
-                            ->title('Enviando a China…')
-                            ->body('Te avisaremos con el resultado en la campana.')
-                            ->info()
-                            ->send();
-                    }),
-
-                // Marcar como erróneo un entregable enviado a China (documento equivocado).
-                // Al subir el correcto (reemplazo), el observer lo reenvía solo.
-                Action::make('markRelayWrong')
-                    ->label('Marcar erróneo (China)')
-                    ->icon('heroicon-o-exclamation-triangle')
-                    ->color('danger')
-                    ->iconButton()
-                    ->tooltip('Marcar este documento como erróneo (China). Sube el correcto para reenviarlo.')
-                    ->hidden(fn (): bool => $isPartner)
-                    ->visible(fn (Document $record): bool => filled($record->storage_path)
-                        && app(\App\Services\Singapur\RelayDocumentAlertService::class)->isDeliverableType($record))
-                    ->schema([
-                        Textarea::make('reason')
-                            ->label('Motivo')
-                            ->placeholder('¿Por qué está mal este documento?')
-                            ->required()
-                            ->rows(3),
-                    ])
-                    ->action(function (Document $record, array $data): void {
-                        $record->forceFill([
-                            'relay_rejected_at' => now(),
-                            'relay_rejection_reason' => trim((string) ($data['reason'] ?? '')),
-                        ])->save();
-
-                        app(\App\Services\Singapur\RelayDocumentAlertService::class)->notifySuperAdmins(
-                            \App\Notifications\ChinaDeliveryNotification::for($record, 'rejected', trim((string) ($data['reason'] ?? ''))),
-                        );
-
-                        Notification::make()
-                            ->title('Documento marcado como erróneo')
-                            ->body('Sube el documento correcto para que se reenvíe a China.')
-                            ->warning()
-                            ->send();
-                    }),
+                // Nota: enviar/reenviar y marcar erróneo (China) viven ahora en el panel
+                // "Entregables a China" del expediente, no en esta tabla.
 
                 // Delete — with confirmation.
                 DeleteAction::make()

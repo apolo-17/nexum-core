@@ -1007,13 +1007,14 @@ class RegistrationResource extends Resource
                 ]),
 
             Section::make('Entregables a China')
-                ->description('Los 5 documentos que China necesita y su estado de entrega.')
+                ->description('Los 5 documentos que China necesita, su estado de entrega y el botón para enviar/reenviar cada uno.')
                 ->columnSpanFull()
                 ->collapsible()
                 ->schema([
-                    \Filament\Infolists\Components\ViewEntry::make('china_deliverables')
-                        ->hiddenLabel()
-                        ->view('filament.infolists.china-deliverables'),
+                    \Filament\Schemas\Components\Livewire::make(
+                        \App\Livewire\ChinaDeliverablesPanel::class,
+                        fn (Registration $record): array => ['registration' => $record->id],
+                    ),
                 ]),
         ]);
     }
