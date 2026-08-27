@@ -78,6 +78,40 @@ class PartnerRoleTest extends TestCase
     }
 
     #[Test]
+    public function partner_does_not_see_objeto_social_nor_the_china_panel(): void
+    {
+        $this->actingAs($this->partner());
+
+        $reg = Registration::factory()->create(['rfc' => 'ABC260101XY9', 'stage' => \App\Enums\RegistrationStageEnum::SAT_REGISTRATION]);
+
+        \Livewire\Livewire::test(
+            \App\Filament\Resources\RegistrationResource\Pages\ViewRegistration::class,
+            ['record' => $reg->id],
+        )
+            ->assertSuccessful()
+            ->assertDontSee('Objeto social')
+            ->assertDontSee('Entregables a China');
+    }
+
+    #[Test]
+    public function admin_still_sees_objeto_social_and_the_china_panel(): void
+    {
+        $admin = User::factory()->create();
+        $admin->assignRole('super_admin');
+        $this->actingAs($admin);
+
+        $reg = Registration::factory()->create(['rfc' => 'ABC260101XY9', 'stage' => \App\Enums\RegistrationStageEnum::SAT_REGISTRATION]);
+
+        \Livewire\Livewire::test(
+            \App\Filament\Resources\RegistrationResource\Pages\ViewRegistration::class,
+            ['record' => $reg->id],
+        )
+            ->assertSuccessful()
+            ->assertSee('Objeto social')
+            ->assertSee('Entregables a China');
+    }
+
+    #[Test]
     public function partner_can_log_into_the_panel(): void
     {
         $partner = $this->partner();

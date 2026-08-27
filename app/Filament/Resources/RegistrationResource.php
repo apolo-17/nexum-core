@@ -780,7 +780,9 @@ class RegistrationResource extends Resource
                     TextEntry::make('company_object')
                         ->label('Objeto social')
                         ->placeholder('⚠️ Sin objeto social — debe llegar en el webhook o editarse manualmente')
-                        ->columnSpan(2),
+                        ->columnSpan(2)
+                        // El partner no necesita ver el objeto social.
+                        ->hidden(fn (): bool => auth()->user()?->isPartner() ?? false),
 
                     TextEntry::make('capital_social')
                         ->label('Capital social')
@@ -1018,6 +1020,8 @@ class RegistrationResource extends Resource
                 ->description('Los 5 documentos que China necesita, su estado de entrega y el botón para enviar/reenviar cada uno.')
                 ->columnSpanFull()
                 ->collapsible()
+                // El partner no necesita ver lo que se envía a China.
+                ->hidden(fn (): bool => auth()->user()?->isPartner() ?? false)
                 ->schema([
                     \Filament\Schemas\Components\Livewire::make(
                         \App\Livewire\ChinaDeliverablesPanel::class,
@@ -1112,6 +1116,8 @@ class RegistrationResource extends Resource
                         };
                     })
                     ->tooltip('Entregables confirmados por China (acta, RPP, domicilio, CSF, e.firma).')
+                    // El partner no necesita ver el estado de entrega a China.
+                    ->visible(fn (): bool => ! (auth()->user()?->isPartner() ?? false))
                     ->grow(false),
 
                 TextColumn::make('created_at')
