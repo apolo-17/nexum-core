@@ -10,12 +10,13 @@ use App\Enums\RegistrationStatusEnum;
 use App\Enums\ShareholderRoleEnum;
 use App\Filament\Resources\RegistrationResource\Pages;
 use App\Filament\Resources\RegistrationResource\RelationManagers;
+use App\Livewire\ChinaDeliverablesPanel;
 use App\Models\Appointment;
 use App\Models\LegalName;
 use App\Models\Registration;
 use App\Models\User;
 use App\Services\Denomination\ClaimPoolDenominationService;
-use Illuminate\Database\Eloquent\Model;
+use App\Services\Singapur\ChinaDeliverablesService;
 use BackedEnum;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -23,7 +24,6 @@ use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Infolists\Components\IconEntry;
@@ -31,6 +31,7 @@ use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Livewire;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
@@ -41,6 +42,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 
@@ -250,11 +252,9 @@ class RegistrationResource extends Resource
                             'SAPI de CV' => 'SAPI de CV',
                         ]),
 
-                    Textarea::make('company_object')
-                        ->label('Objeto social')
-                        ->rows(3)
-                        ->columnSpanFull()
-                        ->helperText('Necesario para generar el acta constitutiva.'),
+                    // El objeto social es el mismo boilerplate para todas las empresas
+                    // (SingapurSubmissionParser::DEFAULT_COMPANY_OBJECT / fijo en la plantilla),
+                    // así que no se edita ni se valida a mano — se quitó del formulario.
 
                     TextInput::make('capital_social')
                         ->label('Capital social')
@@ -777,12 +777,7 @@ class RegistrationResource extends Resource
                     true,
                 ))
                 ->schema([
-                    TextEntry::make('company_object')
-                        ->label('Objeto social')
-                        ->placeholder('⚠️ Sin objeto social — debe llegar en el webhook o editarse manualmente')
-                        ->columnSpan(2)
-                        // El partner no necesita ver el objeto social.
-                        ->hidden(fn (): bool => auth()->user()?->isPartner() ?? false),
+                    // Objeto social: boilerplate idéntico para todas las empresas — no se muestra.
 
                     TextEntry::make('capital_social')
                         ->label('Capital social')
@@ -1023,8 +1018,8 @@ class RegistrationResource extends Resource
                 // El partner no necesita ver lo que se envía a China.
                 ->hidden(fn (): bool => auth()->user()?->isPartner() ?? false)
                 ->schema([
-                    \Filament\Schemas\Components\Livewire::make(
-                        \App\Livewire\ChinaDeliverablesPanel::class,
+                    Livewire::make(
+                        ChinaDeliverablesPanel::class,
                         fn (Registration $record): array => ['registration' => $record->id],
                     ),
                 ]),
@@ -1101,12 +1096,12 @@ class RegistrationResource extends Resource
                     ->label('China')
                     ->badge()
                     ->state(function (Registration $record): string {
-                        $svc = app(\App\Services\Singapur\ChinaDeliverablesService::class);
+                        $svc = app(ChinaDeliverablesService::class);
 
                         return $svc->deliveredCount($record).'/'.$svc->total();
                     })
                     ->color(function (Registration $record): string {
-                        $svc = app(\App\Services\Singapur\ChinaDeliverablesService::class);
+                        $svc = app(ChinaDeliverablesService::class);
                         $done = $svc->deliveredCount($record);
 
                         return match (true) {

@@ -63,9 +63,8 @@ class ActaCompletenessValidator
             $issues[] = 'Falta el capital social.';
         }
 
-        if (blank($registration->company_object)) {
-            $issues[] = 'Falta el objeto social.';
-        }
+        // El objeto social ya no se valida: es el mismo boilerplate para todas las empresas
+        // (default en SingapurSubmissionParser / fijo en la plantilla), nunca falta de verdad.
     }
 
     /**

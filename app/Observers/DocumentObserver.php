@@ -62,6 +62,10 @@ class DocumentObserver
             return;
         }
 
+        // Marca "enviando" desde ya, para que el panel muestre el estado en vivo (no "falta enviar")
+        // en cuanto se guarda el archivo, y se auto-refresque hasta que el envío se resuelva.
+        $document->forceFill(['relay_sending_at' => now()])->saveQuietly();
+
         NotifyRelayDocumentJob::dispatch($document->id);
     }
 }

@@ -21,50 +21,39 @@ class ChinaDeliverablesPanel extends Component
 {
     public string $registrationId;
 
-    /**
-     * Deliverable types the operator just fired that have not resolved yet, keyed by type.
-     * Kept in component state so the row shows a persistent "Enviando a China…" spinner
-     * across wire:poll refreshes until the send lands (delivered) or fails.
-     *
-     * @var array<string, bool>
-     */
-    public array $sending = [];
-
     public function mount(Registration|string $registration): void
     {
         $this->registrationId = $registration instanceof Registration ? $registration->id : $registration;
     }
 
     /**
-     * Per-deliverable rows for the view, with the transient "sending" state layered on top of
-     * the persisted delivery status so a just-clicked row shows progress until it resolves.
+     * Per-deliverable rows for the view. The "sending" state is DB-driven (relay_sending_at),
+     * so a document that starts sending on upload — not only from a click here — shows progress.
      *
      * @return list<array<string, mixed>>
      */
     public function getItemsProperty(): array
     {
-        $items = app(ChinaDeliverablesService::class)->statusFor(
+        return app(ChinaDeliverablesService::class)->statusFor(
             Registration::findOrFail($this->registrationId),
         );
+    }
 
-        foreach ($items as &$item) {
-            $type = $item['type'];
+    /**
+     * Auto-refresh cadence so the panel updates itself without a full page reload:
+     *   - fast while a send is in flight (catch the flip to ✅/⚠️ quickly),
+     *   - slow while anything is still not delivered (catch a just-uploaded document),
+     *   - off once China has everything (nothing left to watch).
+     */
+    public function getPollIntervalProperty(): ?string
+    {
+        $states = collect($this->items)->pluck('state');
 
-            if (! ($this->sending[$type] ?? false)) {
-                continue;
-            }
-
-            // Once the delivery resolved (delivered / rejected / failed), drop the spinner and
-            // show the real outcome; otherwise keep showing "Enviando…".
-            if (in_array($item['state'], ['delivered', 'rejected', 'failed'], true)) {
-                unset($this->sending[$type]);
-            } else {
-                $item['state'] = 'sending';
-            }
+        if ($states->contains('sending')) {
+            return '2s';
         }
-        unset($item);
 
-        return $items;
+        return $states->contains(fn (string $s): bool => $s !== 'delivered') ? '6s' : null;
     }
 
     /** Deliverables we have but China has not confirmed yet (pending, rejected or failed). */
@@ -83,7 +72,6 @@ class ChinaDeliverablesPanel extends Component
         }
 
         $this->dispatchDoc($doc);
-        $this->sending[$type] = true;
 
         Notification::make()
             ->title('Enviando a China…')
@@ -105,7 +93,6 @@ class ChinaDeliverablesPanel extends Component
             $doc = $this->latestDoc($item['type']);
             if ($doc !== null) {
                 $this->dispatchDoc($doc);
-                $this->sending[$item['type']] = true;
                 $sent++;
             }
         }
@@ -159,7 +146,8 @@ class ChinaDeliverablesPanel extends Component
 
     private function dispatchDoc(Document $doc): void
     {
-        // Reinicia el estado de entrega para que sea elegible y se (re)envíe.
+        // Reinicia el estado de entrega para que sea elegible y se (re)envíe, y márcalo "enviando"
+        // para que el panel muestre el estado en vivo hasta que el job lo resuelva.
         $doc->forceFill([
             'relay_delivered_at' => null,
             'relay_drive_url' => null,
@@ -167,6 +155,7 @@ class ChinaDeliverablesPanel extends Component
             'relay_rejection_reason' => null,
             'relay_failed_at' => null,
             'relay_last_error' => null,
+            'relay_sending_at' => now(),
         ])->saveQuietly();
 
         NotifyRelayDocumentJob::dispatch($doc->id);

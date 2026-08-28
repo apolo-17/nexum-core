@@ -153,6 +153,7 @@ class RelayDocumentAlertService
             'relay_rejection_reason' => null,
             'relay_failed_at' => null,
             'relay_last_error' => null,
+            'relay_sending_at' => null,
         ])->save();
 
         Log::info('RelayDocumentAlertService: alert delivered', [

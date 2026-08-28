@@ -51,6 +51,7 @@ class Document extends Model
         'relay_storage_path',
         'relay_failed_at',
         'relay_last_error',
+        'relay_sending_at',
     ];
 
     /**
@@ -69,6 +70,7 @@ class Document extends Model
             'relay_delivered_at' => 'datetime',
             'relay_rejected_at' => 'datetime',
             'relay_failed_at' => 'datetime',
+            'relay_sending_at' => 'datetime',
         ];
     }
 

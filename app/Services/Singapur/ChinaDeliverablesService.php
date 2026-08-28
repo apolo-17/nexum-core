@@ -58,11 +58,17 @@ class ChinaDeliverablesService
         $out = [];
         foreach (self::DELIVERABLES as $type => $label) {
             $doc = $docs->get($type);
+            // "sending" es transitorio: vale solo si es reciente (un job vivo). Pasados unos minutos
+            // sin resolverse (job muerto), se considera "pending" otra vez para reofrecer el botón.
+            $isSending = $doc?->relay_sending_at !== null
+                && $doc->relay_sending_at->gt(now()->subMinutes(10));
+
             $state = match (true) {
                 $doc === null => 'missing',
                 $doc->relay_delivered_at !== null => 'delivered',
                 $doc->relay_rejected_at !== null => 'rejected',
                 $doc->relay_failed_at !== null => 'failed',
+                $isSending => 'sending',
                 default => 'pending',
             };
 

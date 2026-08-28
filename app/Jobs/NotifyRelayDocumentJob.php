@@ -133,6 +133,7 @@ class NotifyRelayDocumentJob implements ShouldQueue
         $document->forceFill([
             'relay_failed_at' => now(),
             'relay_last_error' => $reason,
+            'relay_sending_at' => null,
         ])->saveQuietly();
 
         if ($notify) {

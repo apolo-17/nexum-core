@@ -3,13 +3,17 @@
 namespace Tests\Feature\Filament;
 
 use App\Enums\DocumentTypeEnum;
+use App\Enums\RegistrationStageEnum;
 use App\Filament\Resources\RegistrationResource;
+use App\Filament\Resources\RegistrationResource\Pages\ViewRegistration;
 use App\Models\Document;
 use App\Models\Registration;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Filament\Panel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
+use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -82,10 +86,10 @@ class PartnerRoleTest extends TestCase
     {
         $this->actingAs($this->partner());
 
-        $reg = Registration::factory()->create(['rfc' => 'ABC260101XY9', 'stage' => \App\Enums\RegistrationStageEnum::SAT_REGISTRATION]);
+        $reg = Registration::factory()->create(['rfc' => 'ABC260101XY9', 'stage' => RegistrationStageEnum::SAT_REGISTRATION]);
 
-        \Livewire\Livewire::test(
-            \App\Filament\Resources\RegistrationResource\Pages\ViewRegistration::class,
+        Livewire::test(
+            ViewRegistration::class,
             ['record' => $reg->id],
         )
             ->assertSuccessful()
@@ -94,20 +98,22 @@ class PartnerRoleTest extends TestCase
     }
 
     #[Test]
-    public function admin_still_sees_objeto_social_and_the_china_panel(): void
+    public function admin_sees_the_china_panel_but_no_one_sees_objeto_social(): void
     {
+        // El objeto social es boilerplate idéntico para todas las empresas, así que se quitó
+        // del expediente por completo (ni admin ni partner lo ven). El panel de China sí lo ve el admin.
         $admin = User::factory()->create();
         $admin->assignRole('super_admin');
         $this->actingAs($admin);
 
-        $reg = Registration::factory()->create(['rfc' => 'ABC260101XY9', 'stage' => \App\Enums\RegistrationStageEnum::SAT_REGISTRATION]);
+        $reg = Registration::factory()->create(['rfc' => 'ABC260101XY9', 'stage' => RegistrationStageEnum::SAT_REGISTRATION]);
 
-        \Livewire\Livewire::test(
-            \App\Filament\Resources\RegistrationResource\Pages\ViewRegistration::class,
+        Livewire::test(
+            ViewRegistration::class,
             ['record' => $reg->id],
         )
             ->assertSuccessful()
-            ->assertSee('Objeto social')
+            ->assertDontSee('Objeto social')
             ->assertSee('Entregables a China');
     }
 
@@ -117,7 +123,7 @@ class PartnerRoleTest extends TestCase
         $partner = $this->partner();
 
         $this->assertTrue($partner->isPartner());
-        $this->assertTrue($partner->canAccessPanel(app(\Filament\Panel::class)));
+        $this->assertTrue($partner->canAccessPanel(app(Panel::class)));
     }
 
     #[Test]

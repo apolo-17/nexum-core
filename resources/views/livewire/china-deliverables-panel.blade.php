@@ -1,7 +1,7 @@
 @php
     $done = collect($this->items)->where('state', 'delivered')->count();
     $total = count($this->items);
-    $isSending = count($this->sending) > 0;
+    $poll = $this->pollInterval;
     $meta = [
         'delivered' => ['icon' => '✅', 'text' => 'Enviado a China',           'color' => '#16a34a'],
         'sending'   => ['icon' => '⏳', 'text' => 'Enviando a China…',          'color' => '#2563eb'],
@@ -14,7 +14,7 @@
     $btnGhost = 'display:inline-flex;align-items:center;gap:5px;border:1px solid #e5e7eb;background:transparent;color:#6b7280;font-size:12px;font-weight:600;padding:5px 11px;border-radius:7px;cursor:pointer;white-space:nowrap;';
 @endphp
 
-<div style="font-size:13px;" @if($isSending) wire:poll.5s @endif>
+<div style="font-size:13px;" @if($poll) wire:poll.{{ $poll }} @endif>
     <style>
         @keyframes ccd-spin { to { transform: rotate(360deg); } }
         .ccd-spinner { width:13px;height:13px;border:2px solid #bfdbfe;border-top-color:#2563eb;border-radius:50%;display:inline-block;animation:ccd-spin .7s linear infinite; }
