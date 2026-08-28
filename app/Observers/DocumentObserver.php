@@ -47,12 +47,14 @@ class DocumentObserver
 
         // A new or replaced file supersedes any prior delivery/rejection, so it becomes eligible
         // to send again (this is how a corrected document gets re-sent after being marked wrong).
-        if ($document->relay_delivered_at !== null || $document->relay_rejected_at !== null) {
+        // The stale compressed derivative is dropped too, so a fresh one is built from the new file.
+        if ($document->relay_delivered_at !== null || $document->relay_rejected_at !== null || filled($document->relay_storage_path)) {
             $document->forceFill([
                 'relay_delivered_at' => null,
                 'relay_drive_url' => null,
                 'relay_rejected_at' => null,
                 'relay_rejection_reason' => null,
+                'relay_storage_path' => null,
             ])->saveQuietly();
         }
 

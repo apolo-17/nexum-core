@@ -48,6 +48,7 @@ class Document extends Model
         'relay_drive_url',
         'relay_rejected_at',
         'relay_rejection_reason',
+        'relay_storage_path',
     ];
 
     /**

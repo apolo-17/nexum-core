@@ -42,6 +42,10 @@ return [
         // Relay endpoint we POST a lightweight "document ready" alert to (pull model).
         // When empty, alerts are skipped (e.g. local dev) so nothing is dispatched.
         'document_alert_url' => env('SINGAPUR_DOCUMENT_ALERT_URL'),
+        // A deliverable PDF larger than this (bytes) is Ghostscript-compressed before the
+        // relay pulls it. China rejects documents over ~25 MB and Cloud Run caps the request
+        // at ~32 MB, so we keep the served copy comfortably under both. Default 22 MB.
+        'relay_max_bytes' => (int) env('SINGAPUR_RELAY_MAX_BYTES', 22 * 1024 * 1024),
     ],
 
     // MUA bot — Python microservice that automates the SE/MUA portal via Playwright.

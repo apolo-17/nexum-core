@@ -6,6 +6,9 @@ use App\Enums\DocumentTypeEnum;
 use App\Http\Controllers\Controller;
 use App\Models\Document;
 use App\Models\Registration;
+use App\Notifications\ChinaDeliveryNotification;
+use App\Services\Singapur\RelayDocumentAlertService;
+use App\Services\Singapur\RelayMessageAi;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -129,7 +132,7 @@ class CompanyDocumentRelayController extends Controller
         $expiresAt = now()->addMinutes(self::URL_TTL_MINUTES);
 
         try {
-            $url = Storage::temporaryUrl($document->storage_path, $expiresAt);
+            $url = Storage::temporaryUrl($this->relayPath($document), $expiresAt);
         } catch (Throwable) {
             // R2/S3 misconfigured or the driver cannot sign URLs (e.g. local dev).
             return response()->json(
@@ -175,7 +178,7 @@ class CompanyDocumentRelayController extends Controller
 
         $rawReason = trim((string) $request->input('reason', ''));
         $reason = $rawReason !== ''
-            ? app(\App\Services\Singapur\RelayMessageAi::class)->translateRejection($document, $rawReason)
+            ? app(RelayMessageAi::class)->translateRejection($document, $rawReason)
             : 'China rechazó el documento (sin motivo especificado).';
 
         // Marca el rechazo. No cambia storage_path, así que el observer no reenvía nada; el
@@ -185,8 +188,8 @@ class CompanyDocumentRelayController extends Controller
             'relay_rejection_reason' => $reason,
         ])->save();
 
-        app(\App\Services\Singapur\RelayDocumentAlertService::class)->notifySuperAdmins(
-            \App\Notifications\ChinaDeliveryNotification::for($document, 'rejected', $reason),
+        app(RelayDocumentAlertService::class)->notifySuperAdmins(
+            ChinaDeliveryNotification::for($document, 'rejected', $reason),
         );
 
         return response()->json(['ok' => true], Response::HTTP_OK);
@@ -255,5 +258,18 @@ class CompanyDocumentRelayController extends Controller
     private function filenameFor(Document $document): string
     {
         return $document->name ?: basename((string) $document->storage_path);
+    }
+
+    /**
+     * The storage path the relay should pull: the compressed derivative when one
+     * exists (oversized scanned PDFs), otherwise the original file.
+     *
+     * @param  Document  $document  The document being served.
+     */
+    private function relayPath(Document $document): string
+    {
+        return filled($document->relay_storage_path)
+            ? (string) $document->relay_storage_path
+            : (string) $document->storage_path;
     }
 }

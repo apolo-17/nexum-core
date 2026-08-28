@@ -3,7 +3,10 @@
 namespace App\Jobs;
 
 use App\Models\Document;
+use App\Notifications\ChinaDeliveryNotification;
 use App\Services\Singapur\RelayDocumentAlertService;
+use App\Services\Singapur\RelayFileService;
+use App\Services\Singapur\RelayMessageAi;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -67,14 +70,19 @@ class NotifyRelayDocumentJob implements ShouldQueue
      * job was queued, so a deleted/replaced document does not fail the queue.
      *
      * @param  RelayDocumentAlertService  $service  The alert sender.
+     * @param  RelayFileService  $files  Prepares a size-safe copy for the relay to pull.
      */
-    public function handle(RelayDocumentAlertService $service): void
+    public function handle(RelayDocumentAlertService $service, RelayFileService $files): void
     {
         $document = Document::with('registration')->find($this->documentId);
 
         if ($document === null || ! $service->shouldAlert($document)) {
             return;
         }
+
+        // Make sure the file the relay will pull fits China's size limit (compress oversized
+        // scanned PDFs) BEFORE announcing it — China pulls synchronously during the alert.
+        $files->prepare($document);
 
         $service->send($document, $this->eventId, $this->occurredAt);
     }
@@ -91,11 +99,11 @@ class NotifyRelayDocumentJob implements ShouldQueue
             return;
         }
 
-        $message = app(\App\Services\Singapur\RelayMessageAi::class)
+        $message = app(RelayMessageAi::class)
             ->explainFailure($document, $exception->getMessage());
 
         app(RelayDocumentAlertService::class)->notifySuperAdmins(
-            \App\Notifications\ChinaDeliveryNotification::for($document, 'failed', $message),
+            ChinaDeliveryNotification::for($document, 'failed', $message),
         );
     }
 }
