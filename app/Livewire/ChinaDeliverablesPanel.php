@@ -11,7 +11,6 @@ use App\Notifications\ChinaDeliveryNotification;
 use App\Services\Singapur\ChinaDeliverablesService;
 use App\Services\Singapur\RelayDocumentAlertService;
 use Filament\Notifications\Notification;
-use Illuminate\Support\Collection;
 use Livewire\Component;
 
 /**
@@ -22,25 +21,56 @@ class ChinaDeliverablesPanel extends Component
 {
     public string $registrationId;
 
+    /**
+     * Deliverable types the operator just fired that have not resolved yet, keyed by type.
+     * Kept in component state so the row shows a persistent "Enviando a China…" spinner
+     * across wire:poll refreshes until the send lands (delivered) or fails.
+     *
+     * @var array<string, bool>
+     */
+    public array $sending = [];
+
     public function mount(Registration|string $registration): void
     {
         $this->registrationId = $registration instanceof Registration ? $registration->id : $registration;
     }
 
     /**
+     * Per-deliverable rows for the view, with the transient "sending" state layered on top of
+     * the persisted delivery status so a just-clicked row shows progress until it resolves.
+     *
      * @return list<array<string, mixed>>
      */
     public function getItemsProperty(): array
     {
-        return app(ChinaDeliverablesService::class)->statusFor(
+        $items = app(ChinaDeliverablesService::class)->statusFor(
             Registration::findOrFail($this->registrationId),
         );
+
+        foreach ($items as &$item) {
+            $type = $item['type'];
+
+            if (! ($this->sending[$type] ?? false)) {
+                continue;
+            }
+
+            // Once the delivery resolved (delivered / rejected / failed), drop the spinner and
+            // show the real outcome; otherwise keep showing "Enviando…".
+            if (in_array($item['state'], ['delivered', 'rejected', 'failed'], true)) {
+                unset($this->sending[$type]);
+            } else {
+                $item['state'] = 'sending';
+            }
+        }
+        unset($item);
+
+        return $items;
     }
 
-    /** Deliverables we have but China has not confirmed yet (pending or rejected). */
+    /** Deliverables we have but China has not confirmed yet (pending, rejected or failed). */
     public function getPendingCountProperty(): int
     {
-        return collect($this->items)->whereIn('state', ['pending', 'rejected'])->count();
+        return collect($this->items)->whereIn('state', ['pending', 'rejected', 'failed'])->count();
     }
 
     /** Send (or resend) one deliverable to China. */
@@ -53,34 +83,36 @@ class ChinaDeliverablesPanel extends Component
         }
 
         $this->dispatchDoc($doc);
+        $this->sending[$type] = true;
 
         Notification::make()
             ->title('Enviando a China…')
-            ->body('Te avisaremos el resultado en la campana.')
+            ->body('El estatus se actualizará solo aquí cuando termine.')
             ->info()
             ->send();
     }
 
-    /** Send every pending/rejected deliverable at once. */
+    /** Send every pending/rejected/failed deliverable at once. */
     public function sendAllPending(): void
     {
         $sent = 0;
 
         foreach ($this->items as $item) {
-            if (! in_array($item['state'], ['pending', 'rejected'], true)) {
+            if (! in_array($item['state'], ['pending', 'rejected', 'failed'], true)) {
                 continue;
             }
 
             $doc = $this->latestDoc($item['type']);
             if ($doc !== null) {
                 $this->dispatchDoc($doc);
+                $this->sending[$item['type']] = true;
                 $sent++;
             }
         }
 
         Notification::make()
             ->title('Enviando a China…')
-            ->body($sent.' documento(s) en camino. Te avisaremos por cada uno.')
+            ->body($sent.' documento(s) en camino. El estatus se actualizará solo aquí.')
             ->info()
             ->send();
     }
@@ -133,6 +165,8 @@ class ChinaDeliverablesPanel extends Component
             'relay_drive_url' => null,
             'relay_rejected_at' => null,
             'relay_rejection_reason' => null,
+            'relay_failed_at' => null,
+            'relay_last_error' => null,
         ])->saveQuietly();
 
         NotifyRelayDocumentJob::dispatch($doc->id);

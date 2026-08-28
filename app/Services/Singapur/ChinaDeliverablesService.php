@@ -7,6 +7,7 @@ namespace App\Services\Singapur;
 use App\Enums\DocumentTypeEnum;
 use App\Models\Document;
 use App\Models\Registration;
+use Illuminate\Support\Carbon;
 
 /**
  * Computes, per registration, the delivery status of the five documents China needs.
@@ -43,7 +44,7 @@ class ChinaDeliverablesService
     /**
      * Per-deliverable status for a registration.
      *
-     * @return list<array{type: string, label: string, state: 'delivered'|'pending'|'missing', drive_url: ?string, delivered_at: ?\Illuminate\Support\Carbon}>
+     * @return list<array{type: string, label: string, state: 'delivered'|'pending'|'rejected'|'failed'|'missing', drive_url: ?string, delivered_at: ?Carbon}>
      */
     public function statusFor(Registration $registration): array
     {
@@ -59,8 +60,9 @@ class ChinaDeliverablesService
             $doc = $docs->get($type);
             $state = match (true) {
                 $doc === null => 'missing',
-                $doc->relay_rejected_at !== null => 'rejected',
                 $doc->relay_delivered_at !== null => 'delivered',
+                $doc->relay_rejected_at !== null => 'rejected',
+                $doc->relay_failed_at !== null => 'failed',
                 default => 'pending',
             };
 
@@ -71,6 +73,7 @@ class ChinaDeliverablesService
                 'drive_url' => $doc?->relay_drive_url,
                 'delivered_at' => $doc?->relay_delivered_at,
                 'rejection_reason' => $doc?->relay_rejection_reason,
+                'failure_reason' => $doc?->relay_last_error,
             ];
         }
 

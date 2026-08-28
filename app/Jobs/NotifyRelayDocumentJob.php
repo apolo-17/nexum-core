@@ -13,7 +13,8 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Storage;
+use Ramsey\Uuid\Uuid;
 
 /**
  * Notifies the China/Singapur relay that a deliverable document is ready to pull.
@@ -22,8 +23,13 @@ use Illuminate\Support\Str;
  * on the queue so it never blocks the request that stored the document, and retries
  * with backoff on transient relay failures.
  *
- * The event_id and occurred_at are captured once at dispatch time and serialized,
- * so every retry sends the same values and the relay deduplicates the alert.
+ * A size-safe copy is prepared first (oversized scanned PDFs are compressed). If the
+ * served file still exceeds what China can actually ingest, the job fails fast with a
+ * human-readable reason instead of hanging ~130 s on China's timeout across five retries.
+ *
+ * The alert's event_id is DETERMINISTIC (derived from the document and the exact file
+ * served), so retries and manual resends reuse the same id and China deduplicates them —
+ * a document is never uploaded to Drive twice for the same content.
  */
 class NotifyRelayDocumentJob implements ShouldQueue
 {
@@ -35,11 +41,6 @@ class NotifyRelayDocumentJob implements ShouldQueue
     public int $tries = 5;
 
     /**
-     * Stable idempotency key for this alert, reused across retries.
-     */
-    private readonly string $eventId;
-
-    /**
      * ISO 8601 timestamp captured when the alert was first dispatched.
      */
     private readonly string $occurredAt;
@@ -49,7 +50,6 @@ class NotifyRelayDocumentJob implements ShouldQueue
      */
     public function __construct(private readonly string $documentId)
     {
-        $this->eventId = (string) Str::uuid();
         $this->occurredAt = Carbon::now()->toIso8601String();
     }
 
@@ -80,16 +80,35 @@ class NotifyRelayDocumentJob implements ShouldQueue
             return;
         }
 
-        // Make sure the file the relay will pull fits China's size limit (compress oversized
+        // Make sure the file the relay will pull is as small as possible (compress oversized
         // scanned PDFs) BEFORE announcing it — China pulls synchronously during the alert.
         $files->prepare($document);
+        $document->refresh();
 
-        $service->send($document, $this->eventId, $this->occurredAt);
+        // China's Drive pipeline chokes on files bigger than a few MB. If, even after
+        // compression, the served file is over the ceiling, do not attempt the send (it would
+        // hang ~130 s and 502). Mark it failed with a clear reason so the panel can show it.
+        $servedBytes = $this->servedBytes($document);
+        $ceiling = (int) config('services.singapur.china_max_bytes');
+
+        if ($ceiling > 0 && $servedBytes > $ceiling) {
+            $mb = round($servedBytes / 1048576, 1);
+            $limitMb = round($ceiling / 1048576, 1);
+            $this->markFailed(
+                $document,
+                "El archivo pesa {$mb} MB y excede el límite que China puede recibir (~{$limitMb} MB). ".
+                'China debe ampliar su tubería de subida para aceptarlo.',
+            );
+
+            return;
+        }
+
+        $service->send($document, $this->deterministicEventId($document), $this->occurredAt);
     }
 
     /**
-     * After all retries are exhausted, alert the super admins with an AI-composed,
-     * human-readable explanation of why the delivery to China failed.
+     * After all retries are exhausted, record the failure (so the panel shows a reason and a
+     * resend button) and alert the super admins with an AI-composed, human-readable explanation.
      */
     public function failed(\Throwable $exception): void
     {
@@ -102,8 +121,53 @@ class NotifyRelayDocumentJob implements ShouldQueue
         $message = app(RelayMessageAi::class)
             ->explainFailure($document, $exception->getMessage());
 
-        app(RelayDocumentAlertService::class)->notifySuperAdmins(
-            ChinaDeliveryNotification::for($document, 'failed', $message),
-        );
+        $this->markFailed($document, $message, notify: true);
+    }
+
+    /**
+     * Stamp the document as failed with a human-readable reason. Does not touch storage_path,
+     * so a corrected re-upload still re-triggers a fresh send.
+     */
+    private function markFailed(Document $document, string $reason, bool $notify = false): void
+    {
+        $document->forceFill([
+            'relay_failed_at' => now(),
+            'relay_last_error' => $reason,
+        ])->saveQuietly();
+
+        if ($notify) {
+            app(RelayDocumentAlertService::class)->notifySuperAdmins(
+                ChinaDeliveryNotification::for($document, 'failed', $reason),
+            );
+        }
+    }
+
+    /**
+     * Size in bytes of the exact file the relay will pull (compressed derivative when present).
+     */
+    private function servedBytes(Document $document): int
+    {
+        $path = filled($document->relay_storage_path)
+            ? (string) $document->relay_storage_path
+            : (string) $document->storage_path;
+
+        try {
+            return (int) Storage::disk()->size($path);
+        } catch (\Throwable) {
+            return 0;
+        }
+    }
+
+    /**
+     * Stable UUIDv5 for this alert: same document + same served file => same id, so retries
+     * and manual resends are idempotent and China never stores a second copy for one content.
+     */
+    private function deterministicEventId(Document $document): string
+    {
+        $served = filled($document->relay_storage_path)
+            ? (string) $document->relay_storage_path
+            : (string) $document->storage_path;
+
+        return (string) Uuid::uuid5(Uuid::NAMESPACE_URL, "relay-doc:{$document->id}:{$served}");
     }
 }

@@ -43,9 +43,15 @@ return [
         // When empty, alerts are skipped (e.g. local dev) so nothing is dispatched.
         'document_alert_url' => env('SINGAPUR_DOCUMENT_ALERT_URL'),
         // A deliverable PDF larger than this (bytes) is Ghostscript-compressed before the
-        // relay pulls it. China rejects documents over ~25 MB and Cloud Run caps the request
-        // at ~32 MB, so we keep the served copy comfortably under both. Default 22 MB.
-        'relay_max_bytes' => (int) env('SINGAPUR_RELAY_MAX_BYTES', 22 * 1024 * 1024),
+        // relay pulls it. China's multi-hop Drive upload pipeline chokes on files bigger than
+        // a few MB (a 6 MB file already times out), so we compress aggressively toward this
+        // target. Scanned CSF/RPP/domicilio drop well under 1 MB; only multi-page actas can't.
+        'relay_max_bytes' => (int) env('SINGAPUR_RELAY_MAX_BYTES', (int) (2.5 * 1024 * 1024)),
+        // Hard ceiling China can actually ingest. After compression, a served file still above
+        // this is NOT sent — it is marked failed with a clear reason instead of hanging ~130 s
+        // on China's timeout. Actas (which compress to ~6 MB at best) land here until China
+        // fixes its upload pipeline. Default 3.5 MB.
+        'china_max_bytes' => (int) env('SINGAPUR_CHINA_MAX_BYTES', (int) (3.5 * 1024 * 1024)),
     ],
 
     // MUA bot — Python microservice that automates the SE/MUA portal via Playwright.

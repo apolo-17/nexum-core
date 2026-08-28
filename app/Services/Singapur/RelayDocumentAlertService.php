@@ -4,9 +4,11 @@ namespace App\Services\Singapur;
 
 use App\Enums\DocumentTypeEnum;
 use App\Models\Document;
+use App\Models\User;
 use App\Notifications\ChinaDeliveryNotification;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use RuntimeException;
 
 /**
@@ -121,7 +123,7 @@ class RelayDocumentAlertService
         // The relay authenticates the alert with X-Nexum-Secret. The onward Singapur→China
         // hop uses the relay's own token, not anything Nexum sends here.
         $response = Http::connectTimeout(10)
-            ->timeout(30)
+            ->timeout(60)
             ->withHeaders(['X-Nexum-Secret' => $secret])
             ->acceptJson()
             ->post($url, [
@@ -149,6 +151,8 @@ class RelayDocumentAlertService
             'relay_drive_url' => $doc['drive_web_view_link'] ?? null,
             'relay_rejected_at' => null,
             'relay_rejection_reason' => null,
+            'relay_failed_at' => null,
+            'relay_last_error' => null,
         ])->save();
 
         Log::info('RelayDocumentAlertService: alert delivered', [
@@ -173,9 +177,9 @@ class RelayDocumentAlertService
     public function notifySuperAdmins(ChinaDeliveryNotification $notification): void
     {
         try {
-            $admins = \App\Models\User::role('super_admin')->get();
+            $admins = User::role('super_admin')->get();
             if ($admins->isNotEmpty()) {
-                \Illuminate\Support\Facades\Notification::send($admins, $notification);
+                Notification::send($admins, $notification);
             }
         } catch (\Throwable $exception) {
             Log::warning('RelayDocumentAlertService: could not notify super admins.', [
