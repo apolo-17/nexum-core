@@ -13,12 +13,12 @@ use App\Models\Appointment;
 use App\Models\Document;
 use App\Models\Soldado;
 use App\Models\User;
+use App\Notifications\SoldadoCitaUpdateNotification;
 use App\Services\Document\DocumentAnalysisService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification as NotificationFacade;
-use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -36,8 +36,11 @@ class MiCita extends Component
 {
     use WithFileUploads;
 
-    /** Steps: none | status | photo | verify | efirma | done */
+    /** Steps: none | status | reject | photo | verify | efirma | done */
     public string $step = 'status';
+
+    /** Motivo que da el soldado cuando el SAT rechazó la cita. */
+    public string $rejectionReason = '';
 
     public ?string $citaId = null;
 
@@ -129,20 +132,55 @@ class MiCita extends Component
             return;
         }
 
-        // Rechazada o no asistió: se marca y termina (sin foto).
+        // Rechazada: pedir el motivo antes de cerrar (por qué la rechazó el SAT).
         if ($resultado === 'rejected') {
-            $cita->update(['status' => AppointmentStatusEnum::REJECTED]);
-            $cita->recordEvent(AppointmentEventTypeEnum::REJECTED, 'El soldado reportó que el SAT rechazó el trámite.', [], 'soldado');
-            $this->doneTitle = 'Registrado';
-            $this->doneBody = 'Gracias por avisar. El equipo sacará una nueva cita.';
-        } else {
-            $cita->update(['status' => AppointmentStatusEnum::NO_SHOW]);
-            $cita->recordEvent(AppointmentEventTypeEnum::NO_SHOW, 'El soldado reportó que no asistió.', [], 'soldado');
-            $this->doneTitle = 'Registrado';
-            $this->doneBody = 'Gracias por avisar.';
+            $this->step = 'reject';
+
+            return;
         }
 
-        $this->notifyAdmins("El soldado marcó su cita de RFC de {$this->empresa} como: {$resultado}.");
+        // No asistió: se marca y termina (sin foto).
+        $cita->update(['status' => AppointmentStatusEnum::NO_SHOW]);
+        $cita->recordEvent(AppointmentEventTypeEnum::NO_SHOW, 'El soldado reportó que no asistió.', [], 'soldado');
+        $this->doneTitle = 'Registrado';
+        $this->doneBody = 'Gracias por avisar.';
+
+        $this->notifyAdmins("El soldado marcó su cita de RFC de {$this->empresa} como: no asistió.");
+        $this->step = 'done';
+    }
+
+    /**
+     * Confirmar el rechazo con el motivo que dio el soldado (por qué el SAT rechazó el trámite).
+     */
+    public function confirmarRechazo(): void
+    {
+        $motivo = trim($this->rejectionReason);
+
+        if ($motivo === '') {
+            $this->addError('rejectionReason', 'Escribe el motivo del rechazo.');
+
+            return;
+        }
+
+        $cita = $this->cita();
+        if ($cita === null) {
+            return;
+        }
+
+        $cita->update([
+            'status' => AppointmentStatusEnum::REJECTED,
+            'rejection_reason' => $motivo,
+        ]);
+        $cita->recordEvent(
+            AppointmentEventTypeEnum::REJECTED,
+            'El soldado reportó que el SAT rechazó el trámite. Motivo: '.$motivo,
+            ['rejection_reason' => $motivo],
+            'soldado',
+        );
+
+        $this->notifyAdmins("El soldado marcó su cita de RFC de {$this->empresa} como RECHAZADA. Motivo: {$motivo}");
+        $this->doneTitle = 'Registrado';
+        $this->doneBody = 'Gracias por avisar. El equipo sacará una nueva cita.';
         $this->step = 'done';
     }
 
@@ -283,7 +321,7 @@ class MiCita extends Component
                 return;
             }
 
-            NotificationFacade::send($admins, new \App\Notifications\SoldadoCitaUpdateNotification($this->empresa, $body));
+            NotificationFacade::send($admins, new SoldadoCitaUpdateNotification($this->empresa, $body));
         } catch (\Throwable $e) {
             Log::warning('MiCita: no se pudo avisar a los admins', ['error' => $e->getMessage()]);
         }

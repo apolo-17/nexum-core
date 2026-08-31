@@ -40,6 +40,7 @@ class Appointment extends Model
         'email_alias',
         'acknowledgment_path',
         'notes',
+        'rejection_reason',
     ];
 
     /**

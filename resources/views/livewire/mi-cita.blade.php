@@ -15,6 +15,16 @@
             <button class="btn btn-muted" wire:click="marcar('no_show')" wire:loading.attr="disabled">🚫 No asistí</button>
         </div>
 
+    @elseif ($step === 'reject')
+        <div class="card">
+            <h1>¿Por qué te rechazaron?</h1>
+            <p class="sub">Cuéntanos qué te dijo el SAT (por ejemplo: faltó un documento, el poder no tenía facultad fiscal, la e.firma no estaba activa…). El equipo lo necesita para volver a agendar.</p>
+            <textarea wire:model="rejectionReason" rows="4" class="input" placeholder="Escribe el motivo del rechazo…" style="width:100%;padding:12px;border:1px solid #d1d5db;border-radius:10px;font-size:15px;"></textarea>
+            @error('rejectionReason') <p class="sub" style="color:#dc2626;">{{ $message }}</p> @enderror
+            <button class="btn btn-danger" wire:click="confirmarRechazo" wire:loading.attr="disabled" style="margin-top:12px;">Enviar motivo</button>
+            <button class="btn btn-muted" wire:click="$set('step', 'status')" wire:loading.attr="disabled">Volver</button>
+        </div>
+
     @elseif ($step === 'photo')
         <div class="card center">
             <h1>Toma la foto de tu Constancia (CSF)</h1>

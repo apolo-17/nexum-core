@@ -17,6 +17,7 @@ use App\Notifications\SatAppointmentStatusNotification;
 use App\Services\Notifications\EventNotifier;
 use App\Services\Registration\SatShareholderRelationService;
 use App\Services\Sat\SatReviewService;
+use Closure;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\CreateAction;
@@ -31,17 +32,15 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Infolists\Components\TextEntry as InfoTextEntry;
 use Filament\Infolists\Components\ViewEntry;
-use Closure;
 use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
-use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\BadgeColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * Manages the SAT appointments (RFC and FIEL) for a company.
@@ -328,6 +327,10 @@ class AppointmentsRelationManager extends RelationManager
                                     InfoTextEntry::make('status')->label('Estado')->badge()
                                         ->state(fn (Appointment $r): string => $r->status->label())
                                         ->color(fn (Appointment $r): string => $r->status->color()),
+                                    InfoTextEntry::make('rejection_reason')->label('Motivo del rechazo')
+                                        ->color('danger')
+                                        ->columnSpan(3)
+                                        ->visible(fn (Appointment $r): bool => filled($r->rejection_reason)),
                                     InfoTextEntry::make('scheduled_at')->label('Fecha asignada por el SAT')
                                         // scheduled_at ya está en hora local de CDMX (acuse del SAT); no reconvertir.
                                         ->dateTime('d/m/Y H:i')
@@ -582,11 +585,26 @@ class AppointmentsRelationManager extends RelationManager
                         ->icon('heroicon-o-x-circle')
                         ->color('danger')
                         ->visible(fn (Appointment $record): bool => $record->status === AppointmentStatusEnum::SCHEDULED)
-                        ->requiresConfirmation()
-                        ->modalDescription('El SAT rechazó el trámite. Luego saca una nueva cita de RFC con "Agregar cita".')
-                        ->action(function (Appointment $record): void {
-                            $record->update(['status' => AppointmentStatusEnum::REJECTED]);
-                            $record->recordEvent(AppointmentEventTypeEnum::REJECTED, 'El SAT rechazó el trámite en la cita.', [], 'user');
+                        ->modalDescription('El SAT rechazó el trámite. Anota el motivo (por qué lo rechazaron); luego saca una nueva cita de RFC con "Agregar cita".')
+                        ->form([
+                            Textarea::make('rejection_reason')
+                                ->label('Motivo del rechazo')
+                                ->required()
+                                ->rows(3)
+                                ->placeholder('Ej.: faltó un documento, el poder no tenía facultad fiscal, la e.firma no estaba activa…'),
+                        ])
+                        ->action(function (Appointment $record, array $data): void {
+                            $motivo = trim((string) ($data['rejection_reason'] ?? ''));
+                            $record->update([
+                                'status' => AppointmentStatusEnum::REJECTED,
+                                'rejection_reason' => $motivo,
+                            ]);
+                            $record->recordEvent(
+                                AppointmentEventTypeEnum::REJECTED,
+                                'El SAT rechazó el trámite en la cita. Motivo: '.$motivo,
+                                ['rejection_reason' => $motivo],
+                                'user',
+                            );
                             Notification::make()->title('Marcada como rechazada')
                                 ->body('Saca una nueva cita de RFC con "Agregar cita".')->warning()->send();
                         }),
