@@ -80,6 +80,7 @@ return [
     // Anthropic Claude API — used by DocumentAnalysisService for KYC document vision extraction.
     'anthropic' => [
         'api_key' => env('ANTHROPIC_API_KEY'),
+        'model' => env('ANTHROPIC_MODEL', 'claude-opus-4-6'),
     ],
 
     // DocuSign — electronic signature for the partner_signature stage (acta constitutiva).

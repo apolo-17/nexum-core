@@ -8,7 +8,6 @@ use App\Enums\AppointmentEventTypeEnum;
 use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
 use App\Enums\DocumentTypeEnum;
-use App\Jobs\AnalyzeDocumentJob;
 use App\Jobs\FormSatAppointmentJob;
 use App\Models\Appointment;
 use App\Models\Document;
@@ -250,7 +249,7 @@ class MiCita extends Component
         // 1) Guardar la foto de la CSF como documento del expediente.
         $path = $this->foto->store("documents/{$registration->id}/csf", 's3');
 
-        $csf = Document::create([
+        Document::create([
             'registration_id' => $registration->id,
             'type' => DocumentTypeEnum::CSF,
             'name' => 'CSF '.$this->empresa.'.'.$this->foto->getClientOriginalExtension(),
@@ -258,10 +257,8 @@ class MiCita extends Component
             'stage' => $registration->getRawOriginal('stage'),
             'verified_at' => now(),
         ]);
-
-        // Mismo método que el admin: analizar/validar la CSF (confirma que es CSF y persiste la
-        // extracción). El auto-envío a China ya lo dispara el DocumentObserver al crearse el documento.
-        AnalyzeDocumentJob::dispatch($csf)->afterCommit();
+        // El DocumentObserver, al crearse la CSF, la nombra, extrae RFC + domicilio fiscal
+        // (ExtractCsfDataJob) y la manda a China — el MISMO camino para cualquier subida.
 
         // 2) Guardar el RFC de la empresa (con él se forma la e.firma).
         $registration->update(['rfc' => $rfc]);

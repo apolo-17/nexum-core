@@ -39,6 +39,7 @@ class Registration extends Model
         'assigned_asistente_id',
         'company_type',
         'company_object',
+        'acta_extraction',
         'capital_social',
         'fiscal_street',
         'fiscal_ext_number',
@@ -69,6 +70,7 @@ class Registration extends Model
             'stage' => RegistrationStageEnum::class,
             'status' => RegistrationStatusEnum::class,
             'capital_social' => 'decimal:2',
+            'acta_extraction' => 'array',
             // Reversibly encrypted so the company e.firma password can be retrieved for download.
             'company_fiel_password' => 'encrypted',
             'completed_at' => 'datetime',
@@ -316,5 +318,4 @@ class Registration extends Model
 
         return $partes === [] ? null : implode(', ', $partes);
     }
-
 }

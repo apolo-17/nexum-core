@@ -28,6 +28,7 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Infolists\Components\IconEntry;
 use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Components\ViewEntry;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
@@ -1009,6 +1010,17 @@ class RegistrationResource extends Resource
                         ->badge()
                         ->state(fn (Registration $record): string => filled($record->company_fiel_password) ? '✓ Registrada' : 'Sin registrar')
                         ->color(fn (Registration $record): string => filled($record->company_fiel_password) ? 'success' : 'gray'),
+                ]),
+
+            Section::make('Socios y apoderados del acta (IA)')
+                ->description('Extraídos del acta protocolizada con IA: apoderados fiscales ligados por RFC (para citas del SAT) y cotejo de socios.')
+                ->columnSpanFull()
+                ->collapsible()
+                ->hidden(fn (Registration $record): bool => (auth()->user()?->isPartner() ?? false) || blank($record->acta_extraction))
+                ->schema([
+                    ViewEntry::make('acta_extraction')
+                        ->hiddenLabel()
+                        ->view('filament.acta.extraction-summary'),
                 ]),
 
             Section::make('Entregables a China')

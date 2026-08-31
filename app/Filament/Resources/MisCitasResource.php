@@ -5,15 +5,19 @@ namespace App\Filament\Resources;
 use App\Enums\AppointmentEventTypeEnum;
 use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
-use App\Enums\RegistrationStageEnum;
-use App\Services\Registration\StageTransitionService;
 use App\Enums\DocumentTypeEnum;
+use App\Enums\RegistrationStageEnum;
 use App\Filament\Resources\MisCitasResource\Pages;
 use App\Jobs\FormSatAppointmentJob;
 use App\Models\Appointment;
 use App\Models\Document;
+use App\Models\Registration;
+use App\Models\User;
+use App\Notifications\SoldadoCitaUpdateNotification;
 use App\Services\Document\DocumentAnalysisService;
 use App\Services\Efirma\EfirmaCredentialValidator;
+use App\Services\Registration\RegistrationCompletionService;
+use App\Services\Registration\StageTransitionService;
 use Filament\Actions\Action;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Radio;
@@ -25,13 +29,13 @@ use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
-use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -330,7 +334,7 @@ class MisCitasResource extends Resource
         if ($resultado === 'rejected') {
             $record->update(['status' => AppointmentStatusEnum::REJECTED]);
             $record->recordEvent(AppointmentEventTypeEnum::REJECTED, 'El soldado reportó que el SAT rechazó el trámite.', [], 'soldado');
-            self::avisarAdmins($registration, "El soldado reportó su cita de RFC como RECHAZADA.");
+            self::avisarAdmins($registration, 'El soldado reportó su cita de RFC como RECHAZADA.');
             Notification::make()->title('Registrado')->body('Gracias por avisar. El equipo sacará una nueva cita.')->success()->send();
 
             return;
@@ -359,9 +363,7 @@ class MisCitasResource extends Resource
                 'stage' => $registration->getRawOriginal('stage'),
                 'verified_at' => now(),
             ]);
-
-            // Extraer en segundo plano el RFC y el domicilio fiscal del CSF.
-            \App\Jobs\ExtractCsfDataJob::dispatch($csf->id)->afterCommit();
+            // El DocumentObserver extrae RFC + domicilio fiscal y envía a China al guardarse.
         }
 
         $registration?->update(['rfc' => $rfc]);
@@ -491,7 +493,7 @@ class MisCitasResource extends Resource
         self::avanzarEtapa($registration, RegistrationStageEnum::EFIRMA_APPOINTMENT);
 
         // Con la e.firma podría cerrarse el ciclo (RFC + CSF + e.firma) → empresa operativa.
-        app(\App\Services\Registration\RegistrationCompletionService::class)->evaluate($registration);
+        app(RegistrationCompletionService::class)->evaluate($registration);
 
         self::avisarAdmins($registration, 'El soldado completó la e.firma y subió la FIEL validada de la empresa'.($result->rfc !== null ? " (RFC {$result->rfc})" : '').'.');
 
@@ -506,7 +508,7 @@ class MisCitasResource extends Resource
      * Crea/actualiza el documento entregable de la e.firma (tipo EFIRMA) apuntando al .cer,
      * para que el relay lo envíe a China como 'e_firma'. Idempotente por expediente.
      */
-    private static function materializeEfirmaDocument(\App\Models\Registration $registration, string $cerPath): void
+    private static function materializeEfirmaDocument(Registration $registration, string $cerPath): void
     {
         Document::updateOrCreate(
             [
@@ -539,7 +541,7 @@ class MisCitasResource extends Resource
      * (RFC obtenido → Registro SAT; e.firma resguardada → Cita e.firma). Solo avanza
      * hacia adelante (jumpTo es forward-only) y nunca rompe el flujo si algo falla.
      */
-    private static function avanzarEtapa(?\App\Models\Registration $registration, RegistrationStageEnum $destino): void
+    private static function avanzarEtapa(?Registration $registration, RegistrationStageEnum $destino): void
     {
         if ($registration === null) {
             return;
@@ -553,7 +555,7 @@ class MisCitasResource extends Resource
                 'Avance automático: hito del SAT cumplido.',
             );
         } catch (\Throwable $exception) {
-            \Illuminate\Support\Facades\Log::warning('MisCitas: no se pudo avanzar la etapa automáticamente.', [
+            Log::warning('MisCitas: no se pudo avanzar la etapa automáticamente.', [
                 'registration_id' => $registration->id,
                 'target' => $destino->value,
                 'error' => $exception->getMessage(),
@@ -561,13 +563,13 @@ class MisCitasResource extends Resource
         }
     }
 
-    private static function avisarAdmins(?\App\Models\Registration $registration, string $body): void
+    private static function avisarAdmins(?Registration $registration, string $body): void
     {
         try {
-            $admins = \App\Models\User::role('super_admin')->get();
+            $admins = User::role('super_admin')->get();
             if ($admins->isNotEmpty()) {
                 $empresa = $registration?->primaryLegalName?->name ?? 'una empresa';
-                \Illuminate\Support\Facades\Notification::send($admins, new \App\Notifications\SoldadoCitaUpdateNotification($empresa, $body));
+                \Illuminate\Support\Facades\Notification::send($admins, new SoldadoCitaUpdateNotification($empresa, $body));
             }
         } catch (\Throwable $e) {
             // best-effort
@@ -589,7 +591,7 @@ class MisCitasResource extends Resource
         }
 
         return (bool) $record->registration?->documents()
-            ->where('type', \App\Enums\DocumentTypeEnum::PROOF_OF_ADDRESS_MX->value)
+            ->where('type', DocumentTypeEnum::PROOF_OF_ADDRESS_MX->value)
             ->whereNotNull('storage_path')
             ->exists();
     }

@@ -123,6 +123,7 @@ class ActaCompletenessValidatorTest extends TestCase
         $issues = (new ActaCompletenessValidator)->validate($registration->fresh());
 
         $this->assertTrue(collect($issues)->contains(fn (string $i): bool => str_contains($i, 'capital social')));
-        $this->assertTrue(collect($issues)->contains(fn (string $i): bool => str_contains($i, 'objeto social')));
+        // El objeto social ya no se valida: es boilerplate idéntico para todas las empresas.
+        $this->assertFalse(collect($issues)->contains(fn (string $i): bool => str_contains($i, 'objeto social')));
     }
 }

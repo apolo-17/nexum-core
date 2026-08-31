@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\RegistrationResource\Pages;
 
+use App\Enums\DocumentTypeEnum;
 use App\Filament\Resources\RegistrationResource;
 use App\Filament\Resources\RegistrationResource\Actions\AdvanceStageAction;
 use App\Filament\Resources\RegistrationResource\Actions\EditActaInlineAction;
@@ -9,6 +10,7 @@ use App\Filament\Resources\RegistrationResource\Actions\ManageCompanyCredentials
 use App\Filament\Resources\RegistrationResource\Actions\PartnerSignatureAction;
 use App\Filament\Resources\RegistrationResource\Actions\PrepareActaAction;
 use App\Jobs\BuildActaRenderJob;
+use App\Jobs\ExtractActaPartiesJob;
 use App\Models\Registration;
 use App\Services\DocuSign\DocuSignService;
 use App\Services\Registration\ActaPreparationService;
@@ -71,6 +73,31 @@ class ViewRegistration extends ViewRecord
                     Notification::make()
                         ->title('Generando el acta…')
                         ->body('Esto puede tardar unos minutos. Cuando esté lista te avisaremos por correo.')
+                        ->info()
+                        ->send();
+                }),
+
+            // Extraer con IA los socios/apoderados del acta protocolizada y ligar al expediente
+            // (por RFC) los apoderados que sí tenemos. Útil para empresas a las que solo se les
+            // subió el acta: recupera de ahí sus representantes legales para poder sacar citas.
+            Action::make('extractActaParties')
+                ->label('Extraer socios del acta (IA)')
+                ->icon('heroicon-o-sparkles')
+                ->color('gray')
+                ->visible(fn (): bool => $record->documents()
+                    ->where('type', DocumentTypeEnum::ACTA_PROTOCOLIZADA)
+                    ->whereNotNull('storage_path')
+                    ->exists())
+                ->requiresConfirmation()
+                ->modalHeading('Leer el acta protocolizada con IA')
+                ->modalDescription('Se leerá el acta con IA para extraer los socios y apoderados, verificar que sea un acta protocolizada y ligar al expediente (por RFC) los apoderados que ya tenemos. Tarda un par de minutos; te avisamos en la campana.')
+                ->modalSubmitActionLabel('Extraer')
+                ->action(function () use ($record): void {
+                    ExtractActaPartiesJob::dispatch($record->id);
+
+                    Notification::make()
+                        ->title('Analizando el acta…')
+                        ->body('Te avisamos en la campana cuando termine (un par de minutos).')
                         ->info()
                         ->send();
                 }),

@@ -4,8 +4,8 @@ namespace App\Filament\Resources\RegistrationResource\RelationManagers;
 
 use App\Enums\DocumentTypeEnum;
 use App\Jobs\AnalyzeDocumentJob;
-use App\Jobs\ExtractCsfDataJob;
 use App\Models\Document;
+use App\Services\Singapur\ChinaDeliverablesService;
 use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
@@ -73,7 +73,7 @@ class DocumentsRelationManager extends RelationManager
                     collect(DocumentTypeEnum::cases())
                         ->mapWithKeys(function ($case): array {
                             // Marca los tipos que se envían a China (entregables del relay).
-                            $sentToChina = array_key_exists($case->value, \App\Services\Singapur\ChinaDeliverablesService::DELIVERABLES);
+                            $sentToChina = array_key_exists($case->value, ChinaDeliverablesService::DELIVERABLES);
 
                             return [$case->value => $case->label().($sentToChina ? '  →  China 🇨🇳' : '')];
                         })
@@ -421,14 +421,10 @@ class DocumentsRelationManager extends RelationManager
                         unset($data['evaluation']);
 
                         return $data;
-                    })
-                    // Al subir un CSF, extraer en segundo plano el RFC y el domicilio fiscal
-                    // y llenarlos en el expediente.
-                    ->after(function (Document $record): void {
-                        if ($record->type === DocumentTypeEnum::CSF) {
-                            ExtractCsfDataJob::dispatch($record->id)->afterCommit();
-                        }
                     }),
+                // La extracción del CSF (RFC + domicilio fiscal) y el envío a China los
+                // dispara el DocumentObserver al guardarse el documento — mismo camino para
+                // cualquier subida (admin, soldado, API), sin duplicar aquí.
             ])
 
             // ---------------------------------------------------------------

@@ -8,7 +8,9 @@ use App\Enums\DocumentTypeEnum;
 use App\Enums\RegistrationStageEnum;
 use App\Models\Document;
 use App\Models\Registration;
+use App\Models\User;
 use App\Services\Document\DocumentAnalysisService;
+use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -58,6 +60,14 @@ class CsfExtractionService
             return;
         }
 
+        // Validar que de verdad sea una CSF: si la IA dice que NO lo es, avisar y no inyectar datos
+        // de un documento equivocado al expediente.
+        if (($fields['is_csf'] ?? true) === false) {
+            $this->warnNotCsf($csf);
+
+            return;
+        }
+
         $registration = $csf->registration;
         $updates = [];
 
@@ -84,6 +94,28 @@ class CsfExtractionService
 
         // Si con este CSF (RFC + domicilio) ya están los tres entregables, la empresa es operativa.
         $this->completion->evaluate($registration);
+    }
+
+    /**
+     * Avisar a los super admin que un documento subido como CSF no parece una CSF, para que lo
+     * revisen (y no confiar en datos extraídos de un documento equivocado).
+     */
+    private function warnNotCsf(Document $csf): void
+    {
+        Log::warning('CsfExtractionService: el documento no parece una CSF.', ['document_id' => $csf->id]);
+
+        try {
+            $admins = User::role('super_admin')->get();
+            if ($admins->isNotEmpty()) {
+                Notification::make()
+                    ->title('Revisar CSF subida')
+                    ->body('El documento subido como CSF de un expediente no parece una Constancia de Situación Fiscal. Verifícalo.')
+                    ->warning()
+                    ->sendToDatabase($admins);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('CsfExtractionService: no se pudo avisar del CSF incorrecto.', ['error' => $e->getMessage()]);
+        }
     }
 
     /**

@@ -28,6 +28,9 @@
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
+        <!-- Off by default so creating a CSF/acta document in tests never triggers the AI
+             extraction (external Anthropic call). Tests that exercise it set the key explicitly. -->
+        <env name="ANTHROPIC_API_KEY" value=""/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
