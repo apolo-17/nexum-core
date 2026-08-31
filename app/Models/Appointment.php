@@ -5,6 +5,8 @@ namespace App\Models;
 use App\Enums\AppointmentEventTypeEnum;
 use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
+use App\Observers\AppointmentObserver;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -20,6 +22,7 @@ use Illuminate\Support\Facades\Auth;
  * → formed), then the nexum-citas-sat bot reviews the formed ones and, when the SAT
  * assigns a slot, fills scheduled_at / office / acuse via the callback (→ scheduled).
  */
+#[ObservedBy(AppointmentObserver::class)]
 class Appointment extends Model
 {
     use HasFactory, HasUlids, SoftDeletes;

@@ -661,8 +661,9 @@ class AppointmentsRelationManager extends RelationManager
                     ->hiddenLabel(),
             ])
             ->headerActions([
-                CreateAction::make()->label('Agregar cita')
-                    ->after(fn (Appointment $record) => self::autoDispatchForming($record)),
+                // El auto-formado al crear lo hace ahora AppointmentObserver (cubre todos los
+                // caminos: expediente, dashboard, móvil, API). Aquí ya no se duplica.
+                CreateAction::make()->label('Agregar cita'),
             ]);
     }
 

@@ -4,6 +4,7 @@ namespace App\Filament\Support;
 
 use App\Enums\AppointmentEventTypeEnum;
 use App\Enums\AppointmentStatusEnum;
+use App\Jobs\FormSatAppointmentJob;
 use App\Models\Appointment;
 use App\Services\Sat\SatReviewService;
 use Filament\Actions\Action;
@@ -25,6 +26,7 @@ class AppointmentStatusActions
     public static function group(): ActionGroup
     {
         return ActionGroup::make([
+            self::sendToBot(),
             self::reviewNow(),
             self::markFormed(),
             self::markRejected(),
@@ -34,6 +36,29 @@ class AppointmentStatusActions
             ->icon('heroicon-m-ellipsis-vertical')
             ->tooltip('Actualizar estado de la cita')
             ->button();
+    }
+
+    /** Send a still-to-form cita to the bot so it queues the soldado at the SAT (virtual line). */
+    public static function sendToBot(): Action
+    {
+        return Action::make('sendToBot')
+            ->label('Formar con el bot')
+            ->icon('heroicon-o-paper-airplane')
+            ->color('primary')
+            ->visible(fn (Appointment $record): bool => $record->status === AppointmentStatusEnum::PENDING_FORMING
+                && $record->soldado_id !== null)
+            ->requiresConfirmation()
+            ->modalDescription('El bot formará la cita en la fila virtual del SAT en segundo plano. '
+                .'Puedes cerrar esto; verás la cita como "Formada" cuando quede lista.')
+            ->action(function (Appointment $record): void {
+                FormSatAppointmentJob::dispatch($record->id);
+
+                Notification::make()
+                    ->title('Enviada a formar')
+                    ->body('El bot la está formando en segundo plano.')
+                    ->success()
+                    ->send();
+            });
     }
 
     /** Ask the SAT bot to check, live, whether a formed cita already has a date. */
