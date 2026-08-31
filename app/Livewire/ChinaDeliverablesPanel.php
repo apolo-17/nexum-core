@@ -53,7 +53,9 @@ class ChinaDeliverablesPanel extends Component
             return '2s';
         }
 
-        return $states->contains(fn (string $s): bool => $s !== 'delivered') ? '6s' : null;
+        // Silent background refresh (no spinner) so a just-uploaded document shows up on its own;
+        // stops entirely once China has everything, so a settled expediente does no polling at all.
+        return $states->contains(fn (string $s): bool => $s !== 'delivered') ? '10s' : null;
     }
 
     /** Deliverables we have but China has not confirmed yet (pending, rejected or failed). */
