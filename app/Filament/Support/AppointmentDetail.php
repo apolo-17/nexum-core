@@ -9,9 +9,11 @@ use App\Enums\DocumentTypeEnum;
 use App\Models\Appointment;
 use App\Models\Document;
 use App\Models\SatModule;
+use App\Services\Registration\SatShareholderRelationService;
 use Filament\Actions\Action;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Infolists\Components\ViewEntry;
+use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Section;
 
 /**
@@ -39,11 +41,24 @@ class AppointmentDetail
             Section::make('La cita')
                 ->columns(3)
                 ->schema([
+                    TextEntry::make('empresa')->label('Empresa')
+                        ->state(fn (Appointment $r): string => $r->registration?->primaryLegalName?->name
+                            ?? $r->registration?->singapur_folder_name
+                            ?? '—')
+                        ->columnSpan(2)->weight('bold'),
+                    TextEntry::make('empresa_rfc')->label('RFC de la empresa')
+                        ->state(fn (Appointment $r): ?string => $r->registration?->rfc)
+                        ->placeholder('Aún sin RFC moral')
+                        ->copyable(),
                     TextEntry::make('type')->label('Trámite')
                         ->state(fn (Appointment $r): string => $r->type->label()),
                     TextEntry::make('status')->label('Estado')->badge()
                         ->state(fn (Appointment $r): string => $r->status->label())
                         ->color(fn (Appointment $r): string => $r->status->color()),
+                    TextEntry::make('rejection_reason')->label('Motivo del rechazo')
+                        ->color('danger')
+                        ->columnSpan(3)
+                        ->visible(fn (Appointment $r): bool => filled($r->rejection_reason)),
                     TextEntry::make('scheduled_at')->label('Fecha asignada por el SAT')
                         // scheduled_at ya está en hora local de CDMX (acuse del SAT); no reconvertir.
                         ->dateTime('d/m/Y H:i')
@@ -131,10 +146,10 @@ class AppointmentDetail
                                 ->action(function (Appointment $r) {
                                     try {
                                         // Reutiliza el .xlsx si ya existe (p. ej. el de la cita de RFC); solo genera si falta.
-                                        $document = resolve(\App\Services\Registration\SatShareholderRelationService::class)
+                                        $document = resolve(SatShareholderRelationService::class)
                                             ->getOrGenerate($r->registration);
                                     } catch (\Throwable $e) {
-                                        \Filament\Notifications\Notification::make()
+                                        Notification::make()
                                             ->title('Error al generar la relación de socios')
                                             ->body($e->getMessage())
                                             ->danger()

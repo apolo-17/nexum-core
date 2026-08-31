@@ -7,13 +7,13 @@ namespace App\Filament\Widgets;
 use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
 use App\Filament\Support\AppointmentDetail;
+use App\Filament\Support\AppointmentStatusActions;
 use App\Models\Appointment;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 
 /**
@@ -104,6 +104,8 @@ class SatAppointmentsBoard extends TableWidget
                     ->modalHeading(fn (Appointment $record): string => 'Cita '.$record->type->label())
                     ->modalWidth('4xl')
                     ->schema(AppointmentDetail::sections()),
+                // Actualizar el estado de la cita SIN entrar al expediente (mismo control que allá).
+                AppointmentStatusActions::group(),
             ])
             ->recordAction('view');
     }

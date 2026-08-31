@@ -7,6 +7,7 @@ use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
 use App\Enums\DocumentTypeEnum;
 use App\Enums\NotificationEventEnum;
+use App\Filament\Support\AppointmentStatusActions;
 use App\Jobs\FormSatAppointmentJob;
 use App\Models\Appointment;
 use App\Models\AppointmentEmail;
@@ -16,7 +17,6 @@ use App\Notifications\SatAppointmentCancelledNotification;
 use App\Notifications\SatAppointmentStatusNotification;
 use App\Services\Notifications\EventNotifier;
 use App\Services\Registration\SatShareholderRelationService;
-use App\Services\Sat\SatReviewService;
 use Closure;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
@@ -95,6 +95,14 @@ class AppointmentsRelationManager extends RelationManager
             return false;
         }
 
+        // La regla "una sola cita activa por tipo" aplica SOLO a las citas de INSCRIPCIÓN DE RFC:
+        // esas se tramitan con el RFC del SOLDADO, así que el SAT no le permite dos a la vez.
+        // Las citas de e.firma (FIEL) salen con el RFC de la EMPRESA (no del soldado), por lo que
+        // un mismo soldado sí puede tener varias citas de e.firma al mismo tiempo.
+        if ($type !== AppointmentTypeEnum::RFC->value) {
+            return false;
+        }
+
         return Appointment::query()
             ->where('soldado_id', $soldadoId)
             ->where('type', $type)
@@ -135,7 +143,26 @@ class AppointmentsRelationManager extends RelationManager
                 ->options(AppointmentTypeEnum::options())
                 ->required()
                 ->live()
-                ->helperText('Cada empresa necesita una cita RFC y una cita e.firma (FIEL).'),
+                ->helperText('Cada empresa necesita una cita RFC y una cita e.firma (FIEL).')
+                // La e.firma se tramita con el RFC de la EMPRESA (persona moral). No se puede
+                // agendar hasta que la empresa ya tenga su RFC (que sale de la cita de inscripción
+                // de RFC). Sin RFC moral, se bloquea con un mensaje claro.
+                ->rules([
+                    fn ($livewire): Closure => function (string $attribute, mixed $value, Closure $fail) use ($livewire): void {
+                        if ($value !== AppointmentTypeEnum::FIEL->value) {
+                            return;
+                        }
+
+                        $registration = $livewire->getOwnerRecord();
+                        if (blank($registration->rfc)) {
+                            $empresa = $registration->primaryLegalName?->name
+                                ?? $registration->singapur_folder_name
+                                ?? 'esta empresa';
+                            $fail("No se puede agendar la cita de e.firma de {$empresa}: todavía no tiene su RFC moral. "
+                                .'Primero hay que completar la cita de inscripción de RFC para obtener el RFC de la empresa.');
+                        }
+                    },
+                ]),
 
             Select::make('status')
                 ->label('Estado')
@@ -322,6 +349,15 @@ class AppointmentsRelationManager extends RelationManager
                             Section::make('La cita')
                                 ->columns(3)
                                 ->schema([
+                                    InfoTextEntry::make('empresa')->label('Empresa')
+                                        ->state(fn (Appointment $r): string => $r->registration?->primaryLegalName?->name
+                                            ?? $r->registration?->singapur_folder_name
+                                            ?? '—')
+                                        ->columnSpan(2)->weight('bold'),
+                                    InfoTextEntry::make('empresa_rfc')->label('RFC de la empresa')
+                                        ->state(fn (Appointment $r): ?string => $r->registration?->rfc)
+                                        ->placeholder('Aún sin RFC moral')
+                                        ->copyable(),
                                     InfoTextEntry::make('type')->label('Trámite')
                                         ->state(fn (Appointment $r): string => $r->type->label()),
                                     InfoTextEntry::make('status')->label('Estado')->badge()
@@ -451,54 +487,11 @@ class AppointmentsRelationManager extends RelationManager
                                 ->send();
                         }),
 
-                    Action::make('reviewNow')
-                        ->label('Revisar status ahora')
-                        ->icon('heroicon-o-arrow-path')
-                        ->color('info')
-                        ->visible(fn (Appointment $record): bool => $record->status === AppointmentStatusEnum::FORMED)
-                        ->modalHeading('Revisar el status en el SAT')
-                        ->modalDescription('Voy a consultar el SAT en vivo para ver si ya te asignaron fecha. '
-                            .'Tarda unos segundos.')
-                        ->modalSubmitActionLabel('Revisar ahora')
-                        ->action(function (Appointment $record): void {
-                            $result = app(SatReviewService::class)->reviewNow($record);
-                            $record->refresh();
+                    // Revisar status y marcar formada: acciones compartidas con el dashboard
+                    // (AppointmentStatusActions) para no duplicar código.
+                    AppointmentStatusActions::reviewNow(),
 
-                            Notification::make()
-                                ->title(match ($result['status'] ?? 'error') {
-                                    'scheduled' => '¡Ya tienes fecha!',
-                                    'in_review' => 'Sigue en espera',
-                                    default => 'No se pudo revisar',
-                                })
-                                ->body($result['message'] ?? 'Sin detalle.')
-                                ->status(match ($result['status'] ?? 'error') {
-                                    'scheduled' => 'success',
-                                    'in_review' => 'info',
-                                    default => 'danger',
-                                })
-                                ->send();
-                        }),
-
-                    Action::make('markFormed')
-                        ->label('Marcar formada (a mano)')
-                        ->icon('heroicon-o-check-circle')
-                        ->color('warning')
-                        ->visible(fn (Appointment $record): bool => $record->status === AppointmentStatusEnum::PENDING_FORMING)
-                        ->requiresConfirmation()
-                        ->modalDescription('Úsalo solo si TÚ formaste la cita en el portal del SAT. Captura también '
-                            .'el correo del pool que usaste, o el bot no podrá leer el código.')
-                        ->action(function (Appointment $record): void {
-                            $record->update([
-                                'status' => AppointmentStatusEnum::FORMED,
-                                'formed_at' => now(),
-                            ]);
-                            $record->recordEvent(
-                                AppointmentEventTypeEnum::MARKED_MANUALLY,
-                                'Alguien del equipo la marcó formada a mano; el bot la revisa desde aquí.',
-                                ['email_alias' => $record->email_alias],
-                                'user',
-                            );
-                        }),
+                    AppointmentStatusActions::markFormed(),
 
                     Action::make('markAttended')
                         ->label('Asistió (completada)')
@@ -580,46 +573,10 @@ class AppointmentsRelationManager extends RelationManager
                             }
                         }),
 
-                    Action::make('markRejected')
-                        ->label('Rechazada por el SAT')
-                        ->icon('heroicon-o-x-circle')
-                        ->color('danger')
-                        ->visible(fn (Appointment $record): bool => $record->status === AppointmentStatusEnum::SCHEDULED)
-                        ->modalDescription('El SAT rechazó el trámite. Anota el motivo (por qué lo rechazaron); luego saca una nueva cita de RFC con "Agregar cita".')
-                        ->form([
-                            Textarea::make('rejection_reason')
-                                ->label('Motivo del rechazo')
-                                ->required()
-                                ->rows(3)
-                                ->placeholder('Ej.: faltó un documento, el poder no tenía facultad fiscal, la e.firma no estaba activa…'),
-                        ])
-                        ->action(function (Appointment $record, array $data): void {
-                            $motivo = trim((string) ($data['rejection_reason'] ?? ''));
-                            $record->update([
-                                'status' => AppointmentStatusEnum::REJECTED,
-                                'rejection_reason' => $motivo,
-                            ]);
-                            $record->recordEvent(
-                                AppointmentEventTypeEnum::REJECTED,
-                                'El SAT rechazó el trámite en la cita. Motivo: '.$motivo,
-                                ['rejection_reason' => $motivo],
-                                'user',
-                            );
-                            Notification::make()->title('Marcada como rechazada')
-                                ->body('Saca una nueva cita de RFC con "Agregar cita".')->warning()->send();
-                        }),
+                    // Rechazada (con motivo) y No asistió: acciones compartidas con el dashboard.
+                    AppointmentStatusActions::markRejected(),
 
-                    Action::make('markNoShow')
-                        ->label('No asistió')
-                        ->icon('heroicon-o-exclamation-triangle')
-                        ->color('danger')
-                        ->visible(fn (Appointment $record): bool => $record->status === AppointmentStatusEnum::SCHEDULED)
-                        ->requiresConfirmation()
-                        ->action(function (Appointment $record): void {
-                            $record->update(['status' => AppointmentStatusEnum::NO_SHOW]);
-                            $record->recordEvent(AppointmentEventTypeEnum::NO_SHOW, 'El soldado no asistió a la cita.', [], 'user');
-                            Notification::make()->title('Marcada como no asistió')->warning()->send();
-                        }),
+                    AppointmentStatusActions::markNoShow(),
 
                     Action::make('cancel')
                         ->label('Cancelar cita')
