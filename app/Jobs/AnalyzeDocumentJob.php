@@ -2,9 +2,12 @@
 
 namespace App\Jobs;
 
+use App\Enums\DocumentTypeEnum;
 use App\Models\Document;
 use App\Models\DocumentAnalysis;
+use App\Models\User;
 use App\Services\Document\DocumentAnalysisService;
+use Filament\Notifications\Notification;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -102,6 +105,43 @@ class AnalyzeDocumentJob implements ShouldQueue
             'analysis_id' => $analysis->id,
             'analyzed' => $analysis->analyzed,
         ]);
+
+        $this->warnIfCsfLooksWrong($analysis);
+    }
+
+    /**
+     * If a document uploaded as a CSF does not actually look like a CSF (per the AI check),
+     * flag it to the super admins so they can replace it before it goes to China as the wrong file.
+     * Runs on whichever path uploaded it (admin or soldado), since both go through this job.
+     */
+    private function warnIfCsfLooksWrong(DocumentAnalysis $analysis): void
+    {
+        if ($this->document->type !== DocumentTypeEnum::CSF) {
+            return;
+        }
+
+        $raw = $analysis->raw_response;
+        // Only warn on an explicit false; a missing flag (older extraction) is not treated as wrong.
+        if (! is_array($raw) || ($raw['is_csf'] ?? true) !== false) {
+            return;
+        }
+
+        Log::warning('AnalyzeDocumentJob: uploaded CSF does not look like a CSF.', [
+            'document_id' => $this->document->id,
+        ]);
+
+        try {
+            $admins = User::role('super_admin')->get();
+            if ($admins->isNotEmpty()) {
+                Notification::make()
+                    ->title('Revisar CSF subida')
+                    ->body('El documento subido como CSF de un expediente no parece una Constancia de Situación Fiscal. Verifícalo antes de enviarlo a China.')
+                    ->warning()
+                    ->sendToDatabase($admins);
+            }
+        } catch (Throwable $e) {
+            Log::warning('AnalyzeDocumentJob: could not notify about wrong CSF.', ['error' => $e->getMessage()]);
+        }
     }
 
     /**

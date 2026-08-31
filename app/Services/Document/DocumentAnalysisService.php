@@ -209,6 +209,7 @@ class DocumentAnalysisService
 
                 Required JSON structure:
                 {
+                  "is_csf": true or false — true ONLY if the document really is a SAT "Constancia de Situación Fiscal" / "Cédula de Identificación Fiscal"; false if it is any other document (a passport, a comprobante, a screenshot, a blurry/unrelated photo, etc.),
                   "rfc": "the RFC exactly as printed (12 characters for a company / persona moral, 13 for persona física), uppercase, letters and digits only, or null",
                   "razon_social": "Denominación / Razón Social exactly as printed, or null",
                   "regimen_capital": "Régimen Capital as printed, or null",
