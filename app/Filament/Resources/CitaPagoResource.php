@@ -107,12 +107,12 @@ class CitaPagoResource extends Resource
                     ->label('Pago')
                     ->badge()
                     ->state(fn (Appointment $r): string => $r->paymentState())
-                    ->formatStateUsing(fn (string $s): string => match ($s) {
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
                         'pagada' => 'Pagada',
                         'pendiente' => 'Pendiente de pago',
                         default => 'Aún no',
                     })
-                    ->color(fn (string $s): string => match ($s) {
+                    ->color(fn (string $state): string => match ($state) {
                         'pagada' => 'success',
                         'pendiente' => 'warning',
                         default => 'gray',
