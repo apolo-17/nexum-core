@@ -195,7 +195,10 @@ class MisCitasResource extends Resource
                     // Aparece en la cita de e.firma (FIEL) cuando ya pasó (agendada) O cuando ya
                     // se marcó como asistida: la e.firma se sube DESPUÉS de la cita, así que marcar
                     // éxito no debe esconder el botón — se puede subir/reintentar mientras esté attended.
+                    // Aparece para subir/reintentar la e.firma, PERO se oculta en cuanto la e.firma
+                    // ya está en el sistema (no seguir pidiéndola cuando ya la subieron).
                     ->visible(fn (Appointment $record): bool => $record->type === AppointmentTypeEnum::FIEL
+                        && ! self::hasEfirma($record)
                         && (
                             $record->status === AppointmentStatusEnum::ATTENDED
                             || ($record->status === AppointmentStatusEnum::SCHEDULED && self::yaPaso($record))
@@ -496,6 +499,25 @@ class MisCitasResource extends Resource
      *
      * @return array<string, PageRegistration>
      */
+    /**
+     * Whether the company's e.firma is already in the system (cert saved or e.firma document),
+     * so we stop asking the soldado to upload it once it's there.
+     */
+    private static function hasEfirma(Appointment $record): bool
+    {
+        $registration = $record->registration;
+
+        if ($registration === null) {
+            return false;
+        }
+
+        return filled($registration->company_fiel_cer_path)
+            || $registration->documents()
+                ->where('type', DocumentTypeEnum::EFIRMA->value)
+                ->whereNotNull('storage_path')
+                ->exists();
+    }
+
     /**
      * Whether the cita has anything to download: the acuse or the comprobante de domicilio.
      */
