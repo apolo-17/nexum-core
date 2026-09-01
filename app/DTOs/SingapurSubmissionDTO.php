@@ -45,15 +45,16 @@ readonly class SingapurSubmissionDTO
     /**
      * Resolve the display-ready company type string from the relay code.
      *
-     * Unknown codes are returned as-is so data is never silently lost.
+     * Por ahora TODAS las empresas son "SRL de CV" salvo que llegue explícitamente 'sa' o 'sapi':
+     * por eso 'srl', 'sderl' y cualquier variante/valor desconocido caen en "SRL de CV" (antes
+     * 'sderl' se quedaba como "SDERL" por el default). Cambiar aquí si se decide otro estándar.
      */
     public function resolvedCompanyType(): string
     {
-        return match (strtolower($this->companyType)) {
-            'sa' => 'SA de CV',
-            'srl' => 'SRL de CV',
-            'sapi' => 'SAPI de CV',
-            default => strtoupper($this->companyType),
+        return match (strtolower(trim($this->companyType))) {
+            'sa', 'sa de cv' => 'SA de CV',
+            'sapi', 'sapi de cv' => 'SAPI de CV',
+            default => 'SRL de CV',
         };
     }
 }
