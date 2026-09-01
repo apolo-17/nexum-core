@@ -8,19 +8,17 @@ use App\Enums\AppointmentTypeEnum;
 use App\Enums\DocumentTypeEnum;
 use App\Enums\RegistrationStageEnum;
 use App\Filament\Resources\MisCitasResource\Pages;
-use App\Jobs\FormSatAppointmentJob;
 use App\Models\Appointment;
 use App\Models\Document;
 use App\Models\Registration;
 use App\Models\User;
 use App\Notifications\SoldadoCitaUpdateNotification;
-use App\Services\Document\DocumentAnalysisService;
 use App\Services\Efirma\EfirmaCredentialValidator;
 use App\Services\Registration\RegistrationCompletionService;
+use App\Services\Registration\RfcCaptureService;
 use App\Services\Registration\StageTransitionService;
 use Filament\Actions\Action;
 use Filament\Forms\Components\FileUpload;
-use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -28,7 +26,6 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Utilities\Get;
-use Filament\Schemas\Components\Utilities\Set;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -174,53 +171,9 @@ class MisCitasResource extends Resource
                             ->native(false)
                             ->live(),
 
-                        Radio::make('modo')
-                            ->label('¿Tienes tu Constancia de Situación Fiscal (CSF)?')
-                            ->options([
-                                'foto' => 'Sí — subo foto o PDF',
-                                'manual' => 'No — escribo el RFC a mano',
-                            ])
-                            ->default('foto')
-                            ->live()
-                            ->visible(fn (Get $get): bool => $get('resultado') === 'attended'),
-
-                        FileUpload::make('csf')
-                            ->label('Foto o PDF de la CSF')
-                            ->helperText('Formatos: JPG, PNG, WEBP o PDF. En iPhone el formato HEIC no se puede leer — toma la foto y sube como JPG, o escribe el RFC a mano.')
-                            ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
-                            ->disk('s3')
-                            ->directory('documents/csf')
-                            ->maxSize(12288)
-                            ->live()
-                            ->visible(fn (Get $get): bool => $get('resultado') === 'attended' && $get('modo') === 'foto')
-                            ->afterStateUpdated(function ($state, Set $set): void {
-                                $file = is_array($state) ? reset($state) : $state;
-
-                                if (! is_object($file) || ! method_exists($file, 'getRealPath')) {
-                                    return;
-                                }
-
-                                try {
-                                    $bytes = file_get_contents($file->getRealPath());
-                                    $mime = $file->getMimeType() ?: 'image/jpeg';
-                                    $fields = app(DocumentAnalysisService::class)
-                                        ->extractFields(base64_encode($bytes), $mime, DocumentTypeEnum::CSF);
-                                    $rfc = strtoupper(preg_replace('/[^A-Z0-9]/i', '', (string) ($fields['rfc'] ?? '')));
-
-                                    if ($rfc !== '') {
-                                        $set('rfc', $rfc);
-                                        Notification::make()->title("Leímos el RFC: {$rfc}")->body('Revísalo y corrige si algo no cuadra.')->success()->send();
-                                    } else {
-                                        Notification::make()->title('No pudimos leer el RFC')->body('Escríbelo a mano abajo.')->warning()->send();
-                                    }
-                                } catch (\Throwable $e) {
-                                    Notification::make()->title('No se pudo leer la imagen')->body('Escribe el RFC a mano abajo.')->warning()->send();
-                                }
-                            }),
-
                         TextInput::make('rfc')
                             ->label('RFC de la empresa')
-                            ->helperText('12 caracteres. Revísalo contra tu documento.')
+                            ->helperText('El RFC que te dio el SAT. Solo escríbelo — ya no hace falta subir foto ni la constancia.')
                             ->maxLength(13)
                             ->extraInputAttributes(['style' => 'text-transform:uppercase;letter-spacing:2px;font-weight:700'])
                             ->visible(fn (Get $get): bool => $get('resultado') === 'attended')
@@ -349,56 +302,18 @@ class MisCitasResource extends Resource
             return;
         }
 
-        // Asistió: guardar RFC (+ CSF si la subió) y marcar la cita.
+        // Asistió: solo se captura el RFC (mismo servicio que usa el admin — sin foto/CSF).
         $rfc = strtoupper(trim((string) ($data['rfc'] ?? '')));
+        app(RfcCaptureService::class)->captureRfc($record, $rfc, 'soldado');
 
-        if (filled($data['csf'] ?? null) && $registration !== null) {
-            $path = is_array($data['csf']) ? reset($data['csf']) : $data['csf'];
-
-            $csf = Document::create([
-                'registration_id' => $registration->id,
-                'type' => DocumentTypeEnum::CSF,
-                'name' => 'CSF '.($registration->primaryLegalName?->name ?? 'empresa'),
-                'storage_path' => $path,
-                'stage' => $registration->getRawOriginal('stage'),
-                'verified_at' => now(),
-            ]);
-            // El DocumentObserver extrae RFC + domicilio fiscal y envía a China al guardarse.
-        }
-
-        $registration?->update(['rfc' => $rfc]);
-        $record->update(['status' => AppointmentStatusEnum::ATTENDED]);
-        $record->recordEvent(AppointmentEventTypeEnum::ATTENDED, "El soldado completó la cita. RFC: {$rfc}.", ['rfc' => $rfc], 'soldado');
-
-        // El RFC ya está: el expediente avanza a "Registro SAT".
-        self::avanzarEtapa($registration, RegistrationStageEnum::SAT_REGISTRATION);
-
-        // Preparar la cita de e.firma (por formar) con el mismo soldado, si no existe.
-        $fiel = $registration?->appointments()
-            ->where('type', AppointmentTypeEnum::FIEL->value)
-            ->whereNotIn('status', [AppointmentStatusEnum::CANCELLED->value, AppointmentStatusEnum::REJECTED->value])
-            ->first();
-
-        if ($fiel === null && $registration !== null) {
-            $fiel = $registration->appointments()->create([
-                'type' => AppointmentTypeEnum::FIEL->value,
-                'status' => AppointmentStatusEnum::PENDING_FORMING->value,
-                'soldado_id' => $record->soldado_id,
-            ]);
-        }
-
-        if (($data['ir_efirma'] ?? false) && $fiel !== null) {
-            if ($record->soldado_id !== null && $registration !== null
-                && ! $registration->soldados()->where('soldados.id', $record->soldado_id)->exists()) {
-                $registration->soldados()->attach($record->soldado_id, ['role' => 'legal_representative']);
-            }
-
-            FormSatAppointmentJob::dispatch($fiel->id);
+        // Si el soldado va a la e.firma, se crea y se manda a formar de inmediato.
+        if ($data['ir_efirma'] ?? false) {
+            app(RfcCaptureService::class)->formEfirma($record);
             self::avisarAdmins($registration, "El soldado completó la cita de RFC (RFC {$rfc}) y va a la e.firma — se está formando.");
             Notification::make()->title('¡Listo! 🚀')->body('Guardamos tu RFC y ya se está formando tu cita de e.firma.')->success()->send();
         } else {
             self::avisarAdmins($registration, "El soldado completó la cita de RFC. RFC capturado: {$rfc}.");
-            Notification::make()->title('¡Listo! ✅')->body('Guardamos tu RFC y la CSF.')->success()->send();
+            Notification::make()->title('¡Listo! ✅')->body('Guardamos tu RFC.')->success()->send();
         }
     }
 
