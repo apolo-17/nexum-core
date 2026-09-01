@@ -7,6 +7,7 @@ use App\Enums\AppointmentStatusEnum;
 use App\Enums\AppointmentTypeEnum;
 use App\Observers\AppointmentObserver;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -44,6 +45,9 @@ class Appointment extends Model
         'acknowledgment_path',
         'notes',
         'rejection_reason',
+        'payment_amount',
+        'paid_at',
+        'paid_by',
     ];
 
     /**
@@ -59,7 +63,98 @@ class Appointment extends Model
             'scheduled_at' => 'datetime',
             'formed_at' => 'datetime',
             'last_review_at' => 'datetime',
+            'payment_amount' => 'decimal:2',
+            'paid_at' => 'datetime',
         ];
+    }
+
+    /** IVA rate applied on top of the payment subtotal. */
+    public const IVA_RATE = 0.16;
+
+    // -------------------------------------------------------------------------
+    // Payment
+    // -------------------------------------------------------------------------
+
+    /** IVA (16%) computed from the payment subtotal. */
+    public function paymentIva(): float
+    {
+        return round((float) $this->payment_amount * self::IVA_RATE, 2);
+    }
+
+    /** Total = subtotal + IVA. */
+    public function paymentTotal(): float
+    {
+        return round((float) $this->payment_amount * (1 + self::IVA_RATE), 2);
+    }
+
+    /**
+     * Payment state used across the payments board:
+     *   'pagada'    — already paid (paid_at set).
+     *   'pendiente' — payable and not yet paid.
+     *   'aun_no'    — not payable yet (date not passed, or result not captured).
+     */
+    public function paymentState(): string
+    {
+        if ($this->paid_at !== null) {
+            return 'pagada';
+        }
+
+        return $this->isPayable() ? 'pendiente' : 'aun_no';
+    }
+
+    /**
+     * A cita is payable only once its date has passed AND we already hold its result — the RFC for
+     * an RFC cita, or the company e.firma for a FIEL cita. Rejected / cancelled / no-show are never
+     * paid. This is why "if the soldado uploads nothing, it stays out of pending payment".
+     */
+    public function isPayable(): bool
+    {
+        if (in_array($this->status, [
+            AppointmentStatusEnum::REJECTED,
+            AppointmentStatusEnum::CANCELLED,
+            AppointmentStatusEnum::NO_SHOW,
+        ], true)) {
+            return false;
+        }
+
+        if ($this->scheduled_at === null || $this->scheduled_at->isFuture()) {
+            return false;
+        }
+
+        $registration = $this->registration;
+        if ($registration === null) {
+            return false;
+        }
+
+        return $this->type === AppointmentTypeEnum::RFC
+            ? filled($registration->rfc)
+            : filled($registration->company_fiel_cer_path);
+    }
+
+    /**
+     * Scope to citas that are payable (payment pending or already paid) — the universe of the
+     * payments board. Mirrors isPayable() at the query level.
+     *
+     * @param  Builder<Appointment>  $query
+     */
+    public function scopePayable($query): void
+    {
+        $query->whereNotIn('status', [
+            AppointmentStatusEnum::REJECTED->value,
+            AppointmentStatusEnum::CANCELLED->value,
+            AppointmentStatusEnum::NO_SHOW->value,
+        ])
+            ->whereNotNull('scheduled_at')
+            ->where('scheduled_at', '<', now())
+            ->where(function ($q): void {
+                $q->where(function ($rfc): void {
+                    $rfc->where('type', AppointmentTypeEnum::RFC->value)
+                        ->whereHas('registration', fn ($r) => $r->whereNotNull('rfc')->where('rfc', '!=', ''));
+                })->orWhere(function ($fiel): void {
+                    $fiel->where('type', AppointmentTypeEnum::FIEL->value)
+                        ->whereHas('registration', fn ($r) => $r->whereNotNull('company_fiel_cer_path'));
+                });
+            });
     }
 
     // -------------------------------------------------------------------------
