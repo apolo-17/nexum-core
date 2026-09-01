@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\RegistrationResource\Actions;
 
 use App\Models\Registration;
+use App\Services\Registration\EfirmaDeliverableService;
 use Filament\Actions\Action;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\TextInput;
@@ -111,6 +112,12 @@ class ManageCompanyCredentialsAction extends Action
                 }
 
                 $record->update($payload);
+
+                // Si ya hay certificado, materializar el entregable de e.firma (.zip) para China —
+                // el mismo servicio que usa el flujo del soldado, para no dejarlo sin documento.
+                if (filled($record->fresh()->company_fiel_cer_path)) {
+                    app(EfirmaDeliverableService::class)->materialize($record->fresh());
+                }
 
                 Notification::make()
                     ->title('Credenciales guardadas')
