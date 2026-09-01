@@ -98,6 +98,7 @@ class User extends Authenticatable implements FilamentUser, JWTSubject
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'system_notice_ack_at' => 'datetime',
         ];
     }
 
