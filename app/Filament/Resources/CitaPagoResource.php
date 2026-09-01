@@ -126,7 +126,7 @@ class CitaPagoResource extends Resource
                         Summarizer::make()
                             ->label('Subtotal pagado')
                             ->money('MXN')
-                            ->using(fn (Builder $query): float => (float) $query->clone()->whereNotNull('paid_at')->sum('payment_amount')),
+                            ->using(fn ($query): float => (float) $query->clone()->whereNotNull('paid_at')->sum('payment_amount')),
                     ),
 
                 TextColumn::make('iva')
@@ -138,7 +138,7 @@ class CitaPagoResource extends Resource
                         Summarizer::make()
                             ->label('IVA pagado')
                             ->money('MXN')
-                            ->using(fn (Builder $query): float => round((float) $query->clone()->whereNotNull('paid_at')->sum('payment_amount') * Appointment::IVA_RATE, 2)),
+                            ->using(fn ($query): float => round((float) $query->clone()->whereNotNull('paid_at')->sum('payment_amount') * Appointment::IVA_RATE, 2)),
                     ),
 
                 TextColumn::make('total')
@@ -151,7 +151,7 @@ class CitaPagoResource extends Resource
                         Summarizer::make()
                             ->label('Total pagado')
                             ->money('MXN')
-                            ->using(fn (Builder $query): float => round((float) $query->clone()->whereNotNull('paid_at')->sum('payment_amount') * (1 + Appointment::IVA_RATE), 2)),
+                            ->using(fn ($query): float => round((float) $query->clone()->whereNotNull('paid_at')->sum('payment_amount') * (1 + Appointment::IVA_RATE), 2)),
                     ),
 
                 TextColumn::make('paid_at')
