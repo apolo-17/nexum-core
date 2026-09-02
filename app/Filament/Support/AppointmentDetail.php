@@ -6,6 +6,7 @@ namespace App\Filament\Support;
 
 use App\Enums\AppointmentTypeEnum;
 use App\Enums\DocumentTypeEnum;
+use App\Filament\Resources\RegistrationResource;
 use App\Models\Appointment;
 use App\Models\Document;
 use App\Models\SatModule;
@@ -45,7 +46,15 @@ class AppointmentDetail
                         ->state(fn (Appointment $r): string => $r->registration?->primaryLegalName?->name
                             ?? $r->registration?->singapur_folder_name
                             ?? '—')
-                        ->columnSpan(2)->weight('bold'),
+                        ->columnSpan(2)->weight('bold')
+                        // Enlace al detalle del expediente (abre en pestaña nueva para no perder el modal).
+                        ->color(fn (Appointment $r): ?string => $r->registration !== null ? 'primary' : null)
+                        ->icon(fn (Appointment $r): ?string => $r->registration !== null ? 'heroicon-o-arrow-top-right-on-square' : null)
+                        ->iconPosition('after')
+                        ->url(fn (Appointment $r): ?string => $r->registration !== null
+                            ? RegistrationResource::getUrl('view', ['record' => $r->registration])
+                            : null)
+                        ->openUrlInNewTab(),
                     TextEntry::make('empresa_rfc')->label('RFC de la empresa')
                         ->state(fn (Appointment $r): ?string => $r->registration?->rfc)
                         ->placeholder('Aún sin RFC moral')
