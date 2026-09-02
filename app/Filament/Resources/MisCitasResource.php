@@ -107,7 +107,8 @@ class MisCitasResource extends Resource
                 TextColumn::make('registration.primaryLegalName.name')
                     ->label('Empresa')
                     ->placeholder('—')
-                    ->searchable(),
+                    ->searchable()
+                    ->wrap(),
 
                 TextColumn::make('type')
                     ->label('Tipo')
@@ -129,7 +130,9 @@ class MisCitasResource extends Resource
 
                 TextColumn::make('office')
                     ->label('Sede')
-                    ->placeholder('—'),
+                    ->placeholder('—')
+                    // Secundaria en pantallas chicas: solo visible de "lg" hacia arriba.
+                    ->visibleFrom('lg'),
 
                 TextColumn::make('acknowledgment_path')
                     ->label('Documentos')

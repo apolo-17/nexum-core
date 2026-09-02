@@ -7,6 +7,7 @@ use App\Filament\Resources\CitaPagoResource\Pages;
 use App\Models\Appointment;
 use BackedEnum;
 use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\PageRegistration;
@@ -85,17 +86,15 @@ class CitaPagoResource extends Resource
                     ->label('Empresa')
                     ->placeholder('—')
                     ->searchable()
-                    ->wrap(),
+                    ->wrap()
+                    // El soldado va como subtítulo de la empresa para ahorrar una columna.
+                    ->description(fn (Appointment $r): ?string => $r->soldado?->name),
 
                 TextColumn::make('type')
                     ->label('Trámite')
                     ->badge()
                     ->formatStateUsing(fn (AppointmentTypeEnum $state): string => $state->label())
                     ->color(fn (AppointmentTypeEnum $state): string => $state->color()),
-
-                TextColumn::make('soldado.name')
-                    ->label('Soldado')
-                    ->placeholder('—'),
 
                 TextColumn::make('scheduled_at')
                     ->label('Fecha de la cita')
@@ -158,7 +157,9 @@ class CitaPagoResource extends Resource
                     ->label('Fecha de pago')
                     ->dateTime('d/m/Y')
                     ->placeholder('—')
-                    ->sortable(),
+                    ->sortable()
+                    // Secundaria: oculta por defecto (se puede mostrar con el toggle de columnas).
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 SelectFilter::make('estado_pago')
@@ -174,6 +175,7 @@ class CitaPagoResource extends Resource
                     }),
             ])
             ->recordActions([
+                ActionGroup::make([
                 Action::make('marcarPagada')
                     ->label('Marcar como pagada')
                     ->icon('heroicon-o-check-circle')
@@ -211,6 +213,12 @@ class CitaPagoResource extends Resource
                         $record->update(['payment_amount' => null, 'paid_at' => null, 'paid_by' => null]);
                         Notification::make()->title('Pago revertido')->warning()->send();
                     }),
+                ])
+                    ->label('Acciones')
+                    ->icon('heroicon-m-ellipsis-vertical')
+                    ->tooltip('Acciones')
+                    ->button()
+                    ->hiddenLabel(),
             ]);
     }
 

@@ -20,6 +20,7 @@ use App\Services\Singapur\ChinaDeliverablesService;
 use BackedEnum;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\ActionGroup;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\Repeater;
@@ -1050,6 +1051,9 @@ class RegistrationResource extends Resource
                     ->state(fn (Registration $record): string => $record->primaryLegalName?->name ?? '—')
                     ->searchable(query: fn (Builder $query, string $search): Builder => $query->whereHas('legalNames', fn ($q) => $q->where('name', 'like', "%{$search}%"))
                     )
+                    ->wrap()
+                    // Notario como subtítulo para ahorrar una columna.
+                    ->description(fn (Registration $record): ?string => filled($record->notario?->name) ? 'Not. '.$record->notario->name : null)
                     ->sortable(false),
 
                 TextColumn::make('singapur_client_code')
@@ -1089,13 +1093,6 @@ class RegistrationResource extends Resource
                         'danger' => RegistrationStatusEnum::CANCELLED->value,
                         'gray' => RegistrationStatusEnum::COMPLETED->value,
                     ])
-                    ->grow(false),
-
-                TextColumn::make('notario.name')
-                    ->label('Notario')
-                    ->placeholder('—')
-                    ->limit(18)
-                    ->tooltip(fn (?string $state): ?string => $state)
                     ->grow(false),
 
                 TextColumn::make('tasks_pending_count')
@@ -1154,8 +1151,15 @@ class RegistrationResource extends Resource
                     ->options(User::role('notario')->pluck('name', 'id')),
             ])
             ->actions([
-                ViewAction::make()->iconButton(),
-                EditAction::make()->iconButton(),
+                ActionGroup::make([
+                    ViewAction::make(),
+                    EditAction::make(),
+                ])
+                    ->label('Acciones')
+                    ->icon('heroicon-m-ellipsis-vertical')
+                    ->tooltip('Acciones')
+                    ->button()
+                    ->hiddenLabel(),
             ])
             ->bulkActions([
                 BulkActionGroup::make([
